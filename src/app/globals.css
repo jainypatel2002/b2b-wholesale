@@ -23,3 +23,16 @@ body {
 .link {
   @apply text-blue-600 hover:underline;
 }
+
+@media print {
+  body {
+    background: white;
+  }
+  @page {
+    margin: 0.5cm;
+  }
+  /* Hide standard UI elements if they lack specific classes */
+  header, footer, nav, .no-print {
+    display: none !important;
+  }
+}

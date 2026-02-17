@@ -5,7 +5,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <div>
-      <header className="border-b border-slate-200">
+      <header className="border-b border-slate-200 print:hidden">
         <div className="mx-auto flex max-w-5xl items-center justify-between p-4">
           <div>
             <div className="text-sm text-slate-500">Signed in as</div>
@@ -17,7 +17,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
           </form>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl p-4">{children}</main>
+      <main className="mx-auto max-w-5xl p-4 print:max-w-none print:p-0">{children}</main>
     </div>
   )
 }
