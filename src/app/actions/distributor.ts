@@ -31,6 +31,8 @@ export async function createInvoiceAction(orderId: string) {
     const { distributorId } = await getDistributorContext()
     const supabase = await createClient()
 
+    console.log('[createInvoiceAction] Starting for order:', orderId, 'Distributor:', distributorId)
+
     // 1. Fetch Order & Check existence
     const { data: order, error: orderErr } = await supabase
         .from('orders')
@@ -39,7 +41,12 @@ export async function createInvoiceAction(orderId: string) {
         .eq('distributor_id', distributorId)
         .single()
 
-    if (orderErr || !order) return { error: 'Order not found' }
+    if (orderErr || !order) {
+        console.error('[createInvoiceAction] Order not found or error:', orderErr)
+        return { error: 'Order not found' }
+    }
+
+    console.log('[createInvoiceAction] Order found:', order.id, 'Vendor:', order.vendor_id)
 
     // 2. Check if invoice already exists
     const { data: existing } = await supabase
@@ -49,15 +56,21 @@ export async function createInvoiceAction(orderId: string) {
         .maybeSingle()
 
     if (existing) {
+        console.log('[createInvoiceAction] Invoice already exists:', existing.id)
         return { success: true, invoiceId: existing.id, message: 'Invoice already exists' }
     }
 
     // 3. Calculate Totals
     const items = order.order_items ?? []
-    if (!items.length) return { error: 'Order has no items' }
+    if (!items.length) {
+        console.error('[createInvoiceAction] Order has no items')
+        return { error: 'Order has no items' }
+    }
 
     const subtotal = items.reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.qty), 0)
     const invoice_number = `INV-${order.id.slice(0, 8).toUpperCase()}`
+
+    console.log('[createInvoiceAction] Creating invoice:', invoice_number, 'Subtotal:', subtotal)
 
     // 4. Create Invoice
     const { data: invoice, error: invErr } = await supabase
@@ -76,7 +89,12 @@ export async function createInvoiceAction(orderId: string) {
         .select('id')
         .single()
 
-    if (invErr) return { error: invErr.message }
+    if (invErr) {
+        console.error('[createInvoiceAction] Insert Error:', invErr)
+        return { error: invErr.message }
+    }
+
+    console.log('[createInvoiceAction] Invoice created:', invoice.id)
 
     // 5. Create Invoice Items
     const invoiceItems = items.map((it: any) => ({
@@ -90,6 +108,7 @@ export async function createInvoiceAction(orderId: string) {
     const { error: itemsErr } = await supabase.from('invoice_items').insert(invoiceItems)
 
     if (itemsErr) {
+        console.error('[createInvoiceAction] Items Insert Error:', itemsErr)
         // Cleanup invoice if items fail (optional, but good practice)
         await supabase.from('invoices').delete().eq('id', invoice.id)
         return { error: 'Failed to create invoice items: ' + itemsErr.message }

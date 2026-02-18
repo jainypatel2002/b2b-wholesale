@@ -32,11 +32,15 @@ export default async function DistributorInvoicesPage() {
   const { distributorId } = await getDistributorContext()
   const supabase = await createClient()
 
-  const { data: invoices } = await supabase
+  const { data: invoices, error } = await supabase
     .from('invoices')
-    .select('id,invoice_number,total,payment_status,created_at')
+    .select('id,invoice_number,total,payment_status,created_at,vendor:profiles!invoices_vendor_id_fkey(display_name,email)')
     .eq('distributor_id', distributorId)
     .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching invoices:', error)
+  }
 
   return (
     <div className="space-y-4">
@@ -51,6 +55,7 @@ export default async function DistributorInvoicesPage() {
             <thead className="text-left text-slate-500">
               <tr>
                 <th className="py-2">Invoice</th>
+                <th>Vendor</th>
                 <th>Status</th>
                 <th>Total</th>
                 <th>Actions</th>
@@ -62,6 +67,9 @@ export default async function DistributorInvoicesPage() {
                   <tr key={inv.id} className="border-t border-slate-200">
                     <td className="py-2">
                       <Link className="link" href={`/distributor/invoices/${inv.id}`}>{inv.invoice_number}</Link>
+                    </td>
+                    <td>
+                      {inv.vendor?.display_name || inv.vendor?.email || <span className="text-slate-400">Unknown Vendor</span>}
                     </td>
                     <td>{inv.payment_status}</td>
                     <td>{Number(inv.total).toFixed(2)}</td>
@@ -81,7 +89,7 @@ export default async function DistributorInvoicesPage() {
                   </tr>
                 ))
               ) : (
-                <tr><td className="py-3 text-slate-600" colSpan={4}>No invoices yet.</td></tr>
+                <tr><td className="py-3 text-slate-600" colSpan={5}>No invoices yet.</td></tr>
               )}
             </tbody>
           </table>

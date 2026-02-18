@@ -55,9 +55,9 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
     }
   }
 
-  async function markPaid() {
+  async function markPaid(invoiceId: string) {
     'use server'
-    if (invoice?.id) await markInvoicePaid(invoice.id)
+    await markInvoicePaid(invoiceId)
   }
 
   return (
@@ -113,7 +113,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
               <Link className="btn btn-outline" href={`/distributor/invoices/${invoice.id}`}>View Invoice {invoice.invoice_number}</Link>
               <StatusBadge status={invoice.payment_status} type="payment" />
               {invoice.payment_status === 'unpaid' && (
-                <form action={markPaid}><button className="btn bg-emerald-600 text-white hover:bg-emerald-700">Mark Cash Received</button></form>
+                <form action={markPaid.bind(null, invoice.id)}><button className="btn bg-emerald-600 text-white hover:bg-emerald-700">Mark Cash Received</button></form>
               )}
             </div>
           ) : (
