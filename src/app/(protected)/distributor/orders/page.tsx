@@ -9,7 +9,7 @@ export default async function DistributorOrdersPage() {
 
   const { data: orders } = await supabase
     .from('orders')
-    .select('id,status,created_at,vendor_id,order_items(qty,unit_price)')
+    .select('id,status,created_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)')
     .eq('distributor_id', distributorId)
     .order('created_at', { ascending: false })
 
@@ -40,6 +40,7 @@ export default async function DistributorOrdersPage() {
             <thead className="text-left text-slate-500">
               <tr>
                 <th className="py-2">Order</th>
+                <th>Vendor</th>
                 <th>Status</th>
                 <th>Payment</th>
                 <th>Total</th>
@@ -52,7 +53,11 @@ export default async function DistributorOrdersPage() {
                 rows.map((o: any) => (
                   <tr key={o.id} className="border-t border-slate-200">
                     <td className="py-2">
-                      <span className="font-mono text-xs">{o.id.slice(0, 8)}...</span>
+                      <Link className="link font-mono text-xs" href={`/distributor/orders/${o.id}`}>{o.id.slice(0, 8)}...</Link>
+                    </td>
+                    <td>
+                      <div className="font-medium">{o.vendor?.display_name || 'Unknown'}</div>
+                      <div className="text-xs text-slate-500">{o.vendor?.email}</div>
                     </td>
                     <td><StatusBadge status={o.status} /></td>
                     <td>

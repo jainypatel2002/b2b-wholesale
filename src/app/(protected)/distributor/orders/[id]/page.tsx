@@ -13,7 +13,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
 
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id,status,created_at,vendor_id,order_items(qty,unit_price,unit_cost,products(name))')
+    .select('id,status,created_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price,unit_cost,products(name))')
     .eq('id', id)
     .eq('distributor_id', distributorId)
     .single()
@@ -71,6 +71,11 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
           <div>
             <h1 className="text-xl font-semibold">Order <span className="text-slate-500 text-base font-normal">#{order.id.slice(0, 8)}</span></h1>
             <div className="mt-1 text-sm text-slate-600">Created: {new Date(order.created_at).toLocaleString()}</div>
+            <div className="mt-2 p-3 bg-slate-50 rounded-md border border-slate-100">
+              <div className="text-xs text-slate-500 uppercase font-semibold">Vendor</div>
+              <div className="font-medium text-slate-900">{order.vendor?.display_name || 'Unknown Vendor'}</div>
+              <div className="text-sm text-slate-500">{order.vendor?.email}</div>
+            </div>
           </div>
           <div className="text-right space-y-2">
             <div><StatusBadge status={order.status} /></div>

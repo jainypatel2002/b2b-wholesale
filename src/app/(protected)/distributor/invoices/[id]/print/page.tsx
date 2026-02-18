@@ -3,6 +3,8 @@ import { getDistributorContext } from '@/lib/data'
 import { InvoicePrint } from '@/components/invoice-print'
 import { notFound } from 'next/navigation'
 
+export const dynamic = 'force-dynamic'
+
 export default async function DistributorInvoicePrintPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
     const { distributorId, profile } = await getDistributorContext()
