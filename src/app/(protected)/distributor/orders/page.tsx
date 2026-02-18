@@ -1,7 +1,12 @@
+
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
 
 export default async function DistributorOrdersPage() {
   const { distributorId } = await getDistributorContext()
@@ -28,59 +33,65 @@ export default async function DistributorOrdersPage() {
   })
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Orders</h1>
-        <Link className="link" href="/distributor">← Back</Link>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Orders</h1>
       </div>
 
-      <div className="card p-6">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-slate-500">
-              <tr>
-                <th className="py-2">Order</th>
-                <th>Vendor</th>
-                <th>Status</th>
-                <th>Payment</th>
-                <th>Total</th>
-                <th>Created</th>
-                <th className="text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order</TableHead>
+                <TableHead>Vendor</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Payment</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.length ? (
                 rows.map((o: any) => (
-                  <tr key={o.id} className="border-t border-slate-200">
-                    <td className="py-2">
-                      <Link className="link font-mono text-xs" href={`/distributor/orders/${o.id}`}>{o.id.slice(0, 8)}...</Link>
-                    </td>
-                    <td>
+                  <TableRow key={o.id}>
+                    <TableCell className="font-mono text-xs text-slate-500">
+                      {o.id.slice(0, 8)}...
+                    </TableCell>
+                    <TableCell>
                       <div className="font-medium">{o.vendor?.display_name || 'Unknown'}</div>
                       <div className="text-xs text-slate-500">{o.vendor?.email}</div>
-                    </td>
-                    <td><StatusBadge status={o.status} /></td>
-                    <td>
+                    </TableCell>
+                    <TableCell><StatusBadge status={o.status} /></TableCell>
+                    <TableCell>
                       {o.invoice ? (
                         <StatusBadge status={o.invoice.payment_status} type="payment" />
                       ) : (
-                        <span className="text-slate-400 italic">No invoice</span>
+                        <span className="text-slate-400 italic text-xs">No invoice</span>
                       )}
-                    </td>
-                    <td>{o.total.toFixed(2)}</td>
-                    <td>{new Date(o.created_at).toLocaleDateString()}</td>
-                    <td className="text-right">
-                      <Link className="btn btn-sm" href={`/distributor/orders/${o.id}`}>Manage</Link>
-                    </td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="font-medium">${o.total.toFixed(2)}</TableCell>
+                    <TableCell className="text-slate-500">{new Date(o.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-right">
+                      <Link href={`/distributor/orders/${o.id}`}>
+                        <Button variant="outline" size="sm">Manage</Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
                 ))
               ) : (
-                <tr><td className="py-3 text-slate-600" colSpan={6}>No orders yet.</td></tr>
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center text-slate-500">
+                    No orders found.
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   )
 }
+

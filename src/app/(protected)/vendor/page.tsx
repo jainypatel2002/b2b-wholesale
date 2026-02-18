@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { ShoppingCart, Package, FileText, LayoutGrid, Link as LinkIcon } from 'lucide-react'
 
 export default async function VendorHome() {
   const profile = await requireRole('vendor')
@@ -14,29 +16,64 @@ export default async function VendorHome() {
     .maybeSingle()
 
   return (
-    <div className="space-y-4">
-      <div className="card p-6">
-        <h1 className="text-2xl font-semibold">Vendor Dashboard</h1>
-        <p className="mt-2 text-sm text-slate-600">Connected distributor:</p>
-        <div className="mt-2 rounded-xl bg-slate-50 p-3 font-mono text-sm break-all">{link?.distributor_id ?? 'Not linked'}</div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">Vendor Dashboard</h1>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Link className="card p-6 hover:shadow" href="/vendor/catalog">
-          <div className="text-lg font-medium">Catalog</div>
-          <div className="text-sm text-slate-600">Browse products and add to cart.</div>
+      <Card>
+        <CardHeader className="flex flex-row items-center space-y-0 pb-2">
+          <div className="flex items-center gap-2">
+            <LinkIcon className="h-4 w-4 text-slate-500" />
+            <CardTitle className="text-sm font-medium text-slate-500">Connected Distributor</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold font-mono tracking-tight">{link?.distributor_id ?? 'Not linked'}</div>
+          <p className="text-xs text-slate-500 mt-1">Your primary distributor ID</p>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Link href="/vendor/catalog">
+          <Card className="h-full hover:bg-slate-50 transition-colors cursor-pointer border-slate-200 hover:border-blue-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <LayoutGrid className="h-5 w-5 text-blue-500" /> Catalog
+              </CardTitle>
+              <CardDescription>Browse products</CardDescription>
+            </CardHeader>
+          </Card>
         </Link>
-        <Link className="card p-6 hover:shadow" href="/vendor/cart">
-          <div className="text-lg font-medium">Cart</div>
-          <div className="text-sm text-slate-600">Place an order.</div>
+        <Link href="/vendor/cart">
+          <Card className="h-full hover:bg-slate-50 transition-colors cursor-pointer border-slate-200 hover:border-blue-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <ShoppingCart className="h-5 w-5 text-blue-500" /> Cart
+              </CardTitle>
+              <CardDescription>View your cart</CardDescription>
+            </CardHeader>
+          </Card>
         </Link>
-        <Link className="card p-6 hover:shadow" href="/vendor/orders">
-          <div className="text-lg font-medium">Orders</div>
-          <div className="text-sm text-slate-600">View your order history.</div>
+        <Link href="/vendor/orders">
+          <Card className="h-full hover:bg-slate-50 transition-colors cursor-pointer border-slate-200 hover:border-blue-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Package className="h-5 w-5 text-blue-500" /> Orders
+              </CardTitle>
+              <CardDescription>Order history</CardDescription>
+            </CardHeader>
+          </Card>
         </Link>
-        <Link className="card p-6 hover:shadow" href="/vendor/invoices">
-          <div className="text-lg font-medium">Invoices</div>
-          <div className="text-sm text-slate-600">Cash due / paid invoices.</div>
+        <Link href="/vendor/invoices">
+          <Card className="h-full hover:bg-slate-50 transition-colors cursor-pointer border-slate-200 hover:border-blue-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <FileText className="h-5 w-5 text-blue-500" /> Invoices
+              </CardTitle>
+              <CardDescription>View invoices</CardDescription>
+            </CardHeader>
+          </Card>
         </Link>
       </div>
     </div>

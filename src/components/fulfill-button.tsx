@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { fulfillOrderAction } from '@/app/actions/distributor'
 
+import { Button } from '@/components/ui/button'
+
 export function FulfillButton({ orderId }: { orderId: string }) {
     const [loading, setLoading] = useState(false)
 
@@ -16,7 +18,6 @@ export function FulfillButton({ orderId }: { orderId: string }) {
                 alert(`Error: ${res.error}`)
             } else {
                 // Success - the server action revalidates, so the page will update.
-                // We could also show a success message.
             }
         } catch (e) {
             alert('An unexpected error occurred')
@@ -27,12 +28,12 @@ export function FulfillButton({ orderId }: { orderId: string }) {
     }
 
     return (
-        <button
+        <Button
             onClick={handleFulfill}
             disabled={loading}
-            className="btn bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="bg-green-600 hover:bg-green-700 text-white"
         >
             {loading ? 'Processing...' : 'Fulfill Order'}
-        </button>
+        </Button>
     )
 }

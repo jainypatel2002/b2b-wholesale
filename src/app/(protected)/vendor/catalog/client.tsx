@@ -2,7 +2,11 @@
 
 import Link from 'next/link'
 import { useState, useMemo } from 'react'
-import { SearchInput } from '@/components/search-input'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Search, ShoppingCart, Plus } from 'lucide-react'
 
 export function CatalogClient({ products }: { products: any[] }) {
     const [searchTerm, setSearchTerm] = useState('')
@@ -24,49 +28,64 @@ export function CatalogClient({ products }: { products: any[] }) {
         if (existing) existing.qty += 1
         else cart.items.push({ product_id: p.id, name: p.name, unit_price: p.sell_price, qty: 1 })
         localStorage.setItem(key, JSON.stringify(cart))
-        alert('Added to cart')
+
+        // Simple visual feedback could be improved with a toast
+        alert(`Added ${p.name} to cart`)
     }
 
     return (
-        <div className="space-y-4">
-            <div className="card p-4">
-                <SearchInput onSearch={setSearchTerm} placeholder="Search products..." />
+        <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+                <div className="relative w-full max-w-sm">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
+                    <Input
+                        type="search"
+                        placeholder="Search products..."
+                        className="pl-9"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <Link href="/vendor/cart">
+                    <Button variant="outline" className="w-full sm:w-auto">
+                        <ShoppingCart className="mr-2 h-4 w-4" /> Go to Cart
+                    </Button>
+                </Link>
             </div>
 
-            <div className="card p-6">
-                <h2 className="text-lg font-medium">Products</h2>
-                <div className="mt-3 overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead className="text-left text-slate-500">
-                            <tr>
-                                <th className="py-2">Name</th>
-                                <th>Category</th>
-                                <th>Price</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredProducts.length ? (
-                                filteredProducts.map((p) => (
-                                    <tr key={p.id} className="border-t border-slate-200">
-                                        <td className="py-2 font-medium">{p.name}</td>
-                                        <td>{p.categories?.name ?? '-'}</td>
-                                        <td>{Number(p.sell_price).toFixed(2)}</td>
-                                        <td className="text-right">
-                                            <button className="btn" onClick={() => addToCart(p)}>Add</button>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr><td className="py-3 text-slate-600" colSpan={4}>No products found.</td></tr>
-                            )}
-                        </tbody>
-                    </table>
+            {filteredProducts.length === 0 ? (
+                <div className="text-center py-12">
+                    <p className="text-slate-500">No products found.</p>
                 </div>
-                <div className="mt-4">
-                    <Link className="btn" href="/vendor/cart">Go to cart</Link>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {filteredProducts.map((p) => (
+                        <Card key={p.id} className="flex flex-col h-full hover:shadow-md transition-shadow">
+                            <CardHeader className="p-4 pb-2">
+                                <div className="flex justify-between items-start gap-2">
+                                    <Badge variant="secondary" className="mb-2">
+                                        {p.categories?.name ?? 'Uncategorized'}
+                                    </Badge>
+                                </div>
+                                <CardTitle className="text-base font-semibold line-clamp-2" title={p.name}>
+                                    {p.name}
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-4 pt-0 flex-grow">
+                                <div className="mt-2 text-2xl font-bold text-slate-900">
+                                    ${Number(p.sell_price).toFixed(2)}
+                                </div>
+                                <p className="text-xs text-slate-500">per unit</p>
+                            </CardContent>
+                            <CardFooter className="p-4 pt-0">
+                                <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => addToCart(p)}>
+                                    <Plus className="mr-2 h-4 w-4" /> Add to Cart
+                                </Button>
+                            </CardFooter>
+                        </Card>
+                    ))}
                 </div>
-            </div>
+            )}
         </div>
     )
 }

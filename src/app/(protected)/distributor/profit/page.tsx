@@ -1,6 +1,10 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ArrowLeft, DollarSign, TrendingUp, TrendingDown, Receipt } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export default async function ProfitPage() {
   const { distributorId } = await getDistributorContext()
@@ -22,59 +26,89 @@ export default async function ProfitPage() {
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Profit</h1>
-        <Link className="link" href="/distributor">← Back</Link>
+        <h1 className="text-2xl font-bold tracking-tight">Profit & Loss</h1>
+        <Link href="/distributor">
+          <Button variant="ghost" size="sm" className="pl-0"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard</Button>
+        </Link>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="card p-5">
-          <div className="text-sm text-slate-600">Revenue (paid)</div>
-          <div className="mt-1 text-2xl font-semibold">{revenue.toFixed(2)}</div>
-        </div>
-        <div className="card p-5">
-          <div className="text-sm text-slate-600">Cost (paid)</div>
-          <div className="mt-1 text-2xl font-semibold">{cost.toFixed(2)}</div>
-        </div>
-        <div className="card p-5">
-          <div className="text-sm text-slate-600">Profit (paid)</div>
-          <div className="mt-1 text-2xl font-semibold">{profit.toFixed(2)}</div>
-        </div>
-        <div className="card p-5">
-          <div className="text-sm text-slate-600">Margin</div>
-          <div className="mt-1 text-2xl font-semibold">{margin.toFixed(1)}%</div>
-        </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-500">Revenue (Paid)</CardTitle>
+            <DollarSign className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${revenue.toFixed(2)}</div>
+            <p className="text-xs text-slate-500">Total collected cash</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-500">Cost (Paid)</CardTitle>
+            <TrendingDown className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${cost.toFixed(2)}</div>
+            <p className="text-xs text-slate-500">Cost of goods sold</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-emerald-600">Net Profit</CardTitle>
+            <TrendingUp className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-600">${profit.toFixed(2)}</div>
+            <p className="text-xs text-slate-500">Realized profit</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-500">Margin</CardTitle>
+            <Receipt className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{margin.toFixed(1)}%</div>
+            <p className="text-xs text-slate-500">Profit margin</p>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="card p-6">
-        <h2 className="text-lg font-medium">Paid invoices</h2>
-        <p className="mt-1 text-sm text-slate-600">Profit is counted only when invoice is marked paid (cash collected).</p>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-slate-500">
-              <tr>
-                <th className="py-2">Invoice ID</th>
-                <th>Total</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
+      <Card>
+        <CardHeader>
+          <CardTitle>Paid Invoices</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Invoice ID</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Created</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {invoices?.length ? (
                 invoices.map((inv: any) => (
-                  <tr key={inv.id} className="border-t border-slate-200">
-                    <td className="py-2 font-mono text-xs">{inv.id}</td>
-                    <td>{Number(inv.total).toFixed(2)}</td>
-                    <td>{new Date(inv.created_at).toLocaleString()}</td>
-                  </tr>
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-mono text-xs">{inv.id}</TableCell>
+                    <TableCell>${Number(inv.total).toFixed(2)}</TableCell>
+                    <TableCell>{new Date(inv.created_at).toLocaleString()}</TableCell>
+                  </TableRow>
                 ))
               ) : (
-                <tr><td className="py-3 text-slate-600" colSpan={3}>No paid invoices yet.</td></tr>
+                <TableRow><TableCell colSpan={3} className="h-24 text-center text-slate-500">No paid invoices yet.</TableCell></TableRow>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   )
 }

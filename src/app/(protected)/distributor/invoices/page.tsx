@@ -1,6 +1,10 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
+import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 async function markPaid(formData: FormData) {
   'use server'
@@ -39,62 +43,76 @@ export default async function DistributorInvoicesPage() {
     .order('created_at', { ascending: false })
 
   if (error) {
-    console.error('Error fetching invoices:', error)
+    console.error('[DistributorInvoicesPage] Error fetching invoices (JSON):', JSON.stringify(error, null, 2))
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Invoices</h1>
-        <Link className="link" href="/distributor">← Back</Link>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Invoices</h1>
       </div>
 
-      <div className="card p-6">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-slate-500">
-              <tr>
-                <th className="py-2">Invoice</th>
-                <th>Vendor</th>
-                <th>Status</th>
-                <th>Total</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Invoice</TableHead>
+                <TableHead>Vendor</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead className="text-right">Payment Action</TableHead>
+                <TableHead className="text-right">View</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {invoices?.length ? (
                 invoices.map((inv: any) => (
-                  <tr key={inv.id} className="border-t border-slate-200">
-                    <td className="py-2">
-                      <Link className="link" href={`/distributor/invoices/${inv.id}`}>{inv.invoice_number}</Link>
-                    </td>
-                    <td>
-                      {inv.vendor?.display_name || inv.vendor?.email || <span className="text-slate-400">Unknown Vendor</span>}
-                    </td>
-                    <td>{inv.payment_status}</td>
-                    <td>{Number(inv.total).toFixed(2)}</td>
-                    <td className="space-x-2">
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-mono text-xs font-medium">
+                      <Link href={`/distributor/invoices/${inv.id}`} className="hover:underline text-blue-600">
+                        {inv.invoice_number}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{inv.vendor?.display_name || 'Unknown'}</div>
+                      <div className="text-xs text-slate-500">{inv.vendor?.email}</div>
+                    </TableCell>
+                    <TableCell><StatusBadge status={inv.payment_status} type="payment" /></TableCell>
+                    <TableCell className="font-medium">${Number(inv.total).toFixed(2)}</TableCell>
+                    <TableCell className="text-right">
                       {inv.payment_status === 'paid' ? (
-                        <form action={markUnpaid} className="inline">
+                        <form action={markUnpaid} className="inline-block">
                           <input type="hidden" name="invoice_id" value={inv.id} />
-                          <button className="btn" type="submit">Mark unpaid</button>
+                          <Button variant="ghost" size="sm" type="submit" className="text-orange-600 hover:text-orange-700 hover:bg-orange-50">
+                            Mark Unpaid
+                          </Button>
                         </form>
                       ) : (
-                        <form action={markPaid} className="inline">
+                        <form action={markPaid} className="inline-block">
                           <input type="hidden" name="invoice_id" value={inv.id} />
-                          <button className="btn" type="submit">Mark paid (cash)</button>
+                          <Button variant="ghost" size="sm" type="submit" className="text-green-600 hover:text-green-700 hover:bg-green-50">
+                            Mark Paid
+                          </Button>
                         </form>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link href={`/distributor/invoices/${inv.id}`}>
+                        <Button variant="outline" size="sm">View</Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
                 ))
               ) : (
-                <tr><td className="py-3 text-slate-600" colSpan={5}>No invoices yet.</td></tr>
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-slate-500">No invoices found.</TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   )
 }

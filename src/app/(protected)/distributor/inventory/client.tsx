@@ -1,8 +1,13 @@
 'use client'
 
 import React, { useState, useMemo, useRef } from 'react'
-import { SearchInput } from '@/components/search-input'
+import { Search, Plus, Edit, Package } from 'lucide-react'
 import { updateProduct } from '@/app/actions/distributor'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 
 interface Category {
     id: string
@@ -26,45 +31,11 @@ interface InventoryClientProps {
     addProductAction: (formData: FormData) => Promise<void>
 }
 
-function ProductTable({ products, onEdit }: { products: Product[], onEdit: (p: Product) => void }) {
-    if (!products.length) return <p className="text-sm text-slate-500 italic py-2">No matching products.</p>
-
-    return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-                <thead className="text-left text-slate-500 bg-slate-50">
-                    <tr>
-                        <th className="py-2 pl-2">Name</th>
-                        <th>SKU</th>
-                        <th>Cost</th>
-                        <th>Price</th>
-                        <th>Stock</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {products.map((p) => (
-                        <tr key={p.id} className="border-t border-slate-100">
-                            <td className="py-2 pl-2 font-medium">{p.name}</td>
-                            <td className="font-mono text-xs">{p.sku ?? '-'}</td>
-                            <td>{Number(p.cost_price).toFixed(2)}</td>
-                            <td>{Number(p.sell_price).toFixed(2)}</td>
-                            <td>{p.stock_qty}</td>
-                            <td>
-                                <button className="text-blue-600 hover:text-blue-800 text-xs font-medium" onClick={() => onEdit(p)}>Edit</button>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    )
-}
-
 export function InventoryClient({ initialProducts, categories, addProductAction }: InventoryClientProps) {
     const [searchTerm, setSearchTerm] = useState('')
     const [editingProduct, setEditingProduct] = useState<Product | null>(null)
     const modalRef = useRef<HTMLDialogElement>(null)
+    const addModalRef = useRef<HTMLDialogElement>(null)
 
     // Filter products based on search term
     const filteredProducts = useMemo(() => {
@@ -79,173 +50,241 @@ export function InventoryClient({ initialProducts, categories, addProductAction 
     }, [initialProducts, searchTerm])
 
     // Group filtered products
-    const { grouped, uncategorized } = useMemo(() => {
-        const g = new Map<string, Product[]>()
-        categories.forEach(c => g.set(c.id, []))
+    const groupedData = useMemo(() => {
+        const groups = new Map<string, Product[]>()
         const uncat: Product[] = []
 
         filteredProducts.forEach(p => {
-            if (p.category_id && g.has(p.category_id)) {
-                g.get(p.category_id)?.push(p)
+            if (p.category_id) {
+                if (!groups.has(p.category_id)) {
+                    groups.set(p.category_id, [])
+                }
+                groups.get(p.category_id)?.push(p)
             } else {
                 uncat.push(p)
             }
         })
 
-        return { grouped: g, uncategorized: uncat }
-    }, [filteredProducts, categories])
+        return { groups, uncat }
+    }, [filteredProducts])
+
+    // Helper to get category name
+    const getCategoryName = (id: string) => categories.find(c => c.id === id)?.name || 'Unknown Category'
 
     const handleEdit = (p: Product) => {
         setEditingProduct(p)
         modalRef.current?.showModal()
     }
 
-    const closeEdit = () => {
-        setEditingProduct(null)
-        modalRef.current?.close()
+    const openAddModal = () => {
+        addModalRef.current?.showModal()
     }
 
     return (
         <div className="space-y-6">
-
-            {/* Search Bar - explicitly add border to ensure visibility */}
-            <div className="card p-4 border border-slate-200 shadow-sm">
-                <SearchInput onSearch={setSearchTerm} placeholder="Search by name, SKU, or category..." />
+            {/* Controls */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="relative w-full max-w-md">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
+                    <Input
+                        placeholder="Search products, SKUs, categories..."
+                        className="pl-9 bg-white"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <Button onClick={openAddModal}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Product
+                </Button>
             </div>
 
-            {/* Add Product Form */}
-            <div className="card p-6">
-                <h2 className="text-lg font-medium mb-4">Add Product</h2>
-                <form action={addProductAction} className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 items-end bg-slate-50 p-4 rounded-lg border border-slate-100">
-                    <div className="md:col-span-2 lg:col-span-1">
-                        <label className="text-xs font-medium text-slate-600">Name</label>
-                        <input name="name" className="input mt-1 w-full" placeholder="Product Name" required />
-                    </div>
-                    <div>
-                        <label className="text-xs font-medium text-slate-600">Category</label>
-                        <select name="category_id" className="input mt-1 w-full">
-                            <option value="">Uncategorized</option>
-                            {categories.map((c) => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="text-xs font-medium text-slate-600">SKU</label>
-                        <input name="sku" className="input mt-1 w-full" placeholder="Optional" />
-                    </div>
-                    <div>
-                        <label className="text-xs font-medium text-slate-600">Cost</label>
-                        <input name="cost_price" className="input mt-1 w-full" type="number" step="0.01" defaultValue={0} />
-                    </div>
-                    <div>
-                        <label className="text-xs font-medium text-slate-600">Price</label>
-                        <input name="sell_price" className="input mt-1 w-full" type="number" step="0.01" defaultValue={0} />
-                    </div>
-                    <div>
-                        <label className="text-xs font-medium text-slate-600">Stock</label>
-                        <input name="stock_qty" className="input mt-1 w-full" type="number" step="1" defaultValue={0} />
-                    </div>
-                    <div className="md:col-span-2 lg:col-span-3 mt-2">
-                        <button className="btn w-full md:w-auto" type="submit">Add Product</button>
-                    </div>
-                </form>
-            </div>
+            {/* Product Lists by Category */}
+            {Array.from(groupedData.groups.entries()).map(([catId, products]) => (
+                <Card key={catId}>
+                    <CardHeader className="py-4">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Package className="h-5 w-5 text-slate-500" />
+                            {getCategoryName(catId)}
+                            <Badge variant="secondary" className="ml-2">{products.length}</Badge>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <ProductList products={products} onEdit={handleEdit} />
+                    </CardContent>
+                </Card>
+            ))}
 
-            {/* Product List */}
-            <div className="space-y-6">
-                {categories.map(c => {
-                    const items = grouped.get(c.id) || []
-                    if (searchTerm && items.length === 0) return null
+            {groupedData.uncat.length > 0 && (
+                <Card>
+                    <CardHeader className="py-4">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <Package className="h-5 w-5 text-slate-500" />
+                            Uncategorized
+                            <Badge variant="secondary" className="ml-2">{groupedData.uncat.length}</Badge>
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <ProductList products={groupedData.uncat} onEdit={handleEdit} />
+                    </CardContent>
+                </Card>
+            )}
 
-                    return (
-                        <div key={c.id} className="card overflow-hidden">
-                            <div className="bg-slate-100 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
-                                <h3 className="font-semibold text-slate-800">{c.name}</h3>
-                                <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">{items.length} items</span>
-                            </div>
-                            <div className="p-0">
-                                <ProductTable products={items} onEdit={handleEdit} />
-                            </div>
-                        </div>
-                    )
-                })}
-
-                {(uncategorized.length > 0 || (!searchTerm && uncategorized.length === 0)) && (
-                    <div className="card overflow-hidden border-l-4 border-l-orange-400">
-                        {uncategorized.length > 0 && (
-                            <>
-                                <div className="bg-orange-50 px-4 py-3 border-b border-orange-100 flex justify-between items-center">
-                                    <h3 className="font-semibold text-orange-900">Uncategorized</h3>
-                                    <span className="text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded-full">{uncategorized.length} items</span>
-                                </div>
-                                <div className="p-0">
-                                    <ProductTable products={uncategorized} onEdit={handleEdit} />
-                                </div>
-                            </>
-                        )}
-                    </div>
-                )}
-
-                {filteredProducts.length === 0 && (
-                    <div className="text-center py-12 text-slate-400">
-                        No products found matching &quot;{searchTerm}&quot;.
-                    </div>
-                )}
-            </div>
+            {filteredProducts.length === 0 && (
+                <div className="text-center py-12 bg-white rounded-xl border border-slate-200 border-dashed">
+                    <p className="text-slate-500">No products found matching your search.</p>
+                </div>
+            )}
 
             {/* Edit Modal */}
-            <dialog ref={modalRef} className="modal">
-                <div className="modal-box w-11/12 max-w-3xl">
-                    <h3 className="font-bold text-lg mb-4">Edit Product</h3>
-                    {editingProduct && (
-                        <form action={async (formData) => {
-                            await updateProduct(formData)
-                            closeEdit()
-                        }}>
-                            <input type="hidden" name="id" value={editingProduct.id} />
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="md:col-span-2">
-                                    <label className="label-text">Name</label>
-                                    <input name="name" className="input w-full mt-1" defaultValue={editingProduct.name} required />
+            <dialog ref={modalRef} className="modal bg-transparent">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
+                        <div className="flex items-center justify-between border-b p-4">
+                            <h3 className="font-semibold text-lg">Edit Product</h3>
+                            <button onClick={() => modalRef.current?.close()} className="text-slate-500 hover:text-slate-700">✕</button>
+                        </div>
+                        {editingProduct && (
+                            <form action={async (formData) => {
+                                await updateProduct(formData)
+                                modalRef.current?.close()
+                            }} className="p-4 space-y-4">
+                                <input type="hidden" name="id" value={editingProduct.id} />
+                                <div className="grid gap-2">
+                                    <label className="text-sm font-medium">Name</label>
+                                    <Input name="name" defaultValue={editingProduct.name} required />
                                 </div>
-                                <div>
-                                    <label className="label-text">Category</label>
-                                    <select name="category_id" className="input w-full mt-1" defaultValue={editingProduct.category_id || ''}>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium">SKU</label>
+                                        <Input name="sku" defaultValue={editingProduct.sku || ''} />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium">Stock</label>
+                                        <Input name="stock_qty" type="number" defaultValue={editingProduct.stock_qty} required />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium">Cost Price</label>
+                                        <Input name="cost_price" type="number" step="0.01" defaultValue={editingProduct.cost_price || ''} />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium">Sell Price</label>
+                                        <Input name="sell_price" type="number" step="0.01" defaultValue={editingProduct.sell_price || ''} />
+                                    </div>
+                                </div>
+                                <div className="grid gap-2">
+                                    <label className="text-sm font-medium">Category</label>
+                                    <select name="category_id" defaultValue={editingProduct.category_id || ''} className="input w-full">
                                         <option value="">Uncategorized</option>
-                                        {categories.map((c) => (
+                                        {categories.map(c => (
                                             <option key={c.id} value={c.id}>{c.name}</option>
                                         ))}
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="label-text">SKU</label>
-                                    <input name="sku" className="input w-full mt-1" defaultValue={editingProduct.sku || ''} />
+                                <div className="pt-2 flex justify-end gap-2">
+                                    <Button type="button" variant="outline" onClick={() => modalRef.current?.close()}>Cancel</Button>
+                                    <Button type="submit">Save Changes</Button>
                                 </div>
-                                <div>
-                                    <label className="label-text">Cost Price</label>
-                                    <input name="cost_price" className="input w-full mt-1" type="number" step="0.01" defaultValue={editingProduct.cost_price || 0} />
+                            </form>
+                        )}
+                    </div>
+                </div>
+            </dialog>
+
+            {/* Add Product Modal */}
+            <dialog ref={addModalRef} className="modal bg-transparent">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
+                        <div className="flex items-center justify-between border-b p-4">
+                            <h3 className="font-semibold text-lg">Add New Product</h3>
+                            <button onClick={() => addModalRef.current?.close()} className="text-slate-500 hover:text-slate-700">✕</button>
+                        </div>
+                        <form action={async (formData) => {
+                            await addProductAction(formData)
+                            addModalRef.current?.close()
+                        }} className="p-4 space-y-4">
+                            <div className="grid gap-2">
+                                <label className="text-sm font-medium">Name</label>
+                                <Input name="name" placeholder="Product Name" required />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <label className="text-sm font-medium">SKU</label>
+                                    <Input name="sku" placeholder="Optional SKU" />
                                 </div>
-                                <div>
-                                    <label className="label-text">Sell Price</label>
-                                    <input name="sell_price" className="input w-full mt-1" type="number" step="0.01" defaultValue={editingProduct.sell_price || 0} />
-                                </div>
-                                <div>
-                                    <label className="label-text">Stock</label>
-                                    <input name="stock_qty" className="input w-full mt-1" type="number" step="1" defaultValue={editingProduct.stock_qty} />
+                                <div className="grid gap-2">
+                                    <label className="text-sm font-medium">Stock</label>
+                                    <Input name="stock_qty" type="number" defaultValue="0" required />
                                 </div>
                             </div>
-                            <div className="modal-action">
-                                <button type="button" className="btn" onClick={closeEdit}>Cancel</button>
-                                <button type="submit" className="btn btn-primary">Save Changes</button>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <label className="text-sm font-medium">Cost Price</label>
+                                    <Input name="cost_price" type="number" step="0.01" placeholder="0.00" />
+                                </div>
+                                <div className="grid gap-2">
+                                    <label className="text-sm font-medium">Sell Price</label>
+                                    <Input name="sell_price" type="number" step="0.01" placeholder="0.00" />
+                                </div>
+                            </div>
+                            <div className="grid gap-2">
+                                <label className="text-sm font-medium">Category</label>
+                                <select name="category_id" className="input w-full">
+                                    <option value="">Select Category...</option>
+                                    {categories.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="pt-2 flex justify-end gap-2">
+                                <Button type="button" variant="outline" onClick={() => addModalRef.current?.close()}>Cancel</Button>
+                                <Button type="submit">Create Product</Button>
                             </div>
                         </form>
-                    )}
+                    </div>
                 </div>
-                <form method="dialog" className="modal-backdrop">
-                    <button onClick={closeEdit}>close</button>
-                </form>
             </dialog>
         </div>
+    )
+}
+
+function ProductList({ products, onEdit }: { products: Product[], onEdit: (p: Product) => void }) {
+    if (!products.length) return <p className="text-sm text-slate-500 italic py-4 text-center">No products in this category.</p>
+
+    return (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead className="w-[40%]">Name</TableHead>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Cost</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {products.map((p) => (
+                    <TableRow key={p.id}>
+                        <TableCell className="font-medium">{p.name}</TableCell>
+                        <TableCell className="font-mono text-xs text-slate-500">{p.sku || '-'}</TableCell>
+                        <TableCell>${Number(p.cost_price).toFixed(2)}</TableCell>
+                        <TableCell>${Number(p.sell_price).toFixed(2)}</TableCell>
+                        <TableCell>
+                            <Badge variant={p.stock_qty > 0 ? 'secondary' : 'destructive'} className="font-mono">
+                                {p.stock_qty}
+                            </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                            <Button size="sm" variant="ghost" onClick={() => onEdit(p)}>
+                                <Edit className="h-4 w-4" />
+                            </Button>
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
     )
 }
