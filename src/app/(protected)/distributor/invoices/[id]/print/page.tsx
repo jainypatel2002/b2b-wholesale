@@ -8,13 +8,13 @@ export default async function DistributorInvoicePrintPage({ params }: { params: 
     const { distributorId, profile } = await getDistributorContext()
     const supabase = await createClient()
 
-    // Fetch Invoice with Items + Vendor + Distributor(Business Name fallback)
+    // Fetch Invoice with Items + Vendor + Distributor(Display Name fallback)
     const { data: invoice } = await supabase
         .from('invoices')
         .select(`
       *,
       invoice_items(qty, unit_price, products(name)),
-      vendor:profiles!vendor_id(business_name, email, phone)
+      vendor:profiles!invoices_vendor_id_fkey(display_name, email)
     `)
         .eq('id', id)
         .eq('distributor_id', distributorId)
@@ -22,13 +22,19 @@ export default async function DistributorInvoicePrintPage({ params }: { params: 
 
     if (!invoice) return notFound()
 
-    // Distributor Info (from profile or maybe fallback if business_name isn't on profile)
-    // Assuming profile has business_name
+    // Distributor Info (from profile or maybe fallback if display_name isn't on profile)
     const p = profile as any
     const distributorInfo = {
-        business_name: p.business_name || 'Distributor',
+        business_name: p.display_name || p.email || 'Distributor',
         email: p.email
     }
 
-    return <InvoicePrint invoice={invoice} distributor={distributorInfo} vendor={invoice.vendor} />
+    // Vendor Info mapping
+    const vendorInfo = invoice.vendor ? {
+        business_name: invoice.vendor.display_name || invoice.vendor.email,
+        email: invoice.vendor.email,
+        phone: invoice.vendor.phone
+    } : undefined
+
+    return <InvoicePrint invoice={invoice} distributor={distributorInfo} vendor={vendorInfo} />
 }

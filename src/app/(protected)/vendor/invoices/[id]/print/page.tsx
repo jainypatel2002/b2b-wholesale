@@ -13,7 +13,7 @@ export default async function VendorInvoicePrintPage({ params }: { params: Promi
         .select(`
       *,
       invoice_items(qty, unit_price, products(name)),
-      distributor:profiles!distributor_id(business_name, email, phone)
+      distributor:profiles!invoices_distributor_id_fkey(display_name, email)
     `)
         .eq('id', id)
         .eq('vendor_id', vendorId)
@@ -23,10 +23,16 @@ export default async function VendorInvoicePrintPage({ params }: { params: Promi
 
     const p = profile as any
     const vendorInfo = {
-        business_name: p.business_name || 'Vendor',
+        business_name: p.display_name || p.email || 'Vendor',
         email: p.email,
         phone: p.phone,
     }
 
-    return <InvoicePrint invoice={invoice} distributor={invoice.distributor} vendor={vendorInfo} />
+    const distributorInfo = invoice.distributor ? {
+        business_name: invoice.distributor.display_name || invoice.distributor.email,
+        email: invoice.distributor.email,
+        phone: invoice.distributor.phone
+    } : undefined
+
+    return <InvoicePrint invoice={invoice} distributor={distributorInfo} vendor={vendorInfo} />
 }
