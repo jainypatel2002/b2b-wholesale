@@ -27,7 +27,8 @@ export function Sidebar({ role }: SidebarProps) {
         { href: '/distributor/categories', label: 'Categories', icon: Layers },
         { href: '/distributor/orders', label: 'Orders', icon: ShoppingCart },
         { href: '/distributor/invoices', label: 'Invoices', icon: FileText },
-        { href: '/distributor/profit', label: 'Profit', icon: BadgeDollarSign },
+
+        { href: '/distributor/analytics/profit', label: 'Profit Center', icon: BadgeDollarSign }, // Updated Path
     ]
 
     const vendorLinks = [
@@ -51,7 +52,7 @@ export function Sidebar({ role }: SidebarProps) {
                         const Icon = link.icon
                         return (
                             <Link
-                                key={link.href}
+                                key={`${link.href}-${link.label}`}
                                 href={link.href}
                                 className={cn(
                                     "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-slate-900",

@@ -8,25 +8,22 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge } from '@/components/ui/badge'
 import { Search, ShoppingCart, Plus, X } from 'lucide-react'
 
-export function CatalogClient({ products }: { products: any[] }) {
+export function CatalogClient({ products, allCategories }: { products: any[], allCategories: any[] }) {
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedCategory, setSelectedCategory] = useState<string>('all')
+    const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all')
     const [inStockOnly, setInStockOnly] = useState(false)
     const [sortOrder, setSortOrder] = useState<string>('name_asc')
 
-    // Extract unique categories
-    const categories = useMemo(() => {
-        const cats = new Map<string, string>()
-        products.forEach(p => {
-            if (p.categories?.name) {
-                // Use category name as ID for simplicity if ID not available in join, 
-                // but better to use ID if we had it. The query selects `categories(name)`.
-                // So we only have name. Let's use name as key.
-                cats.set(p.categories.name, p.categories.name)
-            }
-        })
-        return Array.from(cats.values()).sort()
-    }, [products])
+    // Get subcategories for selected category
+    const availableSubcategories = useMemo(() => {
+        if (selectedCategory === 'all') return []
+        const cat = allCategories.find(c => c.name === selectedCategory)
+        return cat?.subcategories || []
+    }, [selectedCategory, allCategories])
+
+    // Reset subcategory when category changes
+    // We can't do this easily in render, so we'll do it in the onChange handler
 
     const filteredProducts = useMemo(() => {
         let result = products
@@ -37,6 +34,7 @@ export function CatalogClient({ products }: { products: any[] }) {
             result = result.filter(p =>
                 p.name.toLowerCase().includes(lower) ||
                 p.categories?.name?.toLowerCase().includes(lower) ||
+                p.subcategories?.name?.toLowerCase().includes(lower) ||
                 (p.sku && p.sku.toLowerCase().includes(lower))
             )
         }
@@ -46,12 +44,22 @@ export function CatalogClient({ products }: { products: any[] }) {
             result = result.filter(p => p.categories?.name === selectedCategory)
         }
 
-        // 3. In Stock (Check stock_pieces or stock_qty)
+        // 3. Subcategory
+        if (selectedCategory !== 'all' && selectedSubcategory !== 'all') {
+            // Accessing joined subcategory name or ID. 
+            // The query is `subcategories(name)`. `p.subcategories` is object or array?
+            // Supabase returns object for M:1. 
+            // We can match by name since we used name in dropdown, or ID if we used ID.
+            // Let's use name to be consistent with category dropdown.
+            result = result.filter(p => p.subcategories?.name === selectedSubcategory)
+        }
+
+        // 4. In Stock
         if (inStockOnly) {
             result = result.filter(p => (p.stock_pieces > 0 || p.stock_qty > 0))
         }
 
-        // 4. Sort
+        // 5. Sort
         result = [...result].sort((a, b) => {
             switch (sortOrder) {
                 case 'price_asc':
@@ -65,7 +73,12 @@ export function CatalogClient({ products }: { products: any[] }) {
         })
 
         return result
-    }, [products, searchTerm, selectedCategory, inStockOnly, sortOrder])
+    }, [products, searchTerm, selectedCategory, selectedSubcategory, inStockOnly, sortOrder])
+
+    const handleCategoryChange = (val: string) => {
+        setSelectedCategory(val)
+        setSelectedSubcategory('all')
+    }
 
     return (
         <div className="space-y-6">
@@ -98,14 +111,31 @@ export function CatalogClient({ products }: { products: any[] }) {
                         <select
                             className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             value={selectedCategory}
-                            onChange={(e) => setSelectedCategory(e.target.value)}
+                            onChange={(e) => handleCategoryChange(e.target.value)}
                         >
                             <option value="all">All Categories</option>
-                            {categories.map(c => (
-                                <option key={c} value={c}>{c}</option>
+                            {allCategories.map((c: any) => (
+                                <option key={c.id} value={c.name}>{c.name}</option>
                             ))}
                         </select>
                     </div>
+
+                    {/* Subcategory Filter (Dependent) */}
+                    {selectedCategory !== 'all' && availableSubcategories.length > 0 && (
+                        <div className="flex flex-col gap-1.5 w-full sm:w-auto min-w-[150px]">
+                            <label className="text-xs font-medium text-slate-500">Subcategory</label>
+                            <select
+                                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                value={selectedSubcategory}
+                                onChange={(e) => setSelectedSubcategory(e.target.value)}
+                            >
+                                <option value="all">All Subcategories</option>
+                                {availableSubcategories.map((sc: any) => (
+                                    <option key={sc.id} value={sc.name}>{sc.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     {/* Sort Order */}
                     <div className="flex flex-col gap-1.5 w-full sm:w-auto min-w-[150px]">
@@ -142,7 +172,7 @@ export function CatalogClient({ products }: { products: any[] }) {
                             size="sm"
                             onClick={() => {
                                 setSearchTerm('')
-                                setSelectedCategory('all')
+                                handleCategoryChange('all')
                                 setInStockOnly(false)
                                 setSortOrder('name_asc')
                             }}
@@ -167,7 +197,7 @@ export function CatalogClient({ products }: { products: any[] }) {
                         variant="link"
                         onClick={() => {
                             setSearchTerm('')
-                            setSelectedCategory('all')
+                            handleCategoryChange('all')
                             setInStockOnly(false)
                         }}
                         className="mt-2 text-blue-600"

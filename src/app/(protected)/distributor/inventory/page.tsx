@@ -7,19 +7,22 @@ export default async function InventoryPage() {
   const { distributorId } = await getDistributorContext()
   const supabase = await createClient()
 
-  const [{ data: categories }, { data: products }] = await Promise.all([
+  const [{ data: categories }, { data: subcategories }, { data: products }] = await Promise.all([
     supabase.from('categories').select('id,name').eq('distributor_id', distributorId).order('name', { ascending: true }),
+    supabase.from('subcategories').select('id,name,category_id').eq('distributor_id', distributorId).order('name', { ascending: true }),
     supabase
       .from('products')
-      .select('id,name,sku,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,categories(name)')
+      .select('id,name,sku,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,subcategory_id,cost_case,price_case,cost_mode,price_mode,stock_mode,categories(name),subcategories(name)')
       .eq('distributor_id', distributorId)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
   ])
 
   // Transform products to match InventoryClient interface
   const formattedProducts = (products ?? []).map((p: any) => ({
     ...p,
-    categories: Array.isArray(p.categories) ? p.categories[0] : p.categories
+    categories: Array.isArray(p.categories) ? p.categories[0] : p.categories,
+    subcategories: Array.isArray(p.subcategories) ? p.subcategories[0] : p.subcategories
   }))
 
   return (
@@ -32,6 +35,7 @@ export default async function InventoryPage() {
       <InventoryClient
         initialProducts={formattedProducts}
         categories={categories || []}
+        subcategories={subcategories || []}
       />
     </div>
   )

@@ -32,10 +32,18 @@ export default async function VendorCatalogPage() {
   let products: any[] = []
   let errorMsg = ''
 
+  // Fetch categories with subcategories for the filter
+  const { data: categoriesData } = await supabase
+    .from('categories')
+    .select('id, name, subcategories(id, name)')
+    .eq('distributor_id', distributorId)
+    .order('name')
+
+  // Fetch products with subcategory info
   try {
     const { data, error } = await supabase
       .from('products')
-      .select('id,name,sell_price,allow_case,allow_piece,units_per_case,categories(name)')
+      .select('id,name,sell_price,allow_case,allow_piece,units_per_case,subcategory_id,category_id,categories(name),subcategories(name)')
       .eq('distributor_id', distributorId)
       .eq('active', true)
       .order('name', { ascending: true })
@@ -72,7 +80,7 @@ export default async function VendorCatalogPage() {
         </Card>
       )}
 
-      <CatalogClient products={products} />
+      <CatalogClient products={products} allCategories={categoriesData || []} />
     </div>
   )
 }

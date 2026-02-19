@@ -88,6 +88,9 @@ export async function POST(request: NextRequest) {
       units_per_case_snapshot: isCase ? unitsPerCase : null,
       unit_price_snapshot: unitPriceSnapshot,
       total_pieces: totalPiecesRequired,
+      // Profit Center Snapshots
+      selling_price_at_time: unitPriceSnapshot,
+      cost_price_at_time: p.cost_price || 0,
       // Legacy fields
       qty: totalPiecesRequired, // Store total pieces in legacy qty for backward compat
       unit_price: unitPriceSnapshot,

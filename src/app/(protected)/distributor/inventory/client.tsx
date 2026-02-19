@@ -13,6 +13,12 @@ interface Category {
     name: string
 }
 
+interface Subcategory {
+    id: string
+    name: string
+    category_id: string
+}
+
 interface Product {
     id: string
     name: string
@@ -21,7 +27,9 @@ interface Product {
     sell_price: number | null
     stock_qty: number
     category_id: string | null
+    subcategory_id: string | null
     categories?: { name: string } | null
+    subcategories?: { name: string } | null
 
     // New fields
     stock_pieces?: number
@@ -29,25 +37,37 @@ interface Product {
     allow_piece?: boolean
     units_per_case?: number
     low_stock_threshold?: number
+
+    // Pricing Mode Fields
+    cost_case?: number | null
+    price_case?: number | null
+    cost_mode?: 'unit' | 'case'
+    price_mode?: 'unit' | 'case'
+    stock_mode?: 'pieces' | 'cases'
 }
 
 interface InventoryClientProps {
     initialProducts: Product[]
     categories: Category[]
+    subcategories: Subcategory[]
 }
 
-export function InventoryClient({ initialProducts, categories }: InventoryClientProps) {
+export function InventoryClient({ initialProducts, categories, subcategories }: InventoryClientProps) {
     const [searchTerm, setSearchTerm] = useState('')
     const [showLowStock, setShowLowStock] = useState(false)
     const [filterCategory, setFilterCategory] = useState<string>('all')
 
     const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+    const [deletingProduct, setDeletingProduct] = useState<Product | null>(null)
     const modalRef = useRef<HTMLDialogElement>(null)
     const addModalRef = useRef<HTMLDialogElement>(null)
+    const deleteModalRef = useRef<HTMLDialogElement>(null)
 
     // Filter products based on search term
     const filteredProducts = useMemo(() => {
         let res = initialProducts
+
+        // ... (sorting logic if needed, or rely on created_at from server)
 
         if (showLowStock) {
             res = res.filter(p => (p.stock_pieces ?? 0) <= (p.low_stock_threshold ?? 5))
@@ -62,7 +82,8 @@ export function InventoryClient({ initialProducts, categories }: InventoryClient
             res = res.filter(p =>
                 p.name.toLowerCase().includes(lowerTerm) ||
                 (p.sku && p.sku.toLowerCase().includes(lowerTerm)) ||
-                (p.categories?.name && p.categories.name.toLowerCase().includes(lowerTerm))
+                (p.categories?.name && p.categories.name.toLowerCase().includes(lowerTerm)) ||
+                (p.subcategories?.name && p.subcategories.name.toLowerCase().includes(lowerTerm))
             )
         }
         return res
@@ -97,6 +118,23 @@ export function InventoryClient({ initialProducts, categories }: InventoryClient
 
     const openAddModal = () => {
         addModalRef.current?.showModal()
+    }
+
+    const handleDeleteClick = (p: Product) => {
+        setDeletingProduct(p)
+        deleteModalRef.current?.showModal()
+    }
+
+    const confirmDelete = async () => {
+        if (!deletingProduct) return
+        try {
+            await deleteProduct(deletingProduct.id)
+            deleteModalRef.current?.close()
+            setDeletingProduct(null)
+        } catch (error) {
+            console.error(error)
+            alert('Failed to delete product')
+        }
     }
 
     return (
@@ -150,7 +188,7 @@ export function InventoryClient({ initialProducts, categories }: InventoryClient
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                        <ProductList products={products} onEdit={handleEdit} />
+                        <ProductList products={products} onEdit={handleEdit} onDelete={handleDeleteClick} />
                     </CardContent>
                 </Card>
             ))}
@@ -165,7 +203,7 @@ export function InventoryClient({ initialProducts, categories }: InventoryClient
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
-                        <ProductList products={groupedData.uncat} onEdit={handleEdit} />
+                        <ProductList products={groupedData.uncat} onEdit={handleEdit} onDelete={handleDeleteClick} />
                     </CardContent>
                 </Card>
             )}
@@ -188,6 +226,7 @@ export function InventoryClient({ initialProducts, categories }: InventoryClient
                             <ProductForm
                                 defaultValues={editingProduct}
                                 categories={categories}
+                                subcategories={subcategories}
                                 type="edit"
                                 onCancel={() => modalRef.current?.close()}
                             />
@@ -206,9 +245,30 @@ export function InventoryClient({ initialProducts, categories }: InventoryClient
                         </div>
                         <ProductForm
                             categories={categories}
+                            subcategories={subcategories}
                             type="add"
                             onCancel={() => addModalRef.current?.close()}
                         />
+                    </div>
+                </div>
+            </dialog>
+
+            {/* Delete Confirmation Modal */}
+            <dialog ref={deleteModalRef} className="modal bg-transparent">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-6">
+                        <h3 className="font-semibold text-lg text-red-600 flex items-center gap-2">
+                            <Trash2 className="h-5 w-5" />
+                            Confirm Deletion
+                        </h3>
+                        <p className="mt-2 text-slate-600">
+                            Are you sure you want to delete <strong>{deletingProduct?.name}</strong>?
+                            This action cannot be undone.
+                        </p>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <Button variant="outline" onClick={() => deleteModalRef.current?.close()}>Cancel</Button>
+                            <Button variant="destructive" onClick={confirmDelete}>Delete Product</Button>
+                        </div>
                     </div>
                 </div>
             </dialog>
@@ -216,7 +276,7 @@ export function InventoryClient({ initialProducts, categories }: InventoryClient
     )
 }
 
-function ProductList({ products, onEdit }: { products: Product[], onEdit: (p: Product) => void }) {
+function ProductList({ products, onEdit, onDelete }: { products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
     if (!products.length) return <p className="text-sm text-slate-500 italic py-4 text-center">No products in this category.</p>
 
     return (
@@ -238,8 +298,11 @@ function ProductList({ products, onEdit }: { products: Product[], onEdit: (p: Pr
                     return (
                         <TableRow key={p.id}>
                             <TableCell className="font-medium">
-                                {p.name}
-                                {isLow && <Badge variant="destructive" className="ml-2 text-[10px] h-5 px-1">Low Stock</Badge>}
+                                <div className="flex flex-col">
+                                    <span>{p.name}</span>
+                                    {p.subcategories && <span className="text-[10px] text-slate-400">{p.subcategories.name}</span>}
+                                    {isLow && <Badge variant="destructive" className="w-fit mt-1 text-[10px] h-5 px-1">Low Stock</Badge>}
+                                </div>
                             </TableCell>
                             <TableCell className="font-mono text-xs text-slate-500">{p.sku || '-'}</TableCell>
                             <TableCell>${Number(p.cost_price).toFixed(2)}</TableCell>
@@ -254,9 +317,14 @@ function ProductList({ products, onEdit }: { products: Product[], onEdit: (p: Pr
                                 {p.allow_case && <span className="block">Cases ({p.units_per_case}/case)</span>}
                             </TableCell>
                             <TableCell className="text-right">
-                                <Button size="sm" variant="ghost" onClick={() => onEdit(p)}>
-                                    <Edit className="h-4 w-4" />
-                                </Button>
+                                <div className="flex items-center justify-end gap-1">
+                                    <Button size="sm" variant="ghost" onClick={() => onEdit(p)}>
+                                        <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => onDelete(p)}>
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
                             </TableCell>
                         </TableRow>
                     )
@@ -268,21 +336,122 @@ function ProductList({ products, onEdit }: { products: Product[], onEdit: (p: Pr
 
 // @ts-ignore
 import { useFormStatus } from 'react-dom'
-import { createProductAction, updateProductAction } from './actions'
+import { createProductAction, updateProductAction, deleteProduct } from './actions'
 import { useEffect, useActionState } from 'react' // Import useActionState from react
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 // ... (other imports)
 
 // ProductForm Component using useActionState
-function ProductForm({ defaultValues, categories, type, onCancel }: {
+function ProductForm({ defaultValues, categories, subcategories, type, onCancel }: {
     defaultValues?: any,
     categories: any[],
+    subcategories: any[],
     type: 'add' | 'edit',
     onCancel: () => void
 }) {
+    // Configuration Fields
     const [allowCase, setAllowCase] = useState(defaultValues?.allow_case ?? false)
     const [allowPiece, setAllowPiece] = useState(defaultValues?.allow_piece ?? true)
+
+    // Units per Case (Central to calculations)
+    const [unitsPerCase, setUnitsPerCase] = useState<number>(defaultValues?.units_per_case || 1)
+
+    // Subcategory logic
+    const [selectedCategory, setSelectedCategory] = useState(defaultValues?.category_id || '')
+    const [selectedSubcategory, setSelectedSubcategory] = useState(defaultValues?.subcategory_id || '')
+
+    // Pricing Modes
+    const [costMode, setCostMode] = useState<'unit' | 'case'>(defaultValues?.cost_mode || 'unit')
+    const [priceMode, setPriceMode] = useState<'unit' | 'case'>(defaultValues?.price_mode || 'unit')
+
+    // Derived Pricing Values (for display/input)
+    // We store the RAW input values in state to avoid jumping cursor issues,
+    // but the actual submission will use hidden fields or be calculated on server if we send raw.
+    // However, to show "Calculated" values, we need state.
+
+    // Initial load: prefer stored mode values if available, else derive
+    const initialCostVal = defaultValues?.cost_mode === 'case' ? defaultValues?.cost_case : defaultValues?.cost_price
+    const initialSellVal = defaultValues?.price_mode === 'case' ? defaultValues?.price_case : defaultValues?.sell_price
+
+    const [costInput, setCostInput] = useState<string>(initialCostVal ? String(initialCostVal) : '')
+    const [sellInput, setSellInput] = useState<string>(initialSellVal ? String(initialSellVal) : '')
+
+    // Stock Logic
+    const [stockMode, setStockMode] = useState<'pieces' | 'cases'>(defaultValues?.stock_mode || 'pieces')
+    // Derive initial stock input based on mode
+    const initialCanonicalStock = defaultValues?.stock_pieces || defaultValues?.stock_qty || 0
+    const initialStockInput = useMemo(() => {
+        if (defaultValues?.stock_mode === 'cases' && defaultValues.units_per_case > 1) {
+            return String(initialCanonicalStock / defaultValues.units_per_case)
+        }
+        return String(initialCanonicalStock)
+    }, [defaultValues])
+
+    const [stockInput, setStockInput] = useState<string>(initialStockInput)
+
+    // Recalculate input if mode changes? 
+    // UX: If user toggles mode, convert the input value
+    // We use a ref to track if the change comes from toggle vs user typing? 
+    // Actually, simplest is to just convert the value when toggling.
+    const prevStockMode = useRef(stockMode)
+    useEffect(() => {
+        if (prevStockMode.current !== stockMode) {
+            const val = Number(stockInput)
+            if (!isNaN(val)) {
+                if (stockMode === 'cases') {
+                    // Pieces -> Cases
+                    setStockInput(String(val / unitsPerCase)) // keep decimals if any
+                } else {
+                    // Cases -> Pieces
+                    setStockInput(String(val * unitsPerCase))
+                }
+            }
+            prevStockMode.current = stockMode
+        }
+    }, [stockMode, unitsPerCase])
+
+    // Calculation Helpers
+    const getCostPerUnit = () => {
+        const val = Number(costInput)
+        if (isNaN(val)) return 0
+        if (costMode === 'unit') return val
+        return val / Math.max(1, unitsPerCase)
+    }
+
+    const getSellPerUnit = () => {
+        const val = Number(sellInput)
+        if (isNaN(val)) return 0
+        if (priceMode === 'unit') return val
+        return val / Math.max(1, unitsPerCase)
+    }
+
+    const getCostPerCase = () => {
+        const val = Number(costInput)
+        if (isNaN(val)) return 0
+        if (costMode === 'case') return val
+        return val * Math.max(1, unitsPerCase)
+    }
+
+    const getSellPerCase = () => {
+        const val = Number(sellInput)
+        if (isNaN(val)) return 0
+        if (priceMode === 'case') return val
+        return val * Math.max(1, unitsPerCase)
+    }
+
+    // Filter subcategories based on selected category
+    const availableSubcategories = subcategories.filter(s => s.category_id === selectedCategory)
+
+    // Reset subcategory when category changes (but not on initial load)
+    const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newVal = e.target.value
+        setSelectedCategory(newVal)
+        if (newVal !== defaultValues?.category_id) {
+            setSelectedSubcategory('')
+        }
+    }
 
     const serverAction = type === 'edit' ? updateProductAction : createProductAction
     const [state, formAction, isPending] = useActionState(serverAction, { success: false, error: null })
@@ -304,6 +473,19 @@ function ProductForm({ defaultValues, categories, type, onCancel }: {
 
             {type === 'edit' && <input type="hidden" name="id" value={defaultValues.id} />}
 
+            {/* Hidden fields to pass canonical values and modes to server */}
+            <input type="hidden" name="cost_mode" value={costMode} />
+            <input type="hidden" name="price_mode" value={priceMode} />
+            {/* We will send the calculated UNIT prices as the standard fields, 
+                and also the CASE prices as extra fields. 
+                Ideally, the server should validate, but we can compute here for convenience.
+            */}
+            <input type="hidden" name="cost_price" value={getCostPerUnit()} />
+            <input type="hidden" name="sell_price" value={getSellPerUnit()} />
+            <input type="hidden" name="cost_case" value={getCostPerCase()} />
+            <input type="hidden" name="price_case" value={getSellPerCase()} />
+
+
             <div className="grid gap-2">
                 <label className="text-sm font-medium">Name</label>
                 <Input name="name" defaultValue={defaultValues?.name} required placeholder="Product Name" />
@@ -314,20 +496,62 @@ function ProductForm({ defaultValues, categories, type, onCancel }: {
                     <label className="text-sm font-medium">SKU</label>
                     <Input name="sku" defaultValue={defaultValues?.sku || ''} placeholder="SKU-123" />
                 </div>
-                <div className="grid gap-2">
-                    <label className="text-sm font-medium">Category</label>
-                    <select name="category_id" defaultValue={defaultValues?.category_id || ''} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
-                        <option value="">Uncategorized</option>
-                        {categories.map((c: any) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                    </select>
+                {/* Category & Subcategory */}
+                <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">
+                    <div className="grid gap-2">
+                        <label className="text-sm font-medium">Category</label>
+                        <select
+                            name="category_id"
+                            value={selectedCategory}
+                            onChange={handleCategoryChange}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <option value="">Uncategorized</option>
+                            {categories.map((c: any) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </div>
 
+            {/* Subcategory Row (Dependent) */}
+            <div className="grid gap-2">
+                <label className="text-sm font-medium text-slate-600">Subcategory</label>
+                <select
+                    name="subcategory_id"
+                    value={selectedSubcategory}
+                    onChange={(e) => setSelectedSubcategory(e.target.value)}
+                    disabled={!selectedCategory || availableSubcategories.length === 0}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-slate-100"
+                >
+                    <option value="">{availableSubcategories.length === 0 ? 'No subcategories available' : 'Select Subcategory (Optional)'}</option>
+                    {availableSubcategories.map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                </select>
+            </div>
+
+            {/* Ordering Configuration */}
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-3">
-                <p className="text-sm font-medium text-slate-700">Ordering Options</p>
-                <div className="flex gap-6">
+                <p className="text-sm font-medium text-slate-700">Ordering Configuration</p>
+                <div className="grid gap-2">
+                    <label className="text-sm font-medium">Units Per Case</label>
+                    <div className="flex items-center gap-2">
+                        <Input
+                            type="number"
+                            name="units_per_case"
+                            value={unitsPerCase}
+                            onChange={(e) => setUnitsPerCase(Number(e.target.value))}
+                            min="1"
+                            required
+                            className="w-full"
+                        />
+                        <span className="text-xs text-slate-500 whitespace-nowrap">items/case</span>
+                    </div>
+
+                </div>
+                <div className="flex gap-6 pt-2">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                         <input type="checkbox" name="allow_piece" checked={allowPiece} onChange={e => setAllowPiece(e.target.checked)} className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50" />
                         Allow Pieces
@@ -337,37 +561,156 @@ function ProductForm({ defaultValues, categories, type, onCancel }: {
                         Allow Cases
                     </label>
                 </div>
+            </div>
 
-                {allowCase && (
-                    <div className="grid gap-2">
-                        <label className="text-sm font-medium">Units Per Case <span className="text-red-500">*</span></label>
-                        <Input type="number" name="units_per_case" defaultValue={defaultValues?.units_per_case || 12} min="2" required />
+            {/* Pricing Section with Toggles */}
+            <div className="space-y-4 pt-2">
+                <h4 className="text-sm font-semibold text-slate-900">Pricing</h4>
+
+                {/* Cost Price */}
+                <div className="grid gap-2 p-3 border rounded-lg">
+                    <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Cost Price</label>
+                        <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                            <button
+                                type="button"
+                                onClick={() => setCostMode('unit')}
+                                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${costMode === 'unit' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Per Unit
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCostMode('case')}
+                                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${costMode === 'case' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Per Case
+                            </button>
+                        </div>
                     </div>
-                )}
+                    <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-500">$</span>
+                        <Input
+                            value={costInput}
+                            onChange={e => setCostInput(e.target.value)}
+                            type="number"
+                            step="0.0001"
+                            placeholder="0.00"
+                            className="pl-7"
+                        />
+                    </div>
+                    {/* Calculation Helper */}
+                    <p className="text-xs text-slate-500 text-right">
+                        {costMode === 'unit'
+                            ? `~ $${getCostPerCase().toFixed(2)} per case`
+                            : `~ $${getCostPerUnit().toFixed(2)} per unit`
+                        }
+                    </p>
+                </div>
+
+                {/* Sell Price */}
+                <div className="grid gap-2 p-3 border rounded-lg">
+                    <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Sell Price</label>
+                        <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                            <button
+                                type="button"
+                                onClick={() => setPriceMode('unit')}
+                                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${priceMode === 'unit' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Per Unit
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setPriceMode('case')}
+                                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${priceMode === 'case' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Per Case
+                            </button>
+                        </div>
+                    </div>
+                    <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-slate-500">$</span>
+                        <Input
+                            value={sellInput}
+                            onChange={e => setSellInput(e.target.value)}
+                            type="number"
+                            step="0.0001"
+                            placeholder="0.00"
+                            className="pl-7"
+                        />
+                    </div>
+                    {/* Calculation Helper */}
+                    <p className="text-xs text-slate-500 text-right">
+                        {priceMode === 'unit'
+                            ? `~ $${getSellPerCase().toFixed(2)} per case`
+                            : `~ $${getSellPerUnit().toFixed(2)} per unit`
+                        }
+                    </p>
+                </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                    <label className="text-sm font-medium">Stock (Total Pieces)</label>
-                    <Input name="stock_qty" type="number" defaultValue={defaultValues?.stock_pieces || defaultValues?.stock_qty || 0} required />
-                    <p className="text-[10px] text-slate-500">Total individual units</p>
+            {/* Stock Section with Mode Toggle */}
+            <div className="grid gap-2 p-3 border rounded-lg bg-slate-50">
+                <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Current Stock</label>
+                    <div className="flex bg-slate-200 p-0.5 rounded-lg">
+                        <button
+                            type="button"
+                            onClick={() => setStockMode('pieces')}
+                            className={`px-2 py-0.5 text-xs rounded-md transition-colors ${stockMode === 'pieces' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Pieces (Units)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setStockMode('cases')}
+                            className={`px-2 py-0.5 text-xs rounded-md transition-colors ${stockMode === 'cases' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Cases
+                        </button>
+                    </div>
                 </div>
-                <div className="grid gap-2">
-                    <label className="text-sm font-medium">Low Stock Warning</label>
-                    <Input name="low_stock_threshold" type="number" defaultValue={defaultValues?.low_stock_threshold || 5} />
+
+                <div className="grid gap-1">
+                    <div className="relative">
+                        <Input
+                            value={stockInput}
+                            onChange={e => setStockInput(e.target.value)}
+                            type="number"
+                            step={stockMode === 'cases' ? "1" : "1"}
+                            min="0"
+                            placeholder="0"
+                            required
+                        />
+                        <span className="absolute right-3 top-2.5 text-slate-400 text-xs pointer-events-none">
+                            {stockMode === 'pieces' ? 'units' : `cases (@ ${unitsPerCase}/case)`}
+                        </span>
+                    </div>
+
+                    {/* Helper Text */}
+                    <p className="text-xs text-slate-500 text-right">
+                        {stockMode === 'pieces'
+                            ? unitsPerCase > 1 ? `≈ ${(Number(stockInput || 0) / unitsPerCase).toFixed(1)} cases` : ''
+                            : `= ${Number(stockInput || 0) * unitsPerCase} total units`
+                        }
+                    </p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                    <label className="text-sm font-medium">Cost Price (Per Piece)</label>
-                    <Input name="cost_price" type="number" step="0.01" defaultValue={defaultValues?.cost_price || ''} placeholder="0.00" />
-                </div>
-                <div className="grid gap-2">
-                    <label className="text-sm font-medium">Sell Price (Per Piece)</label>
-                    <Input name="sell_price" type="number" step="0.01" defaultValue={defaultValues?.sell_price || ''} placeholder="0.00" />
-                </div>
+            <div className="grid gap-2">
+                <label className="text-sm font-medium">Low Stock Warning</label>
+                <Input name="low_stock_threshold" type="number" defaultValue={defaultValues?.low_stock_threshold || 5} />
             </div>
+
+            {/* Hidden fields for Stock */}
+            <input type="hidden" name="stock_mode" value={stockMode} />
+            {/* Canonical stock_qty (Legacy/Standard) is always UNITS */}
+            <input
+                type="hidden"
+                name="stock_qty"
+                value={stockMode === 'cases' ? Number(stockInput || 0) * unitsPerCase : Number(stockInput || 0)}
+            />
 
             <div className="pt-2 flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
