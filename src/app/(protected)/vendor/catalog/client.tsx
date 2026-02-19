@@ -6,43 +6,174 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Search, ShoppingCart, Plus } from 'lucide-react'
+import { Search, ShoppingCart, Plus, X } from 'lucide-react'
 
 export function CatalogClient({ products }: { products: any[] }) {
     const [searchTerm, setSearchTerm] = useState('')
+    const [selectedCategory, setSelectedCategory] = useState<string>('all')
+    const [inStockOnly, setInStockOnly] = useState(false)
+    const [sortOrder, setSortOrder] = useState<string>('name_asc')
+
+    // Extract unique categories
+    const categories = useMemo(() => {
+        const cats = new Map<string, string>()
+        products.forEach(p => {
+            if (p.categories?.name) {
+                // Use category name as ID for simplicity if ID not available in join, 
+                // but better to use ID if we had it. The query selects `categories(name)`.
+                // So we only have name. Let's use name as key.
+                cats.set(p.categories.name, p.categories.name)
+            }
+        })
+        return Array.from(cats.values()).sort()
+    }, [products])
 
     const filteredProducts = useMemo(() => {
-        if (!searchTerm.trim()) return products
-        const lower = searchTerm.toLowerCase()
-        return products.filter(p =>
-            p.name.toLowerCase().includes(lower) ||
-            p.categories?.name?.toLowerCase().includes(lower)
-        )
-    }, [products, searchTerm])
+        let result = products
+
+        // 1. Search
+        if (searchTerm.trim()) {
+            const lower = searchTerm.toLowerCase()
+            result = result.filter(p =>
+                p.name.toLowerCase().includes(lower) ||
+                p.categories?.name?.toLowerCase().includes(lower) ||
+                (p.sku && p.sku.toLowerCase().includes(lower))
+            )
+        }
+
+        // 2. Category
+        if (selectedCategory !== 'all') {
+            result = result.filter(p => p.categories?.name === selectedCategory)
+        }
+
+        // 3. In Stock (Check stock_pieces or stock_qty)
+        if (inStockOnly) {
+            result = result.filter(p => (p.stock_pieces > 0 || p.stock_qty > 0))
+        }
+
+        // 4. Sort
+        result = [...result].sort((a, b) => {
+            switch (sortOrder) {
+                case 'price_asc':
+                    return Number(a.sell_price) - Number(b.sell_price)
+                case 'price_desc':
+                    return Number(b.sell_price) - Number(a.sell_price)
+                case 'name_asc':
+                default:
+                    return a.name.localeCompare(b.name)
+            }
+        })
+
+        return result
+    }, [products, searchTerm, selectedCategory, inStockOnly, sortOrder])
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-                <div className="relative w-full max-w-sm">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
-                    <Input
-                        type="search"
-                        placeholder="Search products..."
-                        className="pl-9"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+            <div className="flex flex-col gap-4">
+                {/* Top Row: Search & Cart */}
+                <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+                    <div className="relative w-full max-w-md">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
+                        <Input
+                            type="search"
+                            placeholder="Search by name, SKU, category..."
+                            className="pl-9"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <Link href="/vendor/cart">
+                        <Button variant="outline" className="w-full sm:w-auto relative">
+                            <ShoppingCart className="mr-2 h-4 w-4" /> Go to Cart
+                        </Button>
+                    </Link>
                 </div>
-                <Link href="/vendor/cart">
-                    <Button variant="outline" className="w-full sm:w-auto">
-                        <ShoppingCart className="mr-2 h-4 w-4" /> Go to Cart
-                    </Button>
-                </Link>
+
+                {/* Filter Row */}
+                <div className="flex flex-col sm:flex-row gap-4 p-4 bg-slate-50 rounded-lg border border-slate-100 items-start sm:items-center flex-wrap">
+
+                    {/* Category Filter */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-auto min-w-[150px]">
+                        <label className="text-xs font-medium text-slate-500">Category</label>
+                        <select
+                            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            value={selectedCategory}
+                            onChange={(e) => setSelectedCategory(e.target.value)}
+                        >
+                            <option value="all">All Categories</option>
+                            {categories.map(c => (
+                                <option key={c} value={c}>{c}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Sort Order */}
+                    <div className="flex flex-col gap-1.5 w-full sm:w-auto min-w-[150px]">
+                        <label className="text-xs font-medium text-slate-500">Sort By</label>
+                        <select
+                            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            value={sortOrder}
+                            onChange={(e) => setSortOrder(e.target.value)}
+                        >
+                            <option value="name_asc">Name (A-Z)</option>
+                            <option value="price_asc">Price (Low to High)</option>
+                            <option value="price_desc">Price (High to Low)</option>
+                        </select>
+                    </div>
+
+                    {/* In Stock Toggle */}
+                    <div className="flex items-center gap-2 mt-auto pb-2 sm:pb-0">
+                        <input
+                            type="checkbox"
+                            id="stock-toggle"
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                            checked={inStockOnly}
+                            onChange={(e) => setInStockOnly(e.target.checked)}
+                        />
+                        <label htmlFor="stock-toggle" className="text-sm font-medium text-slate-700 cursor-pointer">
+                            In Stock Only
+                        </label>
+                    </div>
+
+                    {/* Reset Button (Only visible if filters active) */}
+                    {(searchTerm || selectedCategory !== 'all' || inStockOnly) && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                setSearchTerm('')
+                                setSelectedCategory('all')
+                                setInStockOnly(false)
+                                setSortOrder('name_asc')
+                            }}
+                            className="mt-auto ml-auto text-slate-500 hover:text-slate-900"
+                        >
+                            <X className="mr-2 h-3 w-3" /> Clear Filters
+                        </Button>
+                    )}
+                </div>
+
+                {/* Results Count */}
+                <div className="text-xs text-slate-500 font-medium px-1">
+                    Showing {filteredProducts.length} of {products.length} products
+                </div>
             </div>
 
             {filteredProducts.length === 0 ? (
-                <div className="text-center py-12">
-                    <p className="text-slate-500">No products found.</p>
+                <div className="text-center py-12 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                    <Search className="h-8 w-8 text-slate-300 mx-auto mb-3" />
+                    <p className="text-slate-500 font-medium">No products match your filters.</p>
+                    <Button
+                        variant="link"
+                        onClick={() => {
+                            setSearchTerm('')
+                            setSelectedCategory('all')
+                            setInStockOnly(false)
+                        }}
+                        className="mt-2 text-blue-600"
+                    >
+                        Clear all filters
+                    </Button>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -126,8 +257,8 @@ function ProductCard({ product: p }: { product: any }) {
                             type="button"
                             onClick={() => setUnit('piece')}
                             className={`px-3 py-1 text-xs font-medium border rounded-l-lg ${unit === 'piece'
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                                 }`}
                         >
                             Piece
@@ -136,8 +267,8 @@ function ProductCard({ product: p }: { product: any }) {
                             type="button"
                             onClick={() => setUnit('case')}
                             className={`px-3 py-1 text-xs font-medium border-t border-b border-r rounded-r-lg ${unit === 'case'
-                                    ? 'bg-blue-600 text-white border-blue-600'
-                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                                 }`}
                         >
                             Case

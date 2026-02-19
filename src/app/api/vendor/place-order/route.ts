@@ -127,29 +127,9 @@ export async function POST(request: NextRequest) {
     }, { status: 500 })
   }
 
-  // 5. Deduct Inventory
-  // We loop and update. Using rpc meant for atomic decrement would be better, but we'll do direct update for now.
-  // We rely on the 'stock_pieces - X' logic to be atomic per row in Postgres.
-  for (const up of updates) {
-    const { error: stockErr } = await supabase.rpc('decrement_stock', {
-      row_id: up.id,
-      quantity: up.decrement
-    })
-
-    // Fallback if RPC doesn't exist yet (we'll implement it, but safe fallback)
-    if (stockErr) {
-      await supabase.rpc('decrement_stock_fallback', { p_id: up.id, p_qty: up.decrement })
-      // Or direct query if we must, but we'll add the RPC function in a migration or just do raw update
-      // Actually, let's just do a direct decrement query if we can, but supabase-js is restricted.
-      // We will assume the RPC exists from a previous step or we'll add it now.
-      // Wait, I didn't add an RPC in the migration. I should have. 
-      // Strategy: I will use a direct update with a filter.
-      await supabase
-        .from('products')
-        .update({ stock_pieces: byId.get(up.id).stock_pieces - up.decrement }) // This is risky for race conditions
-        .eq('id', up.id)
-    }
-  }
+  // 5. Deduct Inventory - MOVED TO FULFILLMENT
+  // We no longer deduct stock at placement. Stock is deducted only when the distributor fulfills the order.
+  // This prevents double deduction and ensures atomic updates via the fulfill_order RPC.
 
   return NextResponse.json({ ok: true, order_id: order.id })
 }
