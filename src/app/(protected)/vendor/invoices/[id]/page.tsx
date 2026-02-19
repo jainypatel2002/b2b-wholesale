@@ -14,7 +14,7 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
 
   const { data: invoice } = await supabase
     .from('invoices')
-    .select('id,invoice_number,created_at,payment_status,paid_at,subtotal,tax,total,invoice_items(qty,unit_price,products(name))')
+    .select('id,invoice_number,created_at,payment_status,paid_at,subtotal,tax,total,invoice_items(qty,unit_price,order_unit,units_per_case_snapshot,products(name))')
     .eq('id', id)
     .eq('vendor_id', vendorId)
     .single()
@@ -65,16 +65,33 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(invoice.invoice_items ?? []).map((it: any, idx: number) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">{it.products?.name ?? '-'}</TableCell>
-                      <TableCell className="text-right">{it.qty}</TableCell>
-                      <TableCell className="text-right">${Number(it.unit_price).toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        ${(Number(it.unit_price) * Number(it.qty)).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {(invoice.invoice_items ?? []).map((it: any, idx: number) => {
+                    const isCase = it.order_unit === 'case'
+                    const multiplier = isCase ? (it.units_per_case_snapshot || 1) : 1
+                    const lineTotal = Number(it.unit_price) * multiplier * Number(it.qty)
+
+                    return (
+                      <TableRow key={idx}>
+                        <TableCell className="font-medium">
+                          {it.products?.name ?? '-'}
+                          {isCase && (
+                            <span className="block text-xs text-slate-500">
+                              Case of {it.units_per_case_snapshot}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {it.qty} {isCase ? 'Order' : 'Unit'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          ${Number(it.unit_price).toFixed(2)} /{isCase ? 'unit' : 'ea'}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          ${lineTotal.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </CardContent>

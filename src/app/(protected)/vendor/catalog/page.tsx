@@ -35,7 +35,7 @@ export default async function VendorCatalogPage() {
   try {
     const { data, error } = await supabase
       .from('products')
-      .select('id,name,sell_price,categories(name)')
+      .select('id,name,sell_price,allow_case,allow_piece,units_per_case,categories(name)')
       .eq('distributor_id', distributorId)
       .eq('active', true)
       .order('name', { ascending: true })

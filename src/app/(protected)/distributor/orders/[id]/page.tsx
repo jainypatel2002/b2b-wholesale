@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ArrowLeft, Check, X } from 'lucide-react'
+import { GenerateInvoiceButton } from '@/components/generate-invoice-button'
 
 export default async function DistributorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -182,9 +183,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
                   </div>
                 ) : (
                   order.status !== 'cancelled' ? (
-                    <form action={createInvoice}>
-                      <Button size="sm" variant="outline" className="w-full">Generate Invoice</Button>
-                    </form>
+                    <GenerateInvoiceButton orderId={order.id} />
                   ) : (
                     <span className="text-xs text-slate-400 italic">No invoice available</span>
                   )
@@ -211,6 +210,6 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
           </Card>
         </div>
       </div>
-    </div>
+    </div >
   )
 }
