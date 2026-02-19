@@ -1,5 +1,6 @@
 import './globals.css'
 import type { Metadata } from 'next'
+import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
   title: 'Distributor Vendor Portal',
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="min-h-dvh">
           {children}
         </div>
+        <Toaster position="top-center" />
       </body>
     </html>
   )

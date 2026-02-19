@@ -5,17 +5,33 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
+import { ArchiveButton } from '@/components/archive-button'
 import { ArrowLeft } from 'lucide-react'
 
 export default async function VendorOrdersPage() {
   const { vendorId } = await getVendorContext()
   const supabase = await createClient()
 
-  const { data: orders } = await supabase
+  let result = await supabase
     .from('orders')
     .select('id,status,created_at,order_items(qty,unit_price)')
     .eq('vendor_id', vendorId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
+
+  if (result.error && result.error.code === '42703') {
+    console.warn('[VendorOrdersPage] valid deleted_at column missing, retrying without filter')
+    result = await supabase
+      .from('orders')
+      .select('id,status,created_at,order_items(qty,unit_price)')
+      .eq('vendor_id', vendorId)
+      .order('created_at', { ascending: false })
+  }
+
+  const { data: orders, error } = result
+  if (error) {
+    console.error('[VendorOrdersPage] Error fetching orders:', error)
+  }
 
   const rows = (orders ?? []).map((o: any) => {
     const total = (o.order_items ?? []).reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.qty), 0)
@@ -45,23 +61,37 @@ export default async function VendorOrdersPage() {
             </TableHeader>
             <TableBody>
               {rows.length ? (
-                rows.map((o: any) => (
-                  <TableRow key={o.id}>
-                    <TableCell className="font-mono text-xs font-medium">
-                      <Link href={`/vendor/orders/${o.id}`} className="hover:underline text-blue-600">
-                        {o.id.slice(0, 8)}...
-                      </Link>
-                    </TableCell>
-                    <TableCell><StatusBadge status={o.status} /></TableCell>
-                    <TableCell>${o.total.toFixed(2)}</TableCell>
-                    <TableCell className="text-slate-500 text-xs">{new Date(o.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/vendor/orders/${o.id}`}>
-                        <Button variant="outline" size="sm">View</Button>
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))
+                rows.map((o: any) => {
+                  // For vendor, we can't easily see invoice status in this query unless we join.
+                  // But usually "fulfilled" implies it's done. 
+                  // If we want safe delete, we should ideally fetch invoice status too.
+                  // For now, let's just use status='fulfilled' as a primary check for UI, 
+                  // server action will enforce the rest.
+                  const canArchive = o.status === 'fulfilled' || o.status === 'completed'
+
+                  return (
+                    <TableRow key={o.id}>
+                      <TableCell className="font-mono text-xs font-medium">
+                        <Link href={`/vendor/orders/${o.id}`} className="hover:underline text-blue-600">
+                          {o.id.slice(0, 8)}...
+                        </Link>
+                      </TableCell>
+                      <TableCell><StatusBadge status={o.status} /></TableCell>
+                      <TableCell>${o.total.toFixed(2)}</TableCell>
+                      <TableCell className="text-slate-500 text-xs">{new Date(o.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Link href={`/vendor/orders/${o.id}`}>
+                            <Button variant="outline" size="sm">View</Button>
+                          </Link>
+                          {canArchive && (
+                            <ArchiveButton id={o.id} type="order" role="vendor" />
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               ) : (
                 <TableRow><TableCell colSpan={5} className="h-24 text-center text-slate-500">No orders yet.</TableCell></TableRow>
               )}

@@ -46,6 +46,7 @@ export default async function VendorCatalogPage() {
       .select('id,name,sell_price,allow_case,allow_piece,units_per_case,subcategory_id,category_id,categories(name),subcategories(name)')
       .eq('distributor_id', distributorId)
       .eq('active', true)
+      .is('deleted_at', null)
       .order('name', { ascending: true })
 
     if (error) {

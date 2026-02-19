@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
     .select('id,distributor_id,cost_price,sell_price,stock_pieces,allow_case,allow_piece,units_per_case,name')
     .in('id', productIds)
     .eq('distributor_id', link.distributor_id)
+    .is('deleted_at', null)
 
   if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 400 })
 

@@ -27,3 +27,19 @@ export async function getVendorContext(options: { strict?: boolean } = { strict:
 
   return { vendorId: profile.id, distributorId: link.distributor_id, profile }
 }
+
+export async function getLinkedVendors(distributorId: string) {
+  const supabase = await createClient()
+  const { data: vendors } = await supabase
+    .from('distributor_vendors')
+    .select('vendor_id, vendor:profiles!vendor_id(id, display_name, email)')
+    .eq('distributor_id', distributorId)
+
+  // Format as simple array of options
+  return (vendors || [])
+    .map((v: any) => ({
+      id: v.vendor.id,
+      name: v.vendor.display_name || v.vendor.email || 'Unknown Vendor'
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
