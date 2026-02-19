@@ -126,8 +126,16 @@ export async function POST(request: NextRequest) {
     console.error("ORDER ITEM ERROR", itemErr)
     // In a real app we would rollback order here by deleting the created order
     await supabase.from('orders').delete().eq('id', order.id)
+
+    let errorMessage = `Failed to create order items: ${itemErr.message || itemErr.details || 'Unknown error'}`
+
+    // Check for schema cache error specifically
+    if (JSON.stringify(itemErr).includes('schema cache') || itemErr.message?.includes('schema cache') || itemErr.message?.includes('Could not find the')) {
+      errorMessage = "Database schema not updated yet. please run the latest SQL migrations in Supabase SQL Editor and wait a moment."
+    }
+
     return NextResponse.json({
-      error: `Failed to create order items: ${itemErr.message || itemErr.details || 'Unknown error'}`,
+      error: errorMessage,
       details: itemErr
     }, { status: 500 })
   }

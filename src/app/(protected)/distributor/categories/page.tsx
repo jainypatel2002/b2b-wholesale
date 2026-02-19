@@ -17,14 +17,17 @@ export default async function CategoriesPage() {
         name,
         created_at,
         deleted_at,
+        is_active,
         subcategories (
             id,
             name,
             created_at,
-            deleted_at
+            deleted_at,
+            is_active
         )
     `)
     .eq('distributor_id', distributorId)
+    .eq('is_active', true)
     .is('deleted_at', null)
     .order('name', { ascending: true })
 
@@ -32,7 +35,7 @@ export default async function CategoriesPage() {
   const formattedCategories = (categories || []).map((c: any) => ({
     ...c,
     subcategories: (c.subcategories || [])
-      .filter((s: any) => !s.deleted_at)
+      .filter((s: any) => !s.deleted_at && s.is_active !== false)
       .sort((a: any, b: any) => a.name.localeCompare(b.name))
   }))
 

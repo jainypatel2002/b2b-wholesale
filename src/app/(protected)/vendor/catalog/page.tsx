@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getVendorContext } from '@/lib/data'
-import { CatalogClient } from './client'
+import { CategoriesClient } from './categories-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ArrowLeft, AlertTriangle } from 'lucide-react'
@@ -29,34 +29,49 @@ export default async function VendorCatalogPage() {
     )
   }
 
-  let products: any[] = []
+  let categories: any[] = []
   let errorMsg = ''
 
-  // Fetch categories with subcategories for the filter
-  const { data: categoriesData } = await supabase
-    .from('categories')
-    .select('id, name, subcategories(id, name)')
-    .eq('distributor_id', distributorId)
-    .order('name')
-
-  // Fetch products with subcategory info
   try {
-    const { data, error } = await supabase
+    // 1. Fetch categories
+    const { data: categoriesData, error: catError } = await supabase
+      .from('categories')
+      .select('id, name, is_active, deleted_at')
+      .eq('distributor_id', distributorId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .order('name')
+
+    if (catError) throw catError
+
+    // 2. Fetch product counts (OPTIMIZATION: We could use a view or RPC, but for now simple groupBy or iterate is safer if dataset is small. 
+    //    Actually, simple count query for each category or fetching all products ID+category_id is better.)
+    //    Let's fetch all active products (id, category_id) to count in JS. It's usually faster than N+1 queries.
+    //    Reasonable limit of products? If 10k products, might be heavy. But typically < 1000.
+    const { data: productsData, error: prodError } = await supabase
       .from('products')
-      .select('id,name,sell_price,allow_case,allow_piece,units_per_case,subcategory_id,category_id,categories(name),subcategories(name)')
+      .select('id, category_id')
       .eq('distributor_id', distributorId)
       .eq('active', true)
       .is('deleted_at', null)
-      .order('name', { ascending: true })
 
-    if (error) {
-      console.error('Error fetching products:', error)
-      errorMsg = error.message
-    } else {
-      products = data ?? []
-    }
+    if (prodError) throw prodError
+
+    // Combine
+    const counts = (productsData || []).reduce((acc: any, p: any) => {
+      if (p.category_id) {
+        acc[p.category_id] = (acc[p.category_id] || 0) + 1
+      }
+      return acc
+    }, {})
+
+    categories = (categoriesData || []).map((c: any) => ({
+      ...c,
+      product_count: counts[c.id] || 0
+    }))
+
   } catch (err: any) {
-    console.error('Unexpected error:', err)
+    console.error('Error fetching catalog:', err)
     errorMsg = err.message || 'Unknown error'
   }
 
@@ -81,7 +96,7 @@ export default async function VendorCatalogPage() {
         </Card>
       )}
 
-      <CatalogClient products={products} allCategories={categoriesData || []} />
+      <CategoriesClient categories={categories} />
     </div>
   )
 }
