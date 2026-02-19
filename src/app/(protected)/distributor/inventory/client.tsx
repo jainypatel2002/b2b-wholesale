@@ -179,33 +179,22 @@ export function InventoryClient({ initialProducts, categories, subcategories }: 
 
             {/* Product Lists by Category */}
             {Array.from(groupedData.groups.entries()).map(([catId, products]) => (
-                <Card key={catId}>
-                    <CardHeader className="py-4">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                            <Package className="h-5 w-5 text-slate-500" />
-                            {getCategoryName(catId)}
-                            <Badge variant="secondary" className="ml-2">{products.length}</Badge>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <ProductList products={products} onEdit={handleEdit} onDelete={handleDeleteClick} />
-                    </CardContent>
-                </Card>
+                <ProductGroup
+                    key={catId}
+                    title={getCategoryName(catId)}
+                    products={products}
+                    onEdit={handleEdit}
+                    onDelete={handleDeleteClick}
+                />
             ))}
 
             {groupedData.uncat.length > 0 && (
-                <Card>
-                    <CardHeader className="py-4">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                            <Package className="h-5 w-5 text-slate-500" />
-                            Uncategorized
-                            <Badge variant="secondary" className="ml-2">{groupedData.uncat.length}</Badge>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <ProductList products={groupedData.uncat} onEdit={handleEdit} onDelete={handleDeleteClick} />
-                    </CardContent>
-                </Card>
+                <ProductGroup
+                    title="Uncategorized"
+                    products={groupedData.uncat}
+                    onEdit={handleEdit}
+                    onDelete={handleDeleteClick}
+                />
             )}
 
             {filteredProducts.length === 0 && (
@@ -276,6 +265,39 @@ export function InventoryClient({ initialProducts, categories, subcategories }: 
     )
 }
 
+import { ChevronDown, ChevronUp } from 'lucide-react'
+
+function ProductGroup({ title, products, onEdit, onDelete }: { title: string, products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
+    const [isOpen, setIsOpen] = useState(true)
+
+    return (
+        <Card>
+            <CardHeader className="py-4 cursor-pointer select-none hover:bg-slate-50 transition-colors" onClick={() => setIsOpen(!isOpen)}>
+                <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                        <Package className="h-5 w-5 text-slate-500" />
+                        {title}
+                        <Badge variant="secondary" className="ml-2">{products.length}</Badge>
+                    </CardTitle>
+                    {isOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
+                </div>
+            </CardHeader>
+            {isOpen && (
+                <CardContent className="p-0">
+                    {/* Desktop Table */}
+                    <div className="hidden md:block">
+                        <ProductList products={products} onEdit={onEdit} onDelete={onDelete} />
+                    </div>
+                    {/* Mobile Cards */}
+                    <div className="md:hidden">
+                        <ProductMobileList products={products} onEdit={onEdit} onDelete={onDelete} />
+                    </div>
+                </CardContent>
+            )}
+        </Card>
+    )
+}
+
 function ProductList({ products, onEdit, onDelete }: { products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
     if (!products.length) return <p className="text-sm text-slate-500 italic py-4 text-center">No products in this category.</p>
 
@@ -331,6 +353,50 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
                 })}
             </TableBody>
         </Table>
+    )
+}
+
+function ProductMobileList({ products, onEdit, onDelete }: { products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
+    if (!products.length) return <p className="text-sm text-slate-500 italic py-4 text-center">No products in this category.</p>
+
+    return (
+        <div className="divide-y divide-slate-100">
+            {products.map((p) => {
+                const isLow = (p.stock_pieces ?? 0) <= (p.low_stock_threshold ?? 5)
+                return (
+                    <div key={p.id} className="p-4 flex flex-col gap-2">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h4 className="font-medium text-slate-900">{p.name}</h4>
+                                {p.subcategories && <span className="text-xs text-slate-500 mr-2">{p.subcategories.name}</span>}
+                                {isLow && <Badge variant="destructive" className="text-[10px] h-5 px-1">Low Stock</Badge>}
+                            </div>
+                            <div className="flex bg-slate-50 rounded-lg">
+                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onEdit(p)}>
+                                    <Edit className="h-4 w-4 text-slate-600" />
+                                </Button>
+                                <div className="w-px bg-slate-200 my-1"></div>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => onDelete(p)}>
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-sm mt-1">
+                            <div>
+                                <span className="text-xs text-slate-500 block">Price</span>
+                                <span className="font-medium">${Number(p.sell_price).toFixed(2)}</span>
+                            </div>
+                            <div>
+                                <span className="text-xs text-slate-500 block">Stock</span>
+                                <span className={`font-medium ${isLow ? 'text-red-600' : ''}`}>{p.stock_pieces} units</span>
+                            </div>
+                        </div>
+                        {p.sku && <div className="text-xs text-slate-400 font-mono">SKU: {p.sku}</div>}
+                    </div>
+                )
+            })}
+        </div>
     )
 }
 

@@ -1,15 +1,18 @@
 import { requireProfile } from '@/lib/auth'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
+import { MobileBottomNav } from '@/components/layout/mobile-bottom-nav'
+import { MobileDashboardButton } from '@/components/layout/mobile-dashboard-button'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireProfile()
+  const role = profile.role as 'distributor' | 'vendor'
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-transparent">
       {/* Sidebar - glass effect or blended */}
       <aside className="hidden w-64 flex-col border-r border-slate-200/60 bg-white/80 backdrop-blur-xl md:flex print:hidden z-20">
-        <Sidebar role={profile.role as 'distributor' | 'vendor'} />
+        <Sidebar role={role} />
       </aside>
 
       {/* Main Content Area */}
@@ -22,11 +25,15 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         </header>
 
         {/* Scrollable content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 print:max-w-none print:p-0 scroll-smooth">
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-6 print:max-w-none print:p-0 scroll-smooth">
           <div className="mx-auto max-w-7xl space-y-6">
             {children}
           </div>
         </main>
+
+        {/* Mobile Navigation Elements */}
+        <MobileBottomNav role={role} />
+        <MobileDashboardButton role={role} />
       </div>
     </div>
   )

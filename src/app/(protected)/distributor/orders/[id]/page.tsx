@@ -17,7 +17,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
 
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id,status,created_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price,unit_cost,products(name))')
+    .select('id,status,created_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price,unit_cost,product_name,products(name))')
     .eq('id', id)
     .eq('distributor_id', distributorId)
     .single()
@@ -81,7 +81,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
       <div className="grid gap-6 md:grid-cols-3">
         {/* Main Content: Order Items */}
         <div className="md:col-span-2 space-y-6">
-          <Card>
+          <Card className="hidden md:block">
             <CardHeader>
               <CardTitle className="flex justify-between items-center text-lg">
                 <span>Items</span>
@@ -99,16 +99,19 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {order.order_items?.map((item: any, idx: number) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">{item.products?.name || 'Unknown Product'}</TableCell>
-                      <TableCell className="text-right">{item.qty}</TableCell>
-                      <TableCell className="text-right">${Number(item.unit_price).toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        ${(Number(item.unit_price) * Number(item.qty)).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {order.order_items?.map((item: any, idx: number) => {
+                    const productName = item.product_name || item.products?.name || '(Archived Product)'
+                    return (
+                      <TableRow key={idx}>
+                        <TableCell className="font-medium">{productName}</TableCell>
+                        <TableCell className="text-right">{item.qty}</TableCell>
+                        <TableCell className="text-right">${Number(item.unit_price).toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          ${(Number(item.unit_price) * Number(item.qty)).toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                   <TableRow>
                     <TableCell colSpan={3} className="text-right font-bold">Subtotal</TableCell>
                     <TableCell className="text-right font-bold">${subtotal.toFixed(2)}</TableCell>
@@ -117,6 +120,33 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
               </Table>
             </CardContent>
           </Card>
+
+          {/* Mobile Items View */}
+          <div className="md:hidden space-y-4">
+            <h3 className="font-semibold text-lg px-1">Items ({order.order_items?.length || 0})</h3>
+            {order.order_items?.map((item: any, idx: number) => {
+              const productName = item.product_name || item.products?.name || '(Archived Product)'
+              return (
+                <Card key={idx}>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="font-medium text-slate-900">{productName}</span>
+                      <span className="font-bold">${(Number(item.unit_price) * Number(item.qty)).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-slate-500">
+                      <span>{item.qty} x ${Number(item.unit_price).toFixed(2)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+            <Card>
+              <CardContent className="p-4 flex justify-between items-center bg-slate-50 font-bold">
+                <span>Subtotal</span>
+                <span>${subtotal.toFixed(2)}</span>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Sidebar: Info & Actions */}

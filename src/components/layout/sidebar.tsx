@@ -3,16 +3,11 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import {
-    LayoutDashboard,
-    Package,
-    Layers,
-    ShoppingCart,
-    FileText,
-    BadgeDollarSign,
-    Store,
-    LogOut
-} from 'lucide-react'
+import { LogOut } from 'lucide-react'
+
+import { iconMap } from '@/config/icons'
+
+import { distributorLinks, vendorLinks } from '@/config/nav'
 
 interface SidebarProps {
     role: 'distributor' | 'vendor'
@@ -20,25 +15,6 @@ interface SidebarProps {
 
 export function Sidebar({ role }: SidebarProps) {
     const pathname = usePathname()
-
-    const distributorLinks = [
-        { href: '/distributor', label: 'Dashboard', icon: LayoutDashboard },
-        { href: '/distributor/inventory', label: 'Inventory', icon: Package },
-        { href: '/distributor/categories', label: 'Categories', icon: Layers },
-        { href: '/distributor/orders', label: 'Orders', icon: ShoppingCart },
-        { href: '/distributor/invoices', label: 'Invoices', icon: FileText },
-
-        { href: '/distributor/analytics/profit', label: 'Profit Center', icon: BadgeDollarSign }, // Updated Path
-    ]
-
-    const vendorLinks = [
-        { href: '/vendor', label: 'Dashboard', icon: LayoutDashboard },
-        { href: '/vendor/catalog', label: 'Catalog', icon: Store },
-        { href: '/vendor/cart', label: 'Cart', icon: ShoppingCart },
-        { href: '/vendor/orders', label: 'Orders', icon: Package },
-        { href: '/vendor/invoices', label: 'Invoices', icon: FileText },
-    ]
-
     const links = role === 'distributor' ? distributorLinks : vendorLinks
 
     return (
@@ -48,8 +24,12 @@ export function Sidebar({ role }: SidebarProps) {
             </div>
             <div className="flex-1 overflow-auto py-4">
                 <nav className="grid items-start px-4 text-sm font-medium">
+
+
+                    // ...
+
                     {links.map((link) => {
-                        const Icon = link.icon
+                        const Icon = iconMap[link.icon] || iconMap['LayoutDashboard']
                         return (
                             <Link
                                 key={`${link.href}-${link.label}`}

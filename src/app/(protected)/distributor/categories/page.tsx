@@ -16,21 +16,24 @@ export default async function CategoriesPage() {
         id,
         name,
         created_at,
+        deleted_at,
         subcategories (
             id,
             name,
-            created_at
+            created_at,
+            deleted_at
         )
     `)
     .eq('distributor_id', distributorId)
     .is('deleted_at', null)
-    .is('subcategories.deleted_at', null)
     .order('name', { ascending: true })
 
-  // Clean up subcategories order if needed (or do it in SQL if possible, but nested order is tricky in one go)
+  // Clean up subcategories order and filter out deleted ones
   const formattedCategories = (categories || []).map((c: any) => ({
     ...c,
-    subcategories: (c.subcategories || []).sort((a: any, b: any) => a.name.localeCompare(b.name))
+    subcategories: (c.subcategories || [])
+      .filter((s: any) => !s.deleted_at)
+      .sort((a: any, b: any) => a.name.localeCompare(b.name))
   }))
 
   return (

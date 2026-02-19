@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext, getLinkedVendors } from '@/lib/data'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { ArchiveButton } from '@/components/archive-button'
@@ -94,7 +94,8 @@ export default async function DistributorOrdersPage({
         </div>
       </div>
 
-      <Card>
+      {/* Desktop View */}
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -110,7 +111,7 @@ export default async function DistributorOrdersPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length ? (
+              {rows.length > 0 ? (
                 rows.map((o: any) => {
                   const isFulfilled = o.status === 'fulfilled' || o.status === 'completed'
                   const isPaid = o.invoice?.payment_status === 'paid'
@@ -167,6 +168,64 @@ export default async function DistributorOrdersPage({
           </Table>
         </CardContent>
       </Card>
+
+      {/* Mobile View */}
+      <div className="md:hidden space-y-4">
+        {rows.length > 0 ? (
+          rows.map((o: any) => {
+            const isFulfilled = o.status === 'fulfilled' || o.status === 'completed'
+            const isPaid = o.invoice?.payment_status === 'paid'
+            const isArchived = !!o.deleted_at
+            const canArchive = isFulfilled && isPaid && !isArchived
+
+            return (
+              <Card key={o.id} className={isArchived ? "bg-slate-50 opacity-70" : ""}>
+                <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between space-y-0">
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={o.status} />
+                  </div>
+                  {isArchived && <Badge variant="secondary" className="text-xs">Archived</Badge>}
+                </CardHeader>
+                <CardContent className="p-4 pt-2 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-semibold text-slate-900">{o.vendor?.display_name || 'Unknown'}</p>
+                      <p className="text-xs text-slate-500">{o.vendor?.email}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-lg">${o.total.toFixed(2)}</p>
+                      <p className="text-xs text-slate-500">{new Date(o.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                    <span className="text-xs text-slate-500">Payment:</span>
+                    {o.invoice ? (
+                      <StatusBadge status={o.invoice.payment_status} type="payment" />
+                    ) : (
+                      <span className="text-slate-400 italic text-xs">No invoice</span>
+                    )}
+                  </div>
+                </CardContent>
+                <CardFooter className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2">
+                  <Link href={`/distributor/orders/${o.id}`} className="flex-1">
+                    <Button variant="outline" className="w-full h-9">Manage</Button>
+                  </Link>
+                  {canArchive && (
+                    <div className="flex-shrink-0">
+                      <ArchiveButton id={o.id} type="order" role="distributor" />
+                    </div>
+                  )}
+                </CardFooter>
+              </Card>
+            )
+          })
+        ) : (
+          <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+            No orders found.
+          </div>
+        )}
+      </div>
     </div>
   )
 }

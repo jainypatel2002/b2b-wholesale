@@ -90,7 +90,7 @@ export default function VendorCartPage() {
         </Link>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-3 pb-48 md:pb-0">
         <div className="md:col-span-2 space-y-4">
           {items.length ? (
             items.map((i, idx) => {
@@ -114,17 +114,17 @@ export default function VendorCartPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
                       <div className="flex items-center rounded-md border border-slate-200">
-                        <button className="h-8 w-8 flex items-center justify-center hover:bg-slate-50" onClick={() => dec(i.product_id, i.order_unit)}>-</button>
-                        <div className="w-10 text-center text-sm font-medium">{i.qty}</div>
-                        <button className="h-8 w-8 flex items-center justify-center hover:bg-slate-50" onClick={() => inc(i.product_id, i.order_unit)}>+</button>
+                        <button className="h-10 w-10 flex items-center justify-center hover:bg-slate-50 text-lg" onClick={() => dec(i.product_id, i.order_unit)}>-</button>
+                        <div className="w-12 text-center font-medium">{i.qty}</div>
+                        <button className="h-10 w-10 flex items-center justify-center hover:bg-slate-50 text-lg" onClick={() => inc(i.product_id, i.order_unit)}>+</button>
                       </div>
-                      <div className="text-right min-w-[80px] font-medium">
+                      <div className="text-right min-w-[80px] font-medium text-lg">
                         ${lineTotal.toFixed(2)}
                       </div>
                       <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => remove(i.product_id, i.order_unit)}>
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-5 w-5" />
                       </Button>
                     </div>
                   </CardContent>
@@ -145,9 +145,9 @@ export default function VendorCartPage() {
           )}
         </div>
 
-        {/* Summary */}
-        <div className="md:col-span-1">
-          <Card>
+        {/* Desktop Summary */}
+        <div className="hidden md:block md:col-span-1">
+          <Card className="sticky top-24">
             <CardHeader>
               <CardTitle>Order Summary</CardTitle>
             </CardHeader>
@@ -170,6 +170,17 @@ export default function VendorCartPage() {
               </p>
             </CardFooter>
           </Card>
+        </div>
+
+        {/* Mobile Fixed Bottom Bar */}
+        <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-slate-200 p-4 md:hidden z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-medium text-slate-500">Total</span>
+            <span className="text-xl font-bold text-slate-900">${total.toFixed(2)}</span>
+          </div>
+          <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white h-12 text-lg" disabled={items.length === 0 || loading} onClick={placeOrder}>
+            {loading ? 'Processing...' : 'Place Order'}
+          </Button>
         </div>
       </div>
     </div>

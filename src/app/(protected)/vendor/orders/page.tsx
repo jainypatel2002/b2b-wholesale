@@ -47,7 +47,7 @@ export default async function VendorOrdersPage() {
         </Link>
       </div>
 
-      <Card>
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -62,11 +62,6 @@ export default async function VendorOrdersPage() {
             <TableBody>
               {rows.length ? (
                 rows.map((o: any) => {
-                  // For vendor, we can't easily see invoice status in this query unless we join.
-                  // But usually "fulfilled" implies it's done. 
-                  // If we want safe delete, we should ideally fetch invoice status too.
-                  // For now, let's just use status='fulfilled' as a primary check for UI, 
-                  // server action will enforce the rest.
                   const canArchive = o.status === 'fulfilled' || o.status === 'completed'
 
                   return (
@@ -99,6 +94,47 @@ export default async function VendorOrdersPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-4">
+        {rows.length ? (
+          rows.map((o: any) => {
+            const canArchive = o.status === 'fulfilled' || o.status === 'completed'
+            return (
+              <Card key={o.id}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-mono font-bold text-blue-600">{o.id.slice(0, 8)}...</h3>
+                      <div className="mt-1">
+                        <StatusBadge status={o.status} />
+                      </div>
+                      <div className="text-xs text-slate-500 mt-2">{new Date(o.created_at).toLocaleDateString()}</div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-lg font-bold block">${o.total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  <div className="pt-3 border-t border-slate-100 flex gap-2">
+                    <Link href={`/vendor/orders/${o.id}`} className="flex-1">
+                      <Button variant="outline" className="w-full">View Details</Button>
+                    </Link>
+                    {canArchive && (
+                      <div className="flex-shrink-0">
+                        <ArchiveButton id={o.id} type="order" role="vendor" />
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })
+        ) : (
+          <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+            No orders yet.
+          </div>
+        )}
+      </div>
     </div>
   )
 }

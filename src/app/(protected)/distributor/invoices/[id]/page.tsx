@@ -57,7 +57,7 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
               <CardTitle>Invoice Items</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
+              <Table className="hidden md:table">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
@@ -79,6 +79,21 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
                   ))}
                 </TableBody>
               </Table>
+
+              {/* Mobile View */}
+              <div className="md:hidden divide-y divide-slate-100">
+                {(invoice.invoice_items ?? []).map((it: any, idx: number) => (
+                  <div key={idx} className="p-4 flex flex-col gap-1">
+                    <div className="flex justify-between items-start">
+                      <span className="font-medium text-slate-900">{it.products?.name ?? '-'}</span>
+                      <span className="font-bold">${(Number(it.unit_price) * Number(it.qty)).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-slate-500">
+                      <span>{it.qty} x ${Number(it.unit_price).toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </div>

@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
 
     orderItemsData.push({
       product_id: p.id,
+      product_name: p.name, // Snapshot name for historical accuracy
       order_unit: it.order_unit, // 'piece' or 'case'
       cases_qty: isCase ? it.qty : null,
       pieces_qty: isPiece ? it.qty : null,

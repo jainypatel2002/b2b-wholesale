@@ -102,7 +102,8 @@ export default async function DistributorInvoicesPage({
         </div>
       </div>
 
-      <Card>
+      {/* Desktop Table */}
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -179,6 +180,59 @@ export default async function DistributorInvoicesPage({
           </Table>
         </CardContent>
       </Card>
+
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-4">
+        {invoices?.length ? (
+          invoices.map((inv: any) => {
+            const isArchived = !!inv.deleted_at
+            return (
+              <Card key={inv.id} className={isArchived ? "bg-slate-50 opacity-70" : ""}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-mono font-bold text-blue-600">{inv.invoice_number}</span>
+                        <StatusBadge status={inv.payment_status} type="payment" />
+                      </div>
+                      <div className="text-sm font-medium text-slate-900">{inv.vendor?.display_name || 'Unknown'}</div>
+                      <div className="text-xs text-slate-500">{new Date(inv.created_at).toLocaleDateString()}</div>
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-lg font-bold">${Number(inv.total).toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 flex gap-2">
+                    <Link href={`/distributor/invoices/${inv.id}`} className="flex-1">
+                      <Button variant="outline" className="w-full">View</Button>
+                    </Link>
+                    {inv.payment_status === 'paid' ? (
+                      <form action={markUnpaid} className="flex-1">
+                        <input type="hidden" name="invoice_id" value={inv.id} />
+                        <Button variant="ghost" type="submit" className="w-full text-orange-600 bg-orange-50 border border-orange-100">
+                          Mark Unpaid
+                        </Button>
+                      </form>
+                    ) : (
+                      <form action={markPaid} className="flex-1">
+                        <input type="hidden" name="invoice_id" value={inv.id} />
+                        <Button variant="ghost" type="submit" className="w-full text-green-600 bg-green-50 border border-green-100">
+                          Mark Paid
+                        </Button>
+                      </form>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })
+        ) : (
+          <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+            No invoices found.
+          </div>
+        )}
+      </div>
     </div>
   )
 }

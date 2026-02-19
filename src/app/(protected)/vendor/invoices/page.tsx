@@ -26,7 +26,7 @@ export default async function VendorInvoicesPage() {
         </Link>
       </div>
 
-      <Card>
+      <Card className="hidden md:block">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -62,6 +62,42 @@ export default async function VendorInvoicesPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-4">
+        {invoices?.length ? (
+          invoices.map((inv: any) => (
+            <Card key={inv.id}>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <Link href={`/vendor/invoices/${inv.id}`} className="font-mono font-bold text-blue-600 hover:underline mb-1 block">
+                      {inv.invoice_number}
+                    </Link>
+                    <StatusBadge status={inv.payment_status} type="payment" />
+                    <div className="text-sm font-medium text-slate-900 mt-2">
+                      {inv.distributor?.display_name || inv.distributor?.email || 'Unknown'}
+                    </div>
+                    <div className="text-xs text-slate-500">{new Date(inv.created_at).toLocaleDateString()}</div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-lg font-bold block">${Number(inv.total).toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-slate-100">
+                  <Link href={`/vendor/invoices/${inv.id}`}>
+                    <Button variant="outline" className="w-full">View Details</Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+            No invoices yet.
+          </div>
+        )}
+      </div>
     </div>
   )
 }

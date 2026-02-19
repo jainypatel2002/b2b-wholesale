@@ -14,7 +14,7 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
 
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id,status,created_at,order_items(qty,unit_price,products(name))')
+    .select('id,status,created_at,order_items(qty,unit_price,product_name,products(name))')
     .eq('id', id)
     .eq('vendor_id', vendorId)
     .single()
@@ -75,16 +75,19 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {order.order_items?.map((it: any, idx: number) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">{it.products?.name ?? '-'}</TableCell>
-                      <TableCell className="text-right">{it.qty}</TableCell>
-                      <TableCell className="text-right">${Number(it.unit_price).toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        ${(Number(it.unit_price) * Number(it.qty)).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {order.order_items?.map((it: any, idx: number) => {
+                    const productName = it.product_name || it.products?.name || '(Archived Product)'
+                    return (
+                      <TableRow key={idx}>
+                        <TableCell className="font-medium">{productName}</TableCell>
+                        <TableCell className="text-right">{it.qty}</TableCell>
+                        <TableCell className="text-right">${Number(it.unit_price).toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          ${(Number(it.unit_price) * Number(it.qty)).toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                   <TableRow>
                     <TableCell colSpan={3} className="text-right font-bold">Total</TableCell>
                     <TableCell className="text-right font-bold">${subtotal.toFixed(2)}</TableCell>
