@@ -99,6 +99,7 @@ export default async function CategoryProductsPage({ params }: { params: Promise
             products={products}
             categoryName={categoryName}
             subcategories={subcategories}
+            distributorId={distributorId}
         />
     )
 }

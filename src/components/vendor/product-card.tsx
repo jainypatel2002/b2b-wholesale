@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 
-export function ProductCard({ product: p }: { product: any }) {
+export function ProductCard({ product: p, distributorId }: { product: any, distributorId: string }) {
     // Determine default unit: Piece if allowed, else Case
     const [unit, setUnit] = useState<'piece' | 'case'>(p.allow_piece ? 'piece' : 'case')
 
@@ -14,7 +14,11 @@ export function ProductCard({ product: p }: { product: any }) {
     const showToggle = p.allow_piece && p.allow_case
 
     function addToCart() {
-        const key = 'dv_cart'
+        if (!distributorId) {
+            alert("No distributor context found. Please refresh.")
+            return
+        }
+        const key = `dv_cart_${distributorId}`
         const raw = localStorage.getItem(key)
         const cart = raw ? JSON.parse(raw) : { items: [] as any[] }
 
@@ -29,7 +33,8 @@ export function ProductCard({ product: p }: { product: any }) {
                 unit_price: p.sell_price,
                 qty: 1,
                 order_unit: unit,
-                units_per_case: p.units_per_case
+                units_per_case: p.units_per_case,
+                distributor_id: distributorId // Store context just in case
             })
         }
 

@@ -15,12 +15,19 @@ export async function requireProfile() {
   const supabase = await createClient()
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id,email,role,display_name')
+    .select('id,email,role,display_name,active_distributor_id,distributor_code')
     .eq('id', user.id)
     .single()
 
   if (!profile?.role) redirect('/onboarding')
-  return profile as { id: string; email: string | null; role: AppRole; display_name: string | null }
+  return profile as {
+    id: string
+    email: string | null
+    role: AppRole
+    display_name: string | null
+    active_distributor_id: string | null
+    distributor_code: string | null
+  }
 }
 
 export async function requireRole(role: AppRole) {
