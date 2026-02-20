@@ -4,6 +4,7 @@ import { distributorLinks, vendorLinks } from "@/config/nav"
 import { DistributorSwitcher } from "@/components/layout/distributor-switcher"
 import { createClient } from "@/lib/supabase/server"
 import { requireProfile } from "@/lib/auth"
+import { NotificationsBell } from "@/components/notifications-bell"
 
 interface HeaderProps {
     email: string
@@ -19,8 +20,9 @@ export async function Header({ email, role }: HeaderProps) {
     let linkedDistributors: any[] = []
     let currentDistributorId = null
 
+    const profile = await requireProfile()
+
     if (role === 'vendor') {
-        const profile = await requireProfile()
         currentDistributorId = profile.active_distributor_id
 
         const supabase = await createClient()
@@ -49,6 +51,8 @@ export async function Header({ email, role }: HeaderProps) {
                         linkedDistributors={linkedDistributors}
                     />
                 )}
+
+                <NotificationsBell userId={profile.id} />
 
                 <div className="text-right hidden sm:block">
                     <div className="text-sm font-medium text-slate-900">{email}</div>
