@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { requireRole } from '@/lib/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Package, Layers, ShoppingCart, FileText, BadgeDollarSign } from 'lucide-react'
-import { ShareCodeCard } from '@/components/distributor/share-code-card'
 
 export default async function DistributorHome() {
   const profile = await requireRole('distributor')
@@ -50,8 +49,6 @@ export default async function DistributorHome() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>
       </div>
-
-      <ShareCodeCard initialCode={profile.distributor_code} />
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => {

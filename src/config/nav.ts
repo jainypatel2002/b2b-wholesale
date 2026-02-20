@@ -5,6 +5,7 @@ export const distributorLinks = [
     { href: '/distributor/orders', label: 'Orders', icon: 'ShoppingCart' },
     { href: '/distributor/invoices', label: 'Invoices', icon: 'FileText' },
     { href: '/distributor/analytics/profit', label: 'Profit Center', icon: 'BadgeDollarSign' }, // Or TrendingUp
+    { href: '/distributor/settings', label: 'Settings', icon: 'Settings' },
 ]
 
 export const vendorLinks = [

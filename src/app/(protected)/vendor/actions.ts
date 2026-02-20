@@ -5,22 +5,30 @@ import { getVendorContext } from '@/lib/data'
 import { revalidatePath } from 'next/cache'
 
 export async function connectDistributor(formData: FormData) {
-    const code = String(formData.get('code') || '').trim()
-    if (!code) return { success: false, message: 'Distributor code is required' }
+    const codeOrUuid = String(formData.get('code') || '').trim()
+    if (!codeOrUuid) return { success: false, message: 'Distributor code or UUID is required' }
 
     const { vendorId, profile } = await getVendorContext({ strict: false })
     const supabase = await createClient()
 
-    // 1. Find Distributor by Code
-    const { data: distributor, error: distError } = await supabase
+    // 1. Find Distributor by Code or UUID
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(codeOrUuid)
+
+    let query = supabase
         .from('profiles')
         .select('id, role, display_name, email')
-        .eq('distributor_code', code)
         .eq('role', 'distributor')
-        .single()
+
+    if (isUuid) {
+        query = query.eq('id', codeOrUuid)
+    } else {
+        query = query.eq('distributor_code', codeOrUuid)
+    }
+
+    const { data: distributor, error: distError } = await query.single()
 
     if (distError || !distributor) {
-        return { success: false, message: 'Invalid distributor code' }
+        return { success: false, message: 'Invalid distributor code or UUID' }
     }
 
     if (distributor.id === vendorId) {
@@ -28,10 +36,6 @@ export async function connectDistributor(formData: FormData) {
     }
 
     // 2. Create Link (Upsert to be safe/idempotent)
-    // We check existence first to avoid Unique Violation errors filling logs, 
-    // but we can also just Insert and ignore exact duplicate errors.
-    // Given RLS, we can INSERT.
-
     // Check if link exists
     const { data: existingLink } = await supabase
         .from('distributor_vendors')

@@ -8,7 +8,8 @@ import {
     Store,
     TrendingUp,
     Search,
-    LogOut
+    LogOut,
+    Settings
 } from 'lucide-react'
 
 export const iconMap: Record<string, any> = {
@@ -21,5 +22,6 @@ export const iconMap: Record<string, any> = {
     Store,
     TrendingUp,
     Search,
-    LogOut
+    LogOut,
+    Settings
 }
