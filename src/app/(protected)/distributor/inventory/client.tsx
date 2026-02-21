@@ -1,12 +1,17 @@
 'use client'
 
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useMemo, useRef, useCallback } from 'react'
 import { Search, Plus, Edit, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { BarcodeScannerPanel, SCAN_CATCHER_ID } from '@/components/scanner/BarcodeScannerPanel'
+import type { ScanStatus } from '@/components/scanner/BarcodeScannerPanel'
+import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeScannerModal'
+import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
+import { createClient } from '@/lib/supabase/client'
 
 interface Category {
     id: string
@@ -46,15 +51,17 @@ interface Product {
     stock_mode?: 'pieces' | 'cases'
     stock_locked?: boolean
     locked_stock_qty?: number | null
+    barcode?: string | null
 }
 
 interface InventoryClientProps {
     initialProducts: Product[]
     categories: Category[]
     categoryNodes: CategoryNode[]
+    distributorId: string
 }
 
-export function InventoryClient({ initialProducts, categories, categoryNodes }: InventoryClientProps) {
+export function InventoryClient({ initialProducts, categories, categoryNodes, distributorId }: InventoryClientProps) {
     const [searchTerm, setSearchTerm] = useState('')
     const [showLowStock, setShowLowStock] = useState(false)
     const [filterCategory, setFilterCategory] = useState<string>('all')
@@ -64,6 +71,18 @@ export function InventoryClient({ initialProducts, categories, categoryNodes }: 
     const modalRef = useRef<HTMLDialogElement>(null)
     const addModalRef = useRef<HTMLDialogElement>(null)
     const deleteModalRef = useRef<HTMLDialogElement>(null)
+
+    // ── Barcode Scanner State ──
+    const [scanMode, setScanMode] = useState(false)
+    const [scanStatus, setScanStatus] = useState<ScanStatus>('idle')
+    const [scanStatusMessage, setScanStatusMessage] = useState('')
+    const [prefillBarcode, setPrefillBarcode] = useState<string | null>(null)
+
+    // ── Camera Scanner State ──
+    const [cameraOpen, setCameraOpen] = useState(false)
+    const [autoFallback, setAutoFallback] = useState(false)
+    const autoFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const lastScanActivityRef = useRef<number>(0)
 
     // Filter products based on search term
     const filteredProducts = useMemo(() => {
@@ -84,6 +103,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes }: 
             res = res.filter(p =>
                 p.name.toLowerCase().includes(lowerTerm) ||
                 (p.sku && p.sku.toLowerCase().includes(lowerTerm)) ||
+                (p.barcode && p.barcode.toLowerCase().includes(lowerTerm)) ||
                 (p.categories?.name && p.categories.name.toLowerCase().includes(lowerTerm)) ||
                 (p.category_nodes?.name && p.category_nodes.name.toLowerCase().includes(lowerTerm))
             )
@@ -118,7 +138,8 @@ export function InventoryClient({ initialProducts, categories, categoryNodes }: 
         modalRef.current?.showModal()
     }
 
-    const openAddModal = () => {
+    const openAddModal = (barcode?: string | null) => {
+        setPrefillBarcode(barcode ?? null)
         addModalRef.current?.showModal()
     }
 
@@ -139,6 +160,155 @@ export function InventoryClient({ initialProducts, categories, categoryNodes }: 
         }
     }
 
+    // ── Barcode Scan Handler ──
+    const handleBarcodeScan = useCallback(async (barcode: string) => {
+        setScanStatus('searching')
+        setScanStatusMessage(`Looking up ${barcode}…`)
+
+        try {
+            // First check in-memory (already loaded products)
+            const localMatch = initialProducts.find(
+                p => p.barcode?.toLowerCase() === barcode.toLowerCase()
+            )
+
+            if (localMatch) {
+                setScanStatus('found')
+                setScanStatusMessage(`Found: ${localMatch.name}`)
+                handleEdit(localMatch)
+                setTimeout(() => {
+                    if (scanMode) { setScanStatus('ready'); setScanStatusMessage('') }
+                }, 3000)
+                return
+            }
+
+            // Also check server (in case page data is stale)
+            const supabase = createClient()
+            const { data, error } = await supabase
+                .from('products')
+                .select('id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)')
+                .eq('distributor_id', distributorId)
+                .eq('barcode', barcode)
+                .is('deleted_at', null)
+                .limit(1)
+                .maybeSingle()
+
+            if (error) {
+                console.error('Barcode lookup error:', error)
+                setScanStatus('error')
+                setScanStatusMessage('Lookup failed. Try again.')
+                setTimeout(() => {
+                    if (scanMode) { setScanStatus('ready'); setScanStatusMessage('') }
+                }, 3000)
+                return
+            }
+
+            if (data) {
+                // Format the product data
+                const product: Product = {
+                    ...data,
+                    stock_qty: data.stock_qty ?? 0,
+                    categories: Array.isArray(data.categories) ? data.categories[0] : data.categories,
+                    category_nodes: Array.isArray(data.category_nodes) ? data.category_nodes[0] : data.category_nodes,
+                } as Product
+                setScanStatus('found')
+                setScanStatusMessage(`Found: ${product.name}`)
+                handleEdit(product)
+            } else {
+                setScanStatus('not_found')
+                setScanStatusMessage('New barcode — add product')
+                openAddModal(barcode)
+            }
+
+            setTimeout(() => {
+                if (scanMode) { setScanStatus('ready'); setScanStatusMessage('') }
+            }, 3000)
+        } catch (err) {
+            console.error('Barcode scan error:', err)
+            setScanStatus('error')
+            setScanStatusMessage('Lookup failed. Try again.')
+            setTimeout(() => {
+                if (scanMode) { setScanStatus('ready'); setScanStatusMessage('') }
+            }, 3000)
+        }
+    }, [initialProducts, distributorId, scanMode])
+
+    useBarcodeScanner({
+        enabled: scanMode,
+        onScan: handleBarcodeScan,
+        scanCatcherInputId: SCAN_CATCHER_ID,
+    })
+
+    const toggleScanMode = useCallback(() => {
+        setScanMode(prev => {
+            const next = !prev
+            if (next) {
+                setScanStatus('ready')
+                setScanStatusMessage('')
+                lastScanActivityRef.current = Date.now()
+            } else {
+                setScanStatus('idle')
+                setScanStatusMessage('')
+                // Clear auto-fallback timer
+                if (autoFallbackTimerRef.current) {
+                    clearTimeout(autoFallbackTimerRef.current)
+                    autoFallbackTimerRef.current = null
+                }
+            }
+            return next
+        })
+    }, [])
+
+    // ── Auto-fallback: open camera if no scan within 5 seconds ──
+    useEffect(() => {
+        if (!scanMode || !autoFallback) {
+            if (autoFallbackTimerRef.current) {
+                clearTimeout(autoFallbackTimerRef.current)
+                autoFallbackTimerRef.current = null
+            }
+            return
+        }
+
+        // Start/restart the 5-second timer
+        if (autoFallbackTimerRef.current) clearTimeout(autoFallbackTimerRef.current)
+        autoFallbackTimerRef.current = setTimeout(() => {
+            // Only open if scan mode is still on and no scan happened recently
+            if (scanMode && autoFallback && scanStatus === 'ready') {
+                setCameraOpen(true)
+                setScanStatus('camera_active')
+                setScanStatusMessage('Camera opened (no scanner detected)')
+            }
+        }, 5000)
+
+        return () => {
+            if (autoFallbackTimerRef.current) {
+                clearTimeout(autoFallbackTimerRef.current)
+                autoFallbackTimerRef.current = null
+            }
+        }
+    }, [scanMode, autoFallback, scanStatus])
+
+    const openCamera = useCallback(() => {
+        setCameraOpen(true)
+        setScanStatus('camera_active')
+        setScanStatusMessage('Camera active')
+    }, [])
+
+    const closeCamera = useCallback(() => {
+        setCameraOpen(false)
+        if (scanMode) {
+            setScanStatus('ready')
+            setScanStatusMessage('')
+        } else {
+            setScanStatus('idle')
+            setScanStatusMessage('')
+        }
+    }, [scanMode])
+
+    const handleCameraScan = useCallback((barcode: string) => {
+        setCameraOpen(false)
+        handleBarcodeScan(barcode)
+    }, [handleBarcodeScan])
+
     return (
         <div className="space-y-6">
             {/* Controls */}
@@ -153,11 +323,22 @@ export function InventoryClient({ initialProducts, categories, categoryNodes }: 
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    <Button onClick={openAddModal}>
+                    <Button onClick={() => openAddModal()}>
                         <Plus className="mr-2 h-4 w-4" />
                         Add Product
                     </Button>
                 </div>
+
+                {/* Barcode Scanner Panel */}
+                <BarcodeScannerPanel
+                    scanMode={scanMode}
+                    onToggleScanMode={toggleScanMode}
+                    status={scanStatus}
+                    statusMessage={scanStatusMessage}
+                    onOpenCamera={openCamera}
+                    autoFallback={autoFallback}
+                    onToggleAutoFallback={() => setAutoFallback(prev => !prev)}
+                />
 
                 <div className="flex gap-2 items-center flex-wrap">
                     <select
@@ -238,7 +419,8 @@ export function InventoryClient({ initialProducts, categories, categoryNodes }: 
                             categories={categories}
                             categoryNodes={categoryNodes}
                             type="add"
-                            onCancel={() => addModalRef.current?.close()}
+                            onCancel={() => { addModalRef.current?.close(); setPrefillBarcode(null) }}
+                            prefillBarcode={prefillBarcode}
                         />
                     </div>
                 </div>
@@ -263,6 +445,13 @@ export function InventoryClient({ initialProducts, categories, categoryNodes }: 
                     </div>
                 </div>
             </dialog>
+
+            {/* Camera Barcode Scanner Modal */}
+            <CameraBarcodeScannerModal
+                open={cameraOpen}
+                onClose={closeCamera}
+                onScan={handleCameraScan}
+            />
         </div>
     )
 }
@@ -422,12 +611,13 @@ import { useRouter } from 'next/navigation'
 // ... (other imports)
 
 // ProductForm Component using useActionState
-function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel }: {
+function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel, prefillBarcode }: {
     defaultValues?: any,
     categories: any[],
     categoryNodes: any[],
     type: 'add' | 'edit',
-    onCancel: () => void
+    onCancel: () => void,
+    prefillBarcode?: string | null
 }) {
     // Configuration Fields
     const [allowCase, setAllowCase] = useState(defaultValues?.allow_case ?? false)
@@ -577,6 +767,14 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel 
                 <div className="grid gap-2">
                     <label className="text-sm font-medium">SKU</label>
                     <Input name="sku" defaultValue={defaultValues?.sku || ''} placeholder="SKU-123" />
+                </div>
+                <div className="grid gap-2">
+                    <label className="text-sm font-medium">Barcode</label>
+                    <Input
+                        name="barcode"
+                        defaultValue={prefillBarcode || defaultValues?.barcode || ''}
+                        placeholder="e.g. 012345678905"
+                    />
                 </div>
                 {/* Category & Subcategory */}
                 <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">

@@ -1,287 +1,151 @@
--- 20260225150006_finalize_vendor_catalog_schema.sql
--- COMPLETE, IDEMPOTENT, BUG-FREE DEFINITIVE SCRIPT
--- RUN THIS ENTIRE FILE IN THE SUPABASE SQL EDITOR
+You are working inside my existing Distributor–Vendor Portal codebase (Supabase + current UI). Implement a SAFE, PERMANENT “Lock Stock Quantity” feature for Distributors ONLY.
 
--- ==========================================
--- PHASE 1: NESTED CATEGORIES & ARCHIVING
--- ==========================================
-create table if not exists public.category_nodes (
-    id uuid default gen_random_uuid() primary key,
-    distributor_id uuid references public.profiles(id) on delete cascade not null,
-    category_id uuid references public.categories(id) on delete cascade not null, -- Top level grouping
-    parent_id uuid references public.category_nodes(id) on delete cascade, -- Self-referential for infinite nesting
-    name text not null,
-    sort_order integer default 0 not null,
-    is_active boolean default true not null,
-    deleted_at timestamptz,
-    created_at timestamptz default now() not null,
-    updated_at timestamptz default now() not null
-);
+========================
+STRICT IMPLEMENTATION RULES (NON-NEGOTIABLE)
+========================
+1) DO NOT break any existing features: auth, distributor/vendor roles, catalog browsing, ordering, order fulfillment, invoices, inventory add/edit, search, filters.
+2) DO NOT remove or rename existing DB columns, routes, or components unless you update ALL references.
+3) DO NOT delete any data. No wiping inventory. No overwriting prices.
+4) Tenant safe: all actions scoped to the current distributor_id. Never cross-distributor reads/writes.
+5) Respect Supabase RLS. DO NOT disable RLS. If blocked, implement correct secure policy updates.
+6) No duplicates, no inconsistent state: every inventory product must have predictable stock behavior.
+7) All code must build clean (TypeScript). No console spam. No “temporary fix”.
+8) If anything is ambiguous in schema, DO NOT guess: inspect existing inventory table and existing stock deduction logic first, then implement.
+9) Add clear UI feedback + error messages for lock/unlock actions.
+10) Provide: files changed, SQL migration, and a full test plan.
 
-create index if not exists category_nodes_distributor_id_idx on public.category_nodes(distributor_id);
-create index if not exists category_nodes_category_id_idx on public.category_nodes(category_id);
-create index if not exists category_nodes_parent_id_idx on public.category_nodes(parent_id);
+========================
+FEATURE GOAL
+========================
+Distributors can “LOCK” a product’s stock quantity to a specific number.
+If a product is locked, then:
+- Vendor orders and distributor fulfillment MUST NOT reduce that product’s stock (quantity stays unchanged).
+If a product is NOT locked, existing behavior remains (stock deducts as it currently does).
 
-alter table public.category_nodes enable row level security;
+This must work for:
+A) New inventory products (option to lock while adding)
+B) Existing inventory products (toggle lock + set locked stock value)
+C) Order fulfillment process (the deduction step must respect lock)
 
--- Drop if exists to be fully idempotent on replay
-drop policy if exists "category_nodes: distributor can do all" on public.category_nodes;
-create policy "category_nodes: distributor can do all" on public.category_nodes
-    for all using (auth.uid() = distributor_id);
+========================
+EXPECTED BEHAVIOR (EXACT RULES)
+========================
+Inventory product has:
+- quantity_on_hand (existing stock field)  ← keep using existing field name in my codebase
+- stock_locked (boolean)
+- locked_stock_qty (integer or numeric)   // the “locked number” user sets
 
-drop policy if exists "category_nodes: vendors can read linked distributor nodes" on public.category_nodes;
-create policy "category_nodes: vendors can read linked distributor nodes" on public.category_nodes
-    for select using (
-        exists (
-            select 1 from public.distributor_vendors dv
-            where dv.distributor_id = category_nodes.distributor_id
-            and dv.vendor_id = auth.uid()
-        )
-    );
+Rules:
+1) If stock_locked = true:
+   - quantity_on_hand should be forced to locked_stock_qty (or remain exactly locked_stock_qty)
+   - On order fulfillment: DO NOT deduct quantity_on_hand for that product
+   - If distributor edits locked_stock_qty, quantity_on_hand updates to match it immediately
+2) If stock_locked = false:
+   - quantity_on_hand behaves normally (deduct on fulfillment exactly as it currently does)
+3) Lock/unlock should be reversible:
+   - Locking sets stock_locked = true and requires locked_stock_qty
+   - Unlocking sets stock_locked = false (locked_stock_qty may remain stored but ignored)
+4) Prevent negative stock:
+   - For unlocked products, keep existing validation
+   - For locked products, ignore deduction validation since no deduction occurs
 
--- Add foreign key to products
-alter table public.products 
-add column if not exists category_node_id uuid references public.category_nodes(id) on delete set null;
+========================
+DATABASE CHANGES (SAFE MIGRATION)
+========================
+1) Add columns to inventory table (or equivalent inventory_products table):
+- stock_locked boolean NOT NULL DEFAULT false
+- locked_stock_qty numeric/integer NULL
 
-create index if not exists products_category_node_id_idx on public.products(category_node_id);
+2) Add a CHECK constraint (optional but recommended):
+- locked_stock_qty must be NULL when stock_locked = false OR allow storing but validate on save:
+  - if stock_locked = true then locked_stock_qty is NOT NULL and locked_stock_qty >= 0
 
--- Safe Delete RPC
-create or replace function public.archive_category_node(p_node_id uuid)
-returns json
-language plpgsql
-security definer
-as $$
-declare
-    v_prod_count int;
-begin
-    if not exists (
-        select 1 from public.category_nodes
-        where id = p_node_id and distributor_id = auth.uid()
-    ) then
-        return json_build_object('error', 'Unauthorized or not found');
-    end if;
+3) Add indexes (if needed):
+- (distributor_id, stock_locked)
 
-    select count(*) into v_prod_count 
-    from public.products 
-    where category_node_id = p_node_id and active = true and deleted_at is null;
+DO NOT change any existing column types.
 
-    if v_prod_count > 0 then
-        return json_build_object('error', format('Cannot delete: %s active products are linked to this category level. Please move them first.', v_prod_count));
-    end if;
+========================
+UI CHANGES (DISTRIBUTOR ONLY)
+========================
+1) Inventory “Add Product” form:
+- Add a toggle: “Lock stock”
+- If enabled: show input “Locked stock quantity”
+- When saved:
+  - store stock_locked + locked_stock_qty
+  - set quantity_on_hand = locked_stock_qty
+  - leave price fields unchanged from current behavior
 
-    with recursive descendants as (
-        select id from public.category_nodes where id = p_node_id
-        union all
-        select cn.id from public.category_nodes cn
-        inner join descendants d on cn.parent_id = d.id
-    )
-    update public.category_nodes
-    set is_active = false, deleted_at = now()
-    where id in (select id from descendants);
+2) Inventory “Edit Product” (existing product):
+- Add a section:
+  - Toggle: “Stock Locked”
+  - Input: “Locked stock quantity” (only visible if locked)
+  - Save button updates fields
+  - If locked: also update quantity_on_hand to equal locked_stock_qty
 
-    return json_build_object('success', true);
-end;
-$$;
+3) Inventory list table/card:
+- Show a small badge/icon “Locked”
+- Optionally show locked quantity value
 
+========================
+ORDER / FULFILLMENT LOGIC (CRITICAL)
+========================
+Find where stock is currently deducted (likely during “fulfill order”, “generate invoice”, or “mark fulfilled”).
+Modify deduction logic as follows:
 
--- ==========================================
--- PHASE 2: PRICING OVERRIDES
--- ==========================================
-create table if not exists public.vendor_price_overrides (
-    id uuid default gen_random_uuid() primary key,
-    distributor_id uuid references public.profiles(id) on delete cascade not null,
-    vendor_id uuid references public.profiles(id) on delete cascade not null,
-    product_id uuid references public.products(id) on delete cascade not null,
-    price_cents integer not null,
-    created_at timestamptz default now() not null,
-    updated_at timestamptz default now() not null,
-    unique(distributor_id, vendor_id, product_id)
-);
+For each order item:
+- Fetch corresponding inventory product row for current distributor
+- If stock_locked = true:
+    skip deduction for this item
+  else:
+    apply the current deduction logic (do not change formulas)
 
-create index if not exists vendor_price_overrides_dist_vend_idx on public.vendor_price_overrides(distributor_id, vendor_id);
+This MUST be done safely and atomically:
+- Use a single RPC / transaction if possible so partial updates don’t happen.
+- Ensure race-condition safety (2 fulfillments at once):
+  - For unlocked items: use SQL update with checks or a transaction.
+  - For locked items: no update needed.
 
-alter table public.vendor_price_overrides enable row level security;
+========================
+SECURITY / RLS
+========================
+- Distributors can update stock_locked and locked_stock_qty for their inventory rows.
+- Vendors must NOT be able to modify these fields.
+- Vendor reads should remain unchanged (they might see quantity_on_hand already — keep current behavior).
 
-drop policy if exists "Vendor price overrides: distributor full access" on public.vendor_price_overrides;
-create policy "Vendor price overrides: distributor full access" on public.vendor_price_overrides
-    for all using (auth.uid() = distributor_id);
+========================
+EDGE CASES
+========================
+1) If stock is locked and locked_stock_qty is NULL:
+- Block saving and show validation error (UI + server-side).
+2) If an existing product is locked but has quantity_on_hand different from locked_stock_qty:
+- Auto-correct on next save OR add a small “Fix now” action. Prefer auto-correct on save.
+3) If an order is placed for a locked product:
+- It should be allowed if current app allows ordering based on stock; do not block.
+- Fulfillment will not reduce stock.
 
-drop policy if exists "Vendor price overrides: vendor read own" on public.vendor_price_overrides;
-create policy "Vendor price overrides: vendor read own" on public.vendor_price_overrides
-    for select using (auth.uid() = vendor_id);
+========================
+DELIVERABLES
+========================
+1) Show the exact files you changed (paths).
+2) Provide SQL migration code for the inventory table changes.
+3) Provide the updated fulfillment/deduction implementation (with comments explaining locked logic).
+4) Provide a test plan:
+   - Create product locked=on qty=50 → inventory shows 50
+   - Vendor orders 5 → fulfill → stock remains 50
+   - Unlock product → vendor orders 5 → fulfill → stock becomes 45
+   - Lock existing product with qty=20 → stock becomes 20 and stays 20 after fulfillment
+   - Multi-vendor/distributor safety test
 
-create table if not exists public.price_change_batches (
-    id uuid default gen_random_uuid() primary key,
-    distributor_id uuid references public.profiles(id) on delete cascade not null,
-    created_by uuid references public.profiles(id) on delete set null,
-    scope text not null, 
-    scope_id uuid,
-    adjustment_type text not null, 
-    adjustment_value integer not null, 
-    created_at timestamptz default now() not null
-);
-
-create table if not exists public.price_change_items (
-    id uuid default gen_random_uuid() primary key,
-    batch_id uuid references public.price_change_batches(id) on delete cascade not null,
-    product_id uuid references public.products(id) on delete cascade not null,
-    old_price_cents integer,
-    new_price_cents integer,
-    created_at timestamptz default now() not null
-);
-
-alter table public.price_change_batches enable row level security;
-alter table public.price_change_items enable row level security;
-
-drop policy if exists "Price change batches: distributor read" on public.price_change_batches;
-create policy "Price change batches: distributor read" on public.price_change_batches
-    for select using (auth.uid() = distributor_id);
-
-drop policy if exists "Price change items: distributor read" on public.price_change_items;
-create policy "Price change items: distributor read" on public.price_change_items
-    for select using (
-        exists (select 1 from public.price_change_batches b where b.id = price_change_items.batch_id and b.distributor_id = auth.uid())
-    );
-
-
--- ==========================================
--- PHASE 3: THE HIGH-PERFORMANCE RPC ENGINE 
--- ==========================================
-
--- Drop previous signatures first in case return types break the replace
-drop function if exists public.get_vendor_catalog_prices(uuid);
-drop function if exists public.get_vendor_catalog_prices(uuid, uuid);
-
-create or replace function public.get_vendor_catalog_prices(
-    p_distributor_id uuid
-)
-returns table (
-    id uuid,
-    category_id uuid,
-    category_node_id uuid,
-    name text,
-    sku text,
-    base_price_cents integer,
-    effective_price_cents integer,
-    allow_piece boolean,
-    allow_case boolean,
-    units_per_case integer,
-    stock_qty integer,
-    stock_pieces integer,
-    is_active boolean,
-    created_at timestamptz
-)
-language plpgsql
-security invoker
-set search_path = public
-as $$
-begin
-    -- 1. Verification: Vendor must be linked
-    if not exists (
-        select 1 from public.distributor_vendors dv
-        where dv.distributor_id = p_distributor_id
-        and dv.vendor_id = auth.uid()
-    ) then
-        return; 
-    end if;
-
-    -- 2. Return data combining overrides 
-    return query
-    select 
-        p.id,
-        p.category_id,
-        p.category_node_id,
-        p.name,
-        p.sku,
-        CAST(ROUND(p.sell_price * 100) AS INTEGER) as base_price_cents,
-        coalesce(vpo.price_cents, CAST(ROUND(p.sell_price * 100) AS INTEGER)) as effective_price_cents,
-        p.allow_piece,
-        p.allow_case,
-        p.units_per_case,
-        p.stock_qty,
-        p.stock_pieces,
-        p.active as is_active,
-        p.created_at
-    from public.products p
-    left join public.vendor_price_overrides vpo 
-        on p.id = vpo.product_id 
-        and vpo.distributor_id = p.distributor_id 
-        and vpo.vendor_id = auth.uid()
-    where p.distributor_id = p_distributor_id
-      and p.active = true
-      and p.deleted_at is null
-    order by p.name asc;
-end;
-$$;
-
-grant execute on function public.get_vendor_catalog_prices(uuid) to authenticated;
-grant execute on function public.get_vendor_catalog_prices(uuid) to service_role;
+START NOW:
+- Inspect current inventory schema and where fulfillment deduction happens.
+- Implement DB migration, then UI toggles, then deduction logic update.
+- Ensure no regressions and build passes.
 
 
--- Bulk pricing adjustment RPC
-create or replace function public.execute_bulk_price_adjustment(
-    p_distributor_id uuid,
-    p_scope text,       
-    p_scope_id uuid,    
-    p_type text,        
-    p_value numeric     
-)
-returns json
-language plpgsql
-security definer
-as $$
-declare
-    v_batch_id uuid;
-    v_updated_count integer := 0;
-begin
-    if p_distributor_id != auth.uid() then
-        return json_build_object('error', 'Unauthorized');
-    end if;
 
-    insert into public.price_change_batches (distributor_id, created_by, scope, scope_id, adjustment_type, adjustment_value)
-    values (p_distributor_id, auth.uid(), p_scope, p_scope_id, p_type, p_value)
-    returning id into v_batch_id;
 
-    with eligible_products as (
-        select id, sell_price from public.products
-        where distributor_id = p_distributor_id
-          and active = true and deleted_at is null
-          and (
-              (p_scope = 'global') or
-              (p_scope = 'category' and category_id = p_scope_id) or
-              (p_scope = 'category_node' and category_node_id = p_scope_id)
-          )
-    ),
-    calculated_prices as (
-        select 
-            id as prod_id,
-            CAST(ROUND(sell_price * 100) AS INTEGER) as old_price,
-            cast(
-                case 
-                    when p_type = 'fixed_cents' then (sell_price * 100) + p_value
-                    when p_type = 'overwrite_cents' then p_value
-                    when p_type = 'percent' then round((sell_price * 100) * (1.0 + (p_value / 100.0)))
-                    else (sell_price * 100)
-                end as integer
-            ) as new_price
-        from eligible_products
-    ),
-    history_insert as (
-        insert into public.price_change_items (batch_id, product_id, old_price_cents, new_price_cents)
-        select v_batch_id, prod_id, old_price, new_price 
-        from calculated_prices
-        where new_price >= 0 
-    ),
-    do_update as (
-        update public.products p
-        set sell_price = (cp.new_price / 100.0),
-            updated_at = now()
-        from calculated_prices cp
-        where p.id = cp.prod_id and cp.new_price >= 0
-        returning p.id
-    )
-    select count(*) into v_updated_count from do_update;
 
-    return json_build_object('success', true, 'affected_rows', v_updated_count);
-end;
-$$;
+
+
+

@@ -12,6 +12,8 @@ export interface Product {
     allow_piece: boolean
     units_per_case: number | null
     low_stock_threshold: number
+    barcode?: string | null
+    barcode_symbology?: string | null
     active: boolean
     created_at: string
     categories?: { name: string } | null

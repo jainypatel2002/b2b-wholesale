@@ -34,6 +34,7 @@ export async function createProductAction(
         const { distributorId } = await getDistributorContext()
         const name = String(formData.get('name') || '').trim()
         const sku = String(formData.get('sku') || '').trim() || null
+        const barcode = String(formData.get('barcode') || '').trim() || null
         const category_id = String(formData.get('category_id') || '').trim() || null
         const category_node_id = String(formData.get('category_node_id') || '').trim() || null
 
@@ -70,6 +71,7 @@ export async function createProductAction(
             category_node_id,
             name,
             sku,
+            barcode,
             cost_price,
             sell_price,
             cost_mode,
@@ -87,8 +89,11 @@ export async function createProductAction(
 
         if (error) {
             console.error('createProductAction Supabase Error:', error)
+            if (error.message?.includes('products_distributor_barcode_uniq') || error.code === '23505' && error.message?.includes('barcode')) {
+                return { error: 'This barcode is already assigned to another product in your inventory.' }
+            }
             if (error.message?.includes('schema cache') || error.message?.includes('Could not find')) {
-                return { error: 'Database schema is updating. Please apply the latest migration (20260225150007_lock_stock_quantity.sql) in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }
+                return { error: 'Database schema is updating. Please apply the latest migration in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }
             }
             return { error: error.message, details: error }
         }
@@ -112,6 +117,7 @@ export async function updateProductAction(
         const id = String(formData.get('id'))
         const name = String(formData.get('name') || '').trim()
         const sku = String(formData.get('sku') || '').trim() || null
+        const barcode = String(formData.get('barcode') || '').trim() || null
         const category_id = String(formData.get('category_id') || '').trim() || null
         const category_node_id = String(formData.get('category_node_id') || '').trim() || null
 
@@ -147,6 +153,7 @@ export async function updateProductAction(
             .update({
                 name,
                 sku,
+                barcode,
                 category_id,
                 category_node_id,
                 cost_price,
@@ -168,8 +175,11 @@ export async function updateProductAction(
 
         if (error) {
             console.error('updateProductAction Error:', error)
+            if (error.message?.includes('products_distributor_barcode_uniq') || error.code === '23505' && error.message?.includes('barcode')) {
+                return { error: 'This barcode is already assigned to another product in your inventory.' }
+            }
             if (error.message?.includes('schema cache') || error.message?.includes('Could not find')) {
-                return { error: 'Database schema is updating. Please apply the latest migration (20260225150007_lock_stock_quantity.sql) in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }
+                return { error: 'Database schema is updating. Please apply the latest migration in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }
             }
             return { error: error.message }
         }
