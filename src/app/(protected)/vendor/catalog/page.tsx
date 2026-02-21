@@ -60,7 +60,6 @@ export default async function VendorCatalogPage() {
           .from('products')
           .select('id, category_id')
           .eq('distributor_id', distributorId)
-          .eq('active', true)
           .is('deleted_at', null)
 
         if (fallbackError) throw fallbackError

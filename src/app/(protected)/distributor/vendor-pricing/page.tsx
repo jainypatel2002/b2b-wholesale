@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getDistributorContext } from '@/lib/data'
+import { getDistributorContext, getLinkedVendors } from '@/lib/data'
 import { VendorPricingClient } from './client'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
@@ -9,16 +9,8 @@ export default async function VendorPricingPage() {
     const { distributorId } = await getDistributorContext()
     const supabase = await createClient()
 
-    // 1. Fetch Linked Vendors
-    const { data: linkData } = await supabase
-        .from('distributor_vendors')
-        .select('vendor_id, profiles!vendor_id(business_name, email)')
-        .eq('distributor_id', distributorId)
-
-    const vendors = (linkData || []).map((link: any) => ({
-        id: link.vendor_id,
-        name: link.profiles?.business_name || link.profiles?.email || 'Unknown Vendor'
-    })).sort((a, b) => a.name.localeCompare(b.name))
+    // 1. Fetch Linked Vendors (canonical function from data.ts)
+    const vendors = await getLinkedVendors(distributorId)
 
     // 2. Fetch All Products and Categories explicitly to avoid schema cache FK errors
     const [
@@ -38,7 +30,6 @@ export default async function VendorPricingPage() {
                 category_node_id
             `)
             .eq('distributor_id', distributorId)
-            .eq('active', true)
             .is('deleted_at', null)
             .order('name', { ascending: true }),
         supabase.from('categories').select('id, name').eq('distributor_id', distributorId),

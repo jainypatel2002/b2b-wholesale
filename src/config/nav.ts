@@ -4,7 +4,8 @@ export const distributorLinks = [
     { href: '/distributor/categories', label: 'Categories', icon: 'Layers' },
     { href: '/distributor/orders', label: 'Orders', icon: 'ShoppingCart' },
     { href: '/distributor/invoices', label: 'Invoices', icon: 'FileText' },
-    { href: '/distributor/analytics/profit', label: 'Profit Center', icon: 'BadgeDollarSign' }, // Or TrendingUp
+    { href: '/distributor/analytics/profit', label: 'Profit Center', icon: 'BadgeDollarSign' },
+    { href: '/distributor/bulk-pricing', label: 'Bulk Pricing', icon: 'TrendingUp' },
     { href: '/distributor/settings', label: 'Settings', icon: 'Settings' },
 ]
 

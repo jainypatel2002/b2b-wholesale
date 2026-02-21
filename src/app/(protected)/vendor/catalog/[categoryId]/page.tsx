@@ -81,19 +81,25 @@ export default async function CategoryProductsPage({ params }: { params: Promise
             if (prodError.code === 'PGRST202') {
                 console.warn('RPC get_vendor_catalog_prices not found, falling back to direct queries')
 
+                // Get the current vendor's user ID for override scoping
+                const { data: { user } } = await supabase.auth.getUser()
+                const currentVendorId = user?.id
+
                 const [{ data: fallbackData, error: fallbackError }, { data: overridesData }] = await Promise.all([
                     supabase
                         .from('products')
                         .select('id, name, sell_price, allow_case, allow_piece, units_per_case, category_id, category_node_id, stock_qty, stock_pieces, sku')
                         .eq('distributor_id', distributorId)
                         .eq('category_id', categoryId)
-                        .eq('active', true)
                         .is('deleted_at', null)
                         .order('name', { ascending: true }),
-                    supabase
-                        .from('vendor_price_overrides')
-                        .select('product_id, price_cents')
-                        .eq('distributor_id', distributorId)
+                    currentVendorId
+                        ? supabase
+                            .from('vendor_price_overrides')
+                            .select('product_id, price_cents')
+                            .eq('distributor_id', distributorId)
+                            .eq('vendor_id', currentVendorId)
+                        : Promise.resolve({ data: [], error: null })
                 ])
 
                 if (fallbackError) throw fallbackError
