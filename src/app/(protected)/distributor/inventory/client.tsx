@@ -80,9 +80,13 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
 
     // ── Camera Scanner State ──
     const [cameraOpen, setCameraOpen] = useState(false)
+    const [cameraError, setCameraError] = useState<string | null>(null)
+    const cameraStreamRef = useRef<MediaStream | null>(null)
+    const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
     const [autoFallback, setAutoFallback] = useState(false)
     const autoFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const lastScanActivityRef = useRef<number>(0)
+    const [showAutoFallbackPrompt, setShowAutoFallbackPrompt] = useState(false)
 
     // Filter products based on search term
     const filteredProducts = useMemo(() => {
@@ -258,24 +262,23 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
         })
     }, [])
 
-    // ── Auto-fallback: open camera if no scan within 5 seconds ──
+    // ── Auto-fallback: show prompt if no scan within 5 seconds ──
+    // NOTE: Cannot auto-call getUserMedia from a timer (breaks iOS Safari gesture requirement)
+    // Instead, show a "Tap to open camera" prompt that the user can click.
     useEffect(() => {
         if (!scanMode || !autoFallback) {
             if (autoFallbackTimerRef.current) {
                 clearTimeout(autoFallbackTimerRef.current)
                 autoFallbackTimerRef.current = null
             }
+            setShowAutoFallbackPrompt(false)
             return
         }
 
-        // Start/restart the 5-second timer
         if (autoFallbackTimerRef.current) clearTimeout(autoFallbackTimerRef.current)
         autoFallbackTimerRef.current = setTimeout(() => {
-            // Only open if scan mode is still on and no scan happened recently
             if (scanMode && autoFallback && scanStatus === 'ready') {
-                setCameraOpen(true)
-                setScanStatus('camera_active')
-                setScanStatusMessage('Camera opened (no scanner detected)')
+                setShowAutoFallbackPrompt(true)
             }
         }, 5000)
 
@@ -287,13 +290,77 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
         }
     }, [scanMode, autoFallback, scanStatus])
 
-    const openCamera = useCallback(() => {
+    /**
+     * CRITICAL: getUserMedia is called HERE, directly in the click handler,
+     * to preserve the iOS Safari user-gesture requirement.
+     */
+    const openCamera = useCallback(async () => {
+        console.info('[CameraScanner] openCamera called from user gesture')
+        setCameraError(null)
+        setCameraStream(null)
+        setShowAutoFallbackPrompt(false)
+
+        // Secure context check
+        if (typeof window !== 'undefined' && !window.isSecureContext) {
+            console.error('[CameraScanner] Insecure context')
+            setCameraError('insecure_context: Camera requires HTTPS or localhost.')
+            setCameraOpen(true)
+            setScanStatus('camera_active')
+            setScanStatusMessage('Camera error')
+            return
+        }
+
+        // API availability check
+        if (!navigator?.mediaDevices?.getUserMedia) {
+            console.error('[CameraScanner] getUserMedia not available')
+            setCameraError('Camera not supported in this browser.')
+            setCameraOpen(true)
+            setScanStatus('camera_active')
+            setScanStatusMessage('Camera error')
+            return
+        }
+
+        // Open modal immediately so user sees spinner
         setCameraOpen(true)
         setScanStatus('camera_active')
-        setScanStatusMessage('Camera active')
+        setScanStatusMessage('Starting camera…')
+
+        try {
+            console.info('[CameraScanner] Requesting getUserMedia (environment)')
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' } },
+                audio: false,
+            })
+            console.info('[CameraScanner] getUserMedia success, tracks:', stream.getTracks().length)
+            cameraStreamRef.current = stream
+            setCameraStream(stream)
+            setScanStatusMessage('Camera active')
+        } catch (err: any) {
+            console.warn('[CameraScanner] Rear camera failed, trying fallback:', err.name)
+            // Fallback: try any camera
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+                console.info('[CameraScanner] Fallback getUserMedia success')
+                cameraStreamRef.current = stream
+                setCameraStream(stream)
+                setScanStatusMessage('Camera active')
+            } catch (err2: any) {
+                console.error('[CameraScanner] getUserMedia failed:', err2.name, err2.message, err2.stack)
+                setCameraError(`${err2.name}: ${err2.message}`)
+                setScanStatusMessage('Camera error')
+            }
+        }
     }, [])
 
     const closeCamera = useCallback(() => {
+        console.info('[CameraScanner] closeCamera')
+        // Stop all tracks
+        if (cameraStreamRef.current) {
+            cameraStreamRef.current.getTracks().forEach(t => t.stop())
+            cameraStreamRef.current = null
+        }
+        setCameraStream(null)
+        setCameraError(null)
         setCameraOpen(false)
         if (scanMode) {
             setScanStatus('ready')
@@ -305,6 +372,13 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
     }, [scanMode])
 
     const handleCameraScan = useCallback((barcode: string) => {
+        console.info('[CameraScanner] Barcode scanned via camera:', barcode)
+        // Stream cleanup happens in modal via handleClose
+        if (cameraStreamRef.current) {
+            cameraStreamRef.current.getTracks().forEach(t => t.stop())
+            cameraStreamRef.current = null
+        }
+        setCameraStream(null)
         setCameraOpen(false)
         handleBarcodeScan(barcode)
     }, [handleBarcodeScan])
@@ -446,9 +520,22 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                 </div>
             </dialog>
 
+            {/* Auto-fallback prompt (tap to open camera — preserves iOS gesture) */}
+            {showAutoFallbackPrompt && !cameraOpen && (
+                <button
+                    type="button"
+                    onClick={openCamera}
+                    className="w-full py-3 px-4 rounded-lg bg-violet-50 border border-violet-200 text-violet-800 text-sm font-medium text-center hover:bg-violet-100 transition-colors animate-pulse"
+                >
+                    📸 No scanner detected — tap to open camera
+                </button>
+            )}
+
             {/* Camera Barcode Scanner Modal */}
             <CameraBarcodeScannerModal
                 open={cameraOpen}
+                stream={cameraStream}
+                cameraError={cameraError}
                 onClose={closeCamera}
                 onScan={handleCameraScan}
             />
