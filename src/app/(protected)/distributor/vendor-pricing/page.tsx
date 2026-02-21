@@ -1,0 +1,82 @@
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/server'
+import { getDistributorContext } from '@/lib/data'
+import { VendorPricingClient } from './client'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
+
+export default async function VendorPricingPage() {
+    const { distributorId } = await getDistributorContext()
+    const supabase = await createClient()
+
+    // 1. Fetch Linked Vendors
+    const { data: linkData } = await supabase
+        .from('distributor_vendors')
+        .select('vendor_id, profiles!vendor_id(business_name, email)')
+        .eq('distributor_id', distributorId)
+
+    const vendors = (linkData || []).map((link: any) => ({
+        id: link.vendor_id,
+        name: link.profiles?.business_name || link.profiles?.email || 'Unknown Vendor'
+    })).sort((a, b) => a.name.localeCompare(b.name))
+
+    // 2. Fetch All Products and Categories explicitly to avoid schema cache FK errors
+    const [
+        { data: productsData, error: prodErr },
+        { data: categoriesData },
+        { data: categoryNodesData }
+    ] = await Promise.all([
+        supabase
+            .from('products')
+            .select(`
+                id, 
+                name, 
+                sku, 
+                sell_price, 
+                stock_pieces,
+                category_id, 
+                category_node_id
+            `)
+            .eq('distributor_id', distributorId)
+            .eq('active', true)
+            .is('deleted_at', null)
+            .order('name', { ascending: true }),
+        supabase.from('categories').select('id, name').eq('distributor_id', distributorId),
+        supabase.from('category_nodes').select('id, name').eq('distributor_id', distributorId)
+    ])
+
+    if (prodErr) throw prodErr
+
+    const catMap = new Map((categoriesData || []).map((c: any) => [c.id, c.name]))
+    const nodeMap = new Map((categoryNodesData || []).map((n: any) => [n.id, n.name]))
+
+    const products = (productsData || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        base_price: p.sell_price, // Already stored logically on front-end as Dollars
+        stock_pieces: p.stock_pieces,
+        category_id: p.category_id,
+        category_node_id: p.category_node_id,
+        category: catMap.get(p.category_id),
+        node: nodeMap.get(p.category_node_id)
+    }))
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight">Vendor Pricing Engine</h1>
+                    <p className="text-sm text-slate-500">Configure client-specific overrides and bulk price adjustments.</p>
+                </div>
+                <Link href="/distributor">
+                    <Button variant="outline" size="sm">
+                        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+                    </Button>
+                </Link>
+            </div>
+
+            <VendorPricingClient vendors={vendors} products={products} />
+        </div>
+    )
+}

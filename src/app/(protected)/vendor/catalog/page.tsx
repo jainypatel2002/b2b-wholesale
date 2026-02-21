@@ -44,18 +44,33 @@ export default async function VendorCatalogPage() {
 
     if (catError) throw catError
 
-    // 2. Fetch product counts (OPTIMIZATION: We could use a view or RPC, but for now simple groupBy or iterate is safer if dataset is small. 
-    //    Actually, simple count query for each category or fetching all products ID+category_id is better.)
-    //    Let's fetch all active products (id, category_id) to count in JS. It's usually faster than N+1 queries.
-    //    Reasonable limit of products? If 10k products, might be heavy. But typically < 1000.
-    const { data: productsData, error: prodError } = await supabase
-      .from('products')
-      .select('id, category_id')
-      .eq('distributor_id', distributorId)
-      .eq('active', true)
-      .is('deleted_at', null)
+    // 2. Fetch product counts securely using the new RPC Engine
+    // This ensures counts only reflect products the vendor actively has access to
+    const { data: rpcData, error: prodError } = await supabase
+      .rpc('get_vendor_catalog_prices', {
+        p_distributor_id: distributorId
+      })
 
-    if (prodError) throw prodError
+    let productsData: any[] = []
+
+    if (prodError) {
+      if (prodError.code === 'PGRST202') {
+        console.warn('RPC get_vendor_catalog_prices not found, falling back to direct query')
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('products')
+          .select('id, category_id')
+          .eq('distributor_id', distributorId)
+          .eq('active', true)
+          .is('deleted_at', null)
+
+        if (fallbackError) throw fallbackError
+        productsData = fallbackData || []
+      } else {
+        throw prodError
+      }
+    } else {
+      productsData = rpcData || []
+    }
 
     // Combine
     const counts = (productsData || []).reduce((acc: any, p: any) => {

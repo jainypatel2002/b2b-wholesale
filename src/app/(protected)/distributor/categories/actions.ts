@@ -7,119 +7,190 @@ import { revalidatePath } from 'next/cache'
 // --- Categories ---
 
 export async function createCategory(formData: FormData) {
-    const { distributorId } = await getDistributorContext()
-    const name = String(formData.get('name') || '').trim()
-    if (!name) throw new Error('Category name required')
+    try {
+        const { distributorId } = await getDistributorContext()
+        const name = String(formData.get('name') || '').trim()
+        if (!name) return { ok: false, error: 'Category name required' }
 
-    const supabase = await createClient()
-    const { error } = await supabase.from('categories').insert({ distributor_id: distributorId, name })
+        const supabase = await createClient()
+        const { error } = await supabase.from('categories').insert({ distributor_id: distributorId, name })
 
-    if (error) {
-        if (error.code === '23505') throw new Error('Category already exists')
-        throw error
+        if (error) {
+            if (error.code === '23505') return { ok: false, error: 'Category already exists' }
+            throw error
+        }
+
+        revalidatePath('/distributor/categories')
+        return { ok: true }
+    } catch (e: any) {
+        console.error("createCategory error:", e)
+        return { ok: false, error: e.message }
     }
-
-    revalidatePath('/distributor/categories')
 }
 
 export async function updateCategory(categoryId: string, formData: FormData) {
-    const { distributorId } = await getDistributorContext()
-    const name = String(formData.get('name') || '').trim()
+    try {
+        const { distributorId } = await getDistributorContext()
+        const name = String(formData.get('name') || '').trim()
 
-    if (!name) throw new Error('Category name required')
+        if (!name) return { ok: false, error: 'Category name required' }
 
-    const supabase = await createClient()
-    const { error } = await supabase
-        .from('categories')
-        .update({ name })
-        .eq('id', categoryId)
-        .eq('distributor_id', distributorId)
+        const supabase = await createClient()
+        const { error } = await supabase
+            .from('categories')
+            .update({ name })
+            .eq('id', categoryId)
+            .eq('distributor_id', distributorId)
 
-    if (error) {
-        if (error.code === '23505') throw new Error('Category already exists')
-        throw error
+        if (error) {
+            if (error.code === '23505') return { ok: false, error: 'Category already exists' }
+            throw error
+        }
+        revalidatePath('/distributor/categories')
+        return { ok: true }
+    } catch (e: any) {
+        console.error("updateCategory error:", e)
+        return { ok: false, error: e.message }
     }
-    revalidatePath('/distributor/categories')
 }
 
 export async function deleteCategory(categoryId: string) {
-    const { distributorId } = await getDistributorContext()
-    const supabase = await createClient()
+    try {
+        const { distributorId } = await getDistributorContext()
+        const supabase = await createClient()
 
-    // RPC: Archive Category (Safely archives category + subcategories + products)
-    const { data: result, error } = await supabase.rpc('archive_category', {
-        p_category_id: categoryId
-    })
+        // Soft delete products
+        const { error: prodError } = await supabase
+            .from('products')
+            .update({ is_active: false, deleted_at: new Date().toISOString(), deleted_reason: 'category_archived' })
+            .eq('category_id', categoryId)
+            .eq('distributor_id', distributorId)
 
-    if (error) throw error
+        if (prodError) {
+            console.error("archive category products error:", prodError)
+            return { ok: false, error: prodError.message }
+        }
 
-    if (result && result.error) {
-        throw new Error(result.error)
+        // Soft delete old subcategories (for backward compatibility)
+        await supabase
+            .from('subcategories')
+            .update({ is_active: false, deleted_at: new Date().toISOString() })
+            .eq('category_id', categoryId)
+            .eq('distributor_id', distributorId)
+
+        // Soft delete new category_nodes
+        const { error: nodeError } = await supabase
+            .from('category_nodes')
+            .update({ is_active: false, deleted_at: new Date().toISOString() })
+            .eq('category_id', categoryId)
+            .eq('distributor_id', distributorId)
+
+        if (nodeError) {
+            console.error("archive category nodes error:", nodeError)
+            return { ok: false, error: nodeError.message }
+        }
+
+        // Soft delete category
+        const { error: catError } = await supabase
+            .from('categories')
+            .update({ is_active: false, deleted_at: new Date().toISOString() })
+            .eq('id', categoryId)
+            .eq('distributor_id', distributorId)
+
+        if (catError) {
+            console.error("archive category error:", catError)
+            return { ok: false, error: catError.message }
+        }
+
+        revalidatePath('/distributor/categories')
+        revalidatePath('/distributor/inventory')
+        return { ok: true }
+    } catch (e: any) {
+        console.error("deleteCategory error:", e)
+        return { ok: false, error: e.message || 'Failed to delete category' }
     }
-
-    revalidatePath('/distributor/categories')
-    revalidatePath('/distributor/inventory')
 }
 
-// --- Subcategories ---
+// --- Category Nodes (Nested Subcategories) ---
 
-export async function createSubcategory(formData: FormData) {
-    const { distributorId } = await getDistributorContext()
-    const name = String(formData.get('name') || '').trim()
-    const categoryId = String(formData.get('category_id') || '').trim()
+export async function createCategoryNode(formData: FormData) {
+    try {
+        const { distributorId } = await getDistributorContext()
+        const name = String(formData.get('name') || '').trim()
+        const categoryId = String(formData.get('category_id') || '').trim()
+        const parentId = formData.get('parent_id') ? String(formData.get('parent_id')) : null
 
-    if (!name) throw new Error('Subcategory name required')
-    if (!categoryId) throw new Error('Category ID required')
+        if (!name) return { ok: false, error: 'Node name required' }
+        if (!categoryId) return { ok: false, error: 'Category ID required' }
 
-    const supabase = await createClient()
-    const { error } = await supabase.from('subcategories').insert({
-        distributor_id: distributorId,
-        category_id: categoryId,
-        name
-    })
+        const supabase = await createClient()
+        const { error } = await supabase.from('category_nodes').insert({
+            distributor_id: distributorId,
+            category_id: categoryId,
+            parent_id: parentId,
+            name
+        })
 
-    if (error) {
-        if (error.code === '23505') throw new Error('Subcategory already exists in this category')
-        throw error
+        if (error) {
+            throw error
+        }
+        revalidatePath('/distributor/categories')
+        return { ok: true }
+    } catch (e: any) {
+        console.error("createCategoryNode error:", e)
+        return { ok: false, error: e.message }
     }
-    revalidatePath('/distributor/categories')
 }
 
-export async function updateSubcategory(subcategoryId: string, formData: FormData) {
-    const { distributorId } = await getDistributorContext()
-    const name = String(formData.get('name') || '').trim()
+export async function updateCategoryNode(nodeId: string, formData: FormData) {
+    try {
+        const { distributorId } = await getDistributorContext()
+        const name = String(formData.get('name') || '').trim()
 
-    if (!name) throw new Error('Subcategory name required')
+        if (!name) return { ok: false, error: 'Node name required' }
 
-    const supabase = await createClient()
-    const { error } = await supabase
-        .from('subcategories')
-        .update({ name })
-        .eq('id', subcategoryId)
-        .eq('distributor_id', distributorId)
+        const supabase = await createClient()
+        const { error } = await supabase
+            .from('category_nodes')
+            .update({ name })
+            .eq('id', nodeId)
+            .eq('distributor_id', distributorId)
 
-    if (error) {
-        if (error.code === '23505') throw new Error('Subcategory already exists in this category')
-        throw error
+        if (error) {
+            throw error
+        }
+        revalidatePath('/distributor/categories')
+        return { ok: true }
+    } catch (e: any) {
+        console.error("updateCategoryNode error:", e)
+        return { ok: false, error: e.message }
     }
-    revalidatePath('/distributor/categories')
 }
 
-export async function deleteSubcategory(subcategoryId: string) {
-    const { distributorId } = await getDistributorContext()
-    const supabase = await createClient()
+export async function deleteCategoryNode(nodeId: string) {
+    try {
+        const { distributorId } = await getDistributorContext()
+        const supabase = await createClient()
 
-    // RPC: Archive Subcategory (Safely archives subcategory + products)
-    const { data: result, error } = await supabase.rpc('archive_subcategory', {
-        p_subcategory_id: subcategoryId
-    })
+        // Use the safe RPC which validates if active products are linked to the node before cascading
+        const { data: result, error } = await supabase.rpc('archive_category_node', {
+            p_node_id: nodeId
+        })
 
-    if (error) throw error
+        if (error) {
+            console.error("archive category node RPC error:", error)
+            return { ok: false, error: error.message }
+        }
 
-    if (result && result.error) {
-        throw new Error(result.error)
+        if (result && result.error) {
+            return { ok: false, error: result.error }
+        }
+
+        revalidatePath('/distributor/categories')
+        revalidatePath('/distributor/inventory')
+        return { ok: true }
+    } catch (e: any) {
+        console.error("deleteCategoryNode error:", e)
+        return { ok: false, error: e.message || 'Failed to delete category node' }
     }
-
-    revalidatePath('/distributor/categories')
-    revalidatePath('/distributor/inventory')
 }

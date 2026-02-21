@@ -13,7 +13,7 @@ interface Category {
     name: string
 }
 
-interface Subcategory {
+interface CategoryNode {
     id: string
     name: string
     category_id: string
@@ -27,9 +27,9 @@ interface Product {
     sell_price: number | null
     stock_qty: number
     category_id: string | null
-    subcategory_id: string | null
+    category_node_id: string | null
     categories?: { name: string } | null
-    subcategories?: { name: string } | null
+    category_nodes?: { name: string } | null
 
     // New fields
     stock_pieces?: number
@@ -44,15 +44,17 @@ interface Product {
     cost_mode?: 'unit' | 'case'
     price_mode?: 'unit' | 'case'
     stock_mode?: 'pieces' | 'cases'
+    stock_locked?: boolean
+    locked_stock_qty?: number | null
 }
 
 interface InventoryClientProps {
     initialProducts: Product[]
     categories: Category[]
-    subcategories: Subcategory[]
+    categoryNodes: CategoryNode[]
 }
 
-export function InventoryClient({ initialProducts, categories, subcategories }: InventoryClientProps) {
+export function InventoryClient({ initialProducts, categories, categoryNodes }: InventoryClientProps) {
     const [searchTerm, setSearchTerm] = useState('')
     const [showLowStock, setShowLowStock] = useState(false)
     const [filterCategory, setFilterCategory] = useState<string>('all')
@@ -83,7 +85,7 @@ export function InventoryClient({ initialProducts, categories, subcategories }: 
                 p.name.toLowerCase().includes(lowerTerm) ||
                 (p.sku && p.sku.toLowerCase().includes(lowerTerm)) ||
                 (p.categories?.name && p.categories.name.toLowerCase().includes(lowerTerm)) ||
-                (p.subcategories?.name && p.subcategories.name.toLowerCase().includes(lowerTerm))
+                (p.category_nodes?.name && p.category_nodes.name.toLowerCase().includes(lowerTerm))
             )
         }
         return res
@@ -215,7 +217,7 @@ export function InventoryClient({ initialProducts, categories, subcategories }: 
                             <ProductForm
                                 defaultValues={editingProduct}
                                 categories={categories}
-                                subcategories={subcategories}
+                                categoryNodes={categoryNodes}
                                 type="edit"
                                 onCancel={() => modalRef.current?.close()}
                             />
@@ -234,7 +236,7 @@ export function InventoryClient({ initialProducts, categories, subcategories }: 
                         </div>
                         <ProductForm
                             categories={categories}
-                            subcategories={subcategories}
+                            categoryNodes={categoryNodes}
                             type="add"
                             onCancel={() => addModalRef.current?.close()}
                         />
@@ -322,7 +324,7 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
                             <TableCell className="font-medium">
                                 <div className="flex flex-col">
                                     <span>{p.name}</span>
-                                    {p.subcategories && <span className="text-[10px] text-slate-400">{p.subcategories.name}</span>}
+                                    {p.category_nodes && <span className="text-[10px] text-slate-400">{p.category_nodes.name}</span>}
                                     {isLow && <Badge variant="destructive" className="w-fit mt-1 text-[10px] h-5 px-1">Low Stock</Badge>}
                                 </div>
                             </TableCell>
@@ -330,9 +332,16 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
                             <TableCell>${Number(p.cost_price).toFixed(2)}</TableCell>
                             <TableCell>${Number(p.sell_price).toFixed(2)}</TableCell>
                             <TableCell>
-                                <span className={`font-mono ${isLow ? 'text-red-600 font-bold' : ''}`}>
-                                    {p.stock_pieces}
-                                </span>
+                                <div className="flex flex-col gap-1 w-fit">
+                                    <span className={`font-mono ${isLow ? 'text-red-600 font-bold' : ''}`}>
+                                        {p.stock_pieces}
+                                    </span>
+                                    {p.stock_locked && (
+                                        <Badge variant="outline" className="text-[9px] h-4 px-1 py-0 leading-none bg-amber-50 text-amber-600 border-amber-200 w-fit">
+                                            Locked
+                                        </Badge>
+                                    )}
+                                </div>
                             </TableCell>
                             <TableCell className="text-xs text-slate-500">
                                 {p.allow_piece && <span className="block">Pieces</span>}
@@ -368,7 +377,7 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
                         <div className="flex justify-between items-start">
                             <div>
                                 <h4 className="font-medium text-slate-900">{p.name}</h4>
-                                {p.subcategories && <span className="text-xs text-slate-500 mr-2">{p.subcategories.name}</span>}
+                                {p.category_nodes && <span className="text-xs text-slate-500 mr-2">{p.category_nodes.name}</span>}
                                 {isLow && <Badge variant="destructive" className="text-[10px] h-5 px-1">Low Stock</Badge>}
                             </div>
                             <div className="flex bg-slate-50 rounded-lg">
@@ -389,7 +398,10 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
                             </div>
                             <div>
                                 <span className="text-xs text-slate-500 block">Stock</span>
-                                <span className={`font-medium ${isLow ? 'text-red-600' : ''}`}>{p.stock_pieces} units</span>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <span className={`font-medium ${isLow ? 'text-red-600' : ''}`}>{p.stock_pieces} units</span>
+                                    {p.stock_locked && <Badge variant="outline" className="text-[9px] h-3.5 px-1 py-0 leading-none bg-amber-50 text-amber-600 border-amber-200">Locked</Badge>}
+                                </div>
                             </div>
                         </div>
                         {p.sku && <div className="text-xs text-slate-400 font-mono">SKU: {p.sku}</div>}
@@ -410,10 +422,10 @@ import { useRouter } from 'next/navigation'
 // ... (other imports)
 
 // ProductForm Component using useActionState
-function ProductForm({ defaultValues, categories, subcategories, type, onCancel }: {
+function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel }: {
     defaultValues?: any,
     categories: any[],
-    subcategories: any[],
+    categoryNodes: any[],
     type: 'add' | 'edit',
     onCancel: () => void
 }) {
@@ -421,12 +433,16 @@ function ProductForm({ defaultValues, categories, subcategories, type, onCancel 
     const [allowCase, setAllowCase] = useState(defaultValues?.allow_case ?? false)
     const [allowPiece, setAllowPiece] = useState(defaultValues?.allow_piece ?? true)
 
+    // Lock Stock Fields
+    const [stockLocked, setStockLocked] = useState(defaultValues?.stock_locked ?? false)
+    const [lockedStockQty, setLockedStockQty] = useState<string>(defaultValues?.locked_stock_qty != null ? String(defaultValues.locked_stock_qty) : '')
+
     // Units per Case (Central to calculations)
     const [unitsPerCase, setUnitsPerCase] = useState<number>(defaultValues?.units_per_case || 1)
 
     // Subcategory logic
     const [selectedCategory, setSelectedCategory] = useState(defaultValues?.category_id || '')
-    const [selectedSubcategory, setSelectedSubcategory] = useState(defaultValues?.subcategory_id || '')
+    const [selectedSubcategory, setSelectedSubcategory] = useState(defaultValues?.category_node_id || '')
 
     // Pricing Modes
     const [costMode, setCostMode] = useState<'unit' | 'case'>(defaultValues?.cost_mode || 'unit')
@@ -508,7 +524,7 @@ function ProductForm({ defaultValues, categories, subcategories, type, onCancel 
     }
 
     // Filter subcategories based on selected category
-    const availableSubcategories = subcategories.filter(s => s.category_id === selectedCategory)
+    const availableSubcategories = categoryNodes.filter(s => s.category_id === selectedCategory)
 
     // Reset subcategory when category changes (but not on initial load)
     const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -585,7 +601,7 @@ function ProductForm({ defaultValues, categories, subcategories, type, onCancel 
             <div className="grid gap-2">
                 <label className="text-sm font-medium text-slate-600">Subcategory</label>
                 <select
-                    name="subcategory_id"
+                    name="category_node_id"
                     value={selectedSubcategory}
                     onChange={(e) => setSelectedSubcategory(e.target.value)}
                     disabled={!selectedCategory || availableSubcategories.length === 0}
@@ -717,8 +733,51 @@ function ProductForm({ defaultValues, categories, subcategories, type, onCancel 
             </div>
 
             {/* Stock Section with Mode Toggle */}
-            <div className="grid gap-2 p-3 border rounded-lg bg-slate-50">
-                <div className="flex items-center justify-between">
+            <div className="grid gap-2 p-3 border rounded-lg bg-slate-50 relative">
+
+                {/* Lock Setting Header */}
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold flex items-center gap-2 text-slate-800 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            name="stock_locked"
+                            checked={stockLocked}
+                            onChange={e => {
+                                setStockLocked(e.target.checked)
+                                if (e.target.checked && !lockedStockQty && stockInput) {
+                                    setLockedStockQty(stockMode === 'cases' ? String(Number(stockInput || 0) * unitsPerCase) : stockInput)
+                                }
+                            }}
+                            className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 shadow-sm"
+                            value="true"
+                        />
+                        Lock Stock Quantity
+                    </label>
+                    {stockLocked && <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 pointer-events-none">Locked</Badge>}
+                </div>
+
+                {stockLocked && (
+                    <div className="grid gap-1 mb-2 p-3 bg-white border border-amber-100 rounded-md shadow-sm">
+                        <label className="text-xs font-medium text-amber-800">Forced Stock Level (Total Units)</label>
+                        <div className="relative">
+                            <Input
+                                name="locked_stock_qty"
+                                value={lockedStockQty}
+                                onChange={e => setLockedStockQty(e.target.value)}
+                                type="number"
+                                step="1"
+                                min="0"
+                                placeholder="0"
+                                required={stockLocked}
+                                className="border-amber-200 focus-visible:ring-amber-500 bg-amber-50/30 font-mono"
+                            />
+                            <span className="absolute right-3 top-2.5 text-amber-600/60 text-xs pointer-events-none">units</span>
+                        </div>
+                        <p className="text-[10px] text-amber-700 leading-tight">Orders will not deduct from this amount.</p>
+                    </div>
+                )}
+
+                <div className={`flex items-center justify-between transition-opacity ${stockLocked ? 'opacity-40 pointer-events-none' : ''}`}>
                     <label className="text-sm font-medium">Current Stock</label>
                     <div className="flex bg-slate-200 p-0.5 rounded-lg">
                         <button
@@ -738,7 +797,7 @@ function ProductForm({ defaultValues, categories, subcategories, type, onCancel 
                     </div>
                 </div>
 
-                <div className="grid gap-1">
+                <div className={`grid gap-1 transition-opacity ${stockLocked ? 'opacity-40 pointer-events-none' : ''}`}>
                     <div className="relative">
                         <Input
                             value={stockInput}
@@ -747,7 +806,7 @@ function ProductForm({ defaultValues, categories, subcategories, type, onCancel 
                             step={stockMode === 'cases' ? "1" : "1"}
                             min="0"
                             placeholder="0"
-                            required
+                            required={!stockLocked}
                         />
                         <span className="absolute right-3 top-2.5 text-slate-400 text-xs pointer-events-none">
                             {stockMode === 'pieces' ? 'units' : `cases (@ ${unitsPerCase}/case)`}

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { requireRole } from '@/lib/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Package, Layers, ShoppingCart, FileText, BadgeDollarSign } from 'lucide-react'
+import { Package, Layers, ShoppingCart, FileText, BadgeDollarSign, Tag } from 'lucide-react'
 
 export default async function DistributorHome() {
   const profile = await requireRole('distributor')
@@ -41,6 +41,13 @@ export default async function DistributorHome() {
       description: 'Track revenue and margins.',
       icon: BadgeDollarSign,
       color: 'text-emerald-600 bg-emerald-50'
+    },
+    {
+      href: '/distributor/vendor-pricing',
+      label: 'Vendor Pricing',
+      description: 'Manage client-specific price overrides and bulk changes.',
+      icon: Tag,
+      color: 'text-indigo-600 bg-indigo-50'
     },
   ]
 

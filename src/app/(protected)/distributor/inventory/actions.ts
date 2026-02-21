@@ -35,7 +35,7 @@ export async function createProductAction(
         const name = String(formData.get('name') || '').trim()
         const sku = String(formData.get('sku') || '').trim() || null
         const category_id = String(formData.get('category_id') || '').trim() || null
-        const subcategory_id = String(formData.get('subcategory_id') || '').trim() || null
+        const category_node_id = String(formData.get('category_node_id') || '').trim() || null
 
         const cost_price = Number(formData.get('cost_price') || 0)
         const sell_price = Number(formData.get('sell_price') || 0)
@@ -48,6 +48,12 @@ export async function createProductAction(
         const stock_mode = String(formData.get('stock_mode') || 'pieces')
 
         const stock_pieces = Number(formData.get('stock_qty') || 0)
+
+        const stock_locked = formData.get('stock_locked') === 'true' || formData.get('stock_locked') === 'on'
+        const locked_stock_qty_raw = formData.get('locked_stock_qty')
+        const locked_stock_qty = stock_locked && locked_stock_qty_raw ? Number(locked_stock_qty_raw) : null
+        const final_stock_pieces = stock_locked && locked_stock_qty !== null ? locked_stock_qty : stock_pieces
+
         const allow_case = formData.get('allow_case') === 'on'
         const allow_piece = formData.get('allow_piece') === 'on'
         const units_per_case = Number(formData.get('units_per_case') || 1)
@@ -61,18 +67,18 @@ export async function createProductAction(
         const { error } = await supabase.from('products').insert({
             distributor_id: distributorId,
             category_id,
-            subcategory_id,
+            category_node_id,
             name,
             sku,
             cost_price,
             sell_price,
-            cost_case,
-            price_case,
             cost_mode,
             price_mode,
-            stock_qty: stock_pieces,    // Sync legacy
-            stock_pieces,               // Canonical
+            stock_qty: final_stock_pieces,    // Sync legacy
+            stock_pieces: final_stock_pieces,               // Canonical
             stock_mode,                 // Preference
+            stock_locked,
+            locked_stock_qty,
             allow_case,
             allow_piece,
             units_per_case: allow_case ? units_per_case : null,
@@ -81,6 +87,9 @@ export async function createProductAction(
 
         if (error) {
             console.error('createProductAction Supabase Error:', error)
+            if (error.message?.includes('schema cache') || error.message?.includes('Could not find')) {
+                return { error: 'Database schema is updating. Please apply the latest migration (20260225150007_lock_stock_quantity.sql) in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }
+            }
             return { error: error.message, details: error }
         }
 
@@ -104,7 +113,7 @@ export async function updateProductAction(
         const name = String(formData.get('name') || '').trim()
         const sku = String(formData.get('sku') || '').trim() || null
         const category_id = String(formData.get('category_id') || '').trim() || null
-        const subcategory_id = String(formData.get('subcategory_id') || '').trim() || null
+        const category_node_id = String(formData.get('category_node_id') || '').trim() || null
 
         const cost_price = Number(formData.get('cost_price') || 0)
         const sell_price = Number(formData.get('sell_price') || 0)
@@ -117,6 +126,12 @@ export async function updateProductAction(
         const stock_mode = String(formData.get('stock_mode') || 'pieces')
 
         const stock_pieces = Number(formData.get('stock_qty') || 0)
+
+        const stock_locked = formData.get('stock_locked') === 'true' || formData.get('stock_locked') === 'on'
+        const locked_stock_qty_raw = formData.get('locked_stock_qty')
+        const locked_stock_qty = stock_locked && locked_stock_qty_raw ? Number(locked_stock_qty_raw) : null
+        const final_stock_pieces = stock_locked && locked_stock_qty !== null ? locked_stock_qty : stock_pieces
+
         const allow_case = formData.get('allow_case') === 'on'
         const allow_piece = formData.get('allow_piece') === 'on'
         const units_per_case = Number(formData.get('units_per_case') || 1)
@@ -133,16 +148,16 @@ export async function updateProductAction(
                 name,
                 sku,
                 category_id,
-                subcategory_id,
+                category_node_id,
                 cost_price,
                 sell_price,
-                cost_case,
-                price_case,
                 cost_mode,
                 price_mode,
-                stock_qty: stock_pieces,
-                stock_pieces,
+                stock_qty: final_stock_pieces,
+                stock_pieces: final_stock_pieces,
                 stock_mode,
+                stock_locked,
+                locked_stock_qty,
                 allow_case,
                 allow_piece,
                 units_per_case: allow_case ? units_per_case : null,
@@ -153,6 +168,9 @@ export async function updateProductAction(
 
         if (error) {
             console.error('updateProductAction Error:', error)
+            if (error.message?.includes('schema cache') || error.message?.includes('Could not find')) {
+                return { error: 'Database schema is updating. Please apply the latest migration (20260225150007_lock_stock_quantity.sql) in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }
+            }
             return { error: error.message }
         }
 

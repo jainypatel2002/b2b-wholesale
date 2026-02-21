@@ -34,15 +34,24 @@ export default async function CategoryProductsPage({ params }: { params: Promise
     let errorMsg = ''
 
     try {
-        // 1. Validate Category & Fetch Name + Subcategories
-        const { data: category, error: catError } = await supabase
-            .from('categories')
-            .select('name, subcategories(id, name)')
-            .eq('id', categoryId)
-            .eq('distributor_id', distributorId)
-            .eq('is_active', true)
-            .is('deleted_at', null)
-            .single()
+        // 1. Validate Category & Fetch Name + Category Nodes Independently
+        const [{ data: category, error: catError }, { data: categoryNodes, error: nodesError }] = await Promise.all([
+            supabase
+                .from('categories')
+                .select('name')
+                .eq('id', categoryId)
+                .eq('distributor_id', distributorId)
+                .eq('is_active', true)
+                .is('deleted_at', null)
+                .single(),
+            supabase
+                .from('category_nodes')
+                .select('id, name')
+                .eq('category_id', categoryId)
+                .eq('distributor_id', distributorId)
+                .eq('is_active', true)
+                .is('deleted_at', null)
+        ])
 
         if (catError || !category) {
             if (catError?.code === 'PGRST116') { // No rows found
@@ -51,21 +60,88 @@ export default async function CategoryProductsPage({ params }: { params: Promise
             throw catError || new Error('Category not found')
         }
 
+        if (nodesError) throw nodesError
+
         categoryName = category.name
-        subcategories = category.subcategories || []
+        subcategories = categoryNodes || []
 
-        // 2. Fetch Products
-        const { data: productsData, error: prodError } = await supabase
-            .from('products')
-            .select('id,name,sell_price,allow_case,allow_piece,units_per_case,subcategory_id,category_id,categories(name),subcategories(name),stock_qty,stock_pieces,sku')
-            .eq('distributor_id', distributorId)
+        // Build a fast lookup map for node names
+        const nodeMap = new Map()
+        subcategories.forEach((n: any) => nodeMap.set(n.id, n.name))
+
+        // 2. Fetch Products via the Pricing RPC Engine
+        let productsData: any[] = []
+        const { data: rpcData, error: prodError } = await supabase
+            .rpc('get_vendor_catalog_prices', {
+                p_distributor_id: distributorId
+            })
             .eq('category_id', categoryId)
-            .eq('active', true)
-            .is('deleted_at', null)
-            .order('name', { ascending: true })
 
-        if (prodError) throw prodError
-        products = productsData ?? []
+        if (prodError) {
+            if (prodError.code === 'PGRST202') {
+                console.warn('RPC get_vendor_catalog_prices not found, falling back to direct queries')
+
+                const [{ data: fallbackData, error: fallbackError }, { data: overridesData }] = await Promise.all([
+                    supabase
+                        .from('products')
+                        .select('id, name, sell_price, allow_case, allow_piece, units_per_case, category_id, category_node_id, stock_qty, stock_pieces, sku')
+                        .eq('distributor_id', distributorId)
+                        .eq('category_id', categoryId)
+                        .eq('active', true)
+                        .is('deleted_at', null)
+                        .order('name', { ascending: true }),
+                    supabase
+                        .from('vendor_price_overrides')
+                        .select('product_id, price_cents')
+                        .eq('distributor_id', distributorId)
+                ])
+
+                if (fallbackError) throw fallbackError
+
+                const overrideMap = new Map((overridesData || []).map((o: any) => [o.product_id, o.price_cents]))
+
+                productsData = (fallbackData ?? []).map((p: any) => {
+                    const baseCents = Math.round((p.sell_price || 0) * 100)
+                    const overrideCents = overrideMap.get(p.id)
+                    return {
+                        id: p.id,
+                        name: p.name,
+                        sku: p.sku,
+                        effective_price_cents: overrideCents !== undefined ? overrideCents : baseCents,
+                        base_price_cents: baseCents,
+                        allow_case: p.allow_case,
+                        allow_piece: p.allow_piece,
+                        units_per_case: p.units_per_case,
+                        category_id: p.category_id,
+                        category_node_id: p.category_node_id,
+                        stock_qty: p.stock_qty,
+                        stock_pieces: p.stock_pieces
+                    }
+                })
+            } else {
+                throw prodError
+            }
+        } else {
+            productsData = rpcData || []
+        }
+
+        // Map the RPC row schema to the client component's expectation smoothly
+        products = (productsData ?? []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            sku: p.sku,
+            sell_price: (p.effective_price_cents || 0) / 100, // Cents to Dollars
+            allow_case: p.allow_case,
+            allow_piece: p.allow_piece,
+            units_per_case: p.units_per_case,
+            category_id: p.category_id,
+            category_node_id: p.category_node_id,
+            stock_qty: p.stock_qty,
+            stock_pieces: p.stock_pieces,
+            is_overridden: p.effective_price_cents !== p.base_price_cents,
+            categories: { name: categoryName },
+            subcategories: p.category_node_id ? { name: nodeMap.get(p.category_node_id) || 'Unknown' } : null
+        }))
 
     } catch (err: any) {
         console.error('Error fetching category products:', err)
