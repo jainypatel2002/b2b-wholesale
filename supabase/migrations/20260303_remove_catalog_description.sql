@@ -1,5 +1,5 @@
--- 20260302_fix_catalog_vdl_status.sql
--- HOTFIX: Remove the invalid `vdl.status = 'active'` check from get_vendor_catalog_prices which caused a 500 error in the vendor catalog because `distributor_vendors` relies solely on row existence for linking, not a status column.
+-- 20260303_remove_catalog_description.sql
+-- HOTFIX: Remove the non-existent `p.description` column from `get_vendor_catalog_prices` which caused a 500 error in the vendor catalog.
 
 drop function if exists public.get_vendor_catalog_prices(uuid);
 
