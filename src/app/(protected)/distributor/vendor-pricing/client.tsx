@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Search, Loader2, RotateCcw, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
-import { fetchOverrides, saveOverride, removeOverride, executeBulkAdjustment } from './actions'
+import { fetchOverrides, saveOverride, removeOverride } from './actions'
 
 type Vendor = { id: string, name: string }
 type Product = {
@@ -62,73 +62,7 @@ export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], 
         )
     }, [products, searchTerm])
 
-    // Bulk Adjust State
-    const bulkModalRef = useRef<HTMLDialogElement>(null)
-    const [bulkScope, setBulkScope] = useState<'global' | 'category' | 'category_node'>('global')
-    const [bulkScopeId, setBulkScopeId] = useState<string>('') // Category name or Node name to map to ID
-    const [bulkType, setBulkType] = useState<'percent' | 'fixed_cents' | 'overwrite_cents'>('percent')
-    const [bulkValue, setBulkValue] = useState<string>('0')
-    const [isExecutingBulk, setIsExecutingBulk] = useState(false)
-
-    // Compute unique categories for dropdown
-    const uniqueCategories = useMemo(() => Array.from(new Set(products.map(p => p.category).filter(Boolean))) as string[], [products])
-
-    // Preview logic
-    const previewCount = useMemo(() => {
-        return products.filter(p => {
-            if (bulkScope === 'global') return true
-            if (bulkScope === 'category') return p.category === bulkScopeId
-            if (bulkScope === 'category_node') return p.node === bulkScopeId
-            return false
-        }).length
-    }, [products, bulkScope, bulkScopeId])
-
-    const handleExecuteBulk = async () => {
-        const val = parseFloat(bulkValue)
-        if (isNaN(val)) return toast.error("Invalid amount")
-
-        // Map scopeId to the actual UUID from products (since we only have the names on the UI)
-        let resolvedScopeId: string | null = null
-        if (bulkScope === 'category') {
-            const p = products.find(p => p.category === bulkScopeId)
-            if (!p || !p.category) return toast.error("Please select a valid category")
-            // Wait, products doesn't have `category_id` exported to the client. We need to find the category_id.
-            // Oh right, `products` in page.tsx doesn't pass category_id. Let's assume the server will need the name or we update `page.tsx`.
-            // Let's stop and fix page.tsx to send category_id and category_node_id.
-        }
-
-        setIsExecutingBulk(true)
-        try {
-            // Find the ID mapping
-            let scopeUuid: string | null = null
-            if (bulkScope !== 'global') {
-                const target = products.find(p =>
-                    (bulkScope === 'category' && p.category === bulkScopeId) ||
-                    (bulkScope === 'category_node' && p.node === bulkScopeId)
-                )
-                if (target) {
-                    scopeUuid = bulkScope === 'category' ? target.category_id! : target.category_node_id!
-                } else {
-                    throw new Error("Target scope not found in products list")
-                }
-            }
-
-            const numericValue = bulkType === 'percent' ? val : Math.round(val * 100)
-            const res = await executeBulkAdjustment(bulkScope, scopeUuid, bulkType, numericValue)
-
-            if (res.ok) {
-                toast.success(`Successfully updated ${res.data.affected_rows} products`)
-                bulkModalRef.current?.close()
-                setBulkValue('0')
-            } else {
-                toast.error(res.error)
-            }
-        } catch (e: any) {
-            toast.error(e.message)
-        } finally {
-            setIsExecutingBulk(false)
-        }
-    }
+    // Bulk pricing is now handled by the dedicated /distributor/bulk-pricing page
 
     return (
         <div className="space-y-6">
@@ -164,9 +98,11 @@ export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], 
                             />
                         </div>
 
-                        <Button variant="outline" onClick={() => bulkModalRef.current?.showModal()} className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
-                            <TrendingUp className="mr-2 h-4 w-4" /> Bulk Base Price Tool
-                        </Button>
+                        <a href="/distributor/bulk-pricing">
+                            <Button variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+                                <TrendingUp className="mr-2 h-4 w-4" /> Bulk Price Tool
+                            </Button>
+                        </a>
                     </div>
 
                     {isLoadingOverrides ? (
@@ -219,88 +155,15 @@ export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], 
             ) : (
                 <div className="text-center p-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                     <p className="text-slate-500 mb-4">Please select a vendor to manage their specific pricing overrides.</p>
-                    <Button variant="outline" onClick={() => bulkModalRef.current?.showModal()} className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
-                        <TrendingUp className="mr-2 h-4 w-4" /> Open Bulk Base Price Tool Instead
-                    </Button>
+                    <a href="/distributor/bulk-pricing">
+                        <Button variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+                            <TrendingUp className="mr-2 h-4 w-4" /> Open Bulk Price Tool Instead
+                        </Button>
+                    </a>
                 </div>
             )}
 
-            {/* Bulk Base Price Modal */}
-            <dialog ref={bulkModalRef} className="rounded-xl p-0 backdrop:bg-slate-900/50 shadow-xl border-0 m-auto">
-                <div className="w-full max-w-md bg-white p-6 space-y-6">
-                    <div>
-                        <h3 className="text-lg font-semibold tracking-tight text-slate-900">Bulk Adjust Base Prices</h3>
-                        <p className="text-sm text-slate-500 mt-1">
-                            This permanently alters the underlying <b>Base Price</b> paid by all distributors for the catalog.
-                        </p>
-                    </div>
 
-                    <div className="grid gap-4">
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Scope</label>
-                            <select
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={bulkScope}
-                                onChange={e => setBulkScope(e.target.value as any)}
-                            >
-                                <option value="global">Entire Catalog (Global)</option>
-                                <option value="category">Specific Category</option>
-                            </select>
-                        </div>
-
-                        {bulkScope === 'category' && (
-                            <div className="grid gap-2">
-                                <label className="text-sm font-medium">Select Category</label>
-                                <select
-                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                    value={bulkScopeId}
-                                    onChange={e => setBulkScopeId(e.target.value)}
-                                >
-                                    <option value="">-- Choose Category --</option>
-                                    {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                        )}
-
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Adjustment Type</label>
-                            <select
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={bulkType}
-                                onChange={e => setBulkType(e.target.value as any)}
-                            >
-                                <option value="percent">Percentage (%)</option>
-                                <option value="fixed_cents">Fixed Amount ($)</option>
-                                <option value="overwrite_cents">Overwrite Exact Price ($)</option>
-                            </select>
-                        </div>
-
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Value (e.g. 5 for 5%, 2.50 for $2.50)</label>
-                            <Input
-                                type="number"
-                                step="0.01"
-                                value={bulkValue}
-                                onChange={e => setBulkValue(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="bg-indigo-50 text-indigo-800 text-sm p-3 rounded-md">
-                            <strong>Preview:</strong> This adjustment will immediately impact <b>{previewCount}</b> active product(s).
-                        </div>
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t">
-                        <Button type="button" variant="ghost" onClick={() => bulkModalRef.current?.close()} disabled={isExecutingBulk}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleExecuteBulk} disabled={isExecutingBulk || (bulkScope === 'category' && !bulkScopeId) || previewCount === 0}>
-                            {isExecutingBulk && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Execute {previewCount} Update(s)
-                        </Button>
-                    </div>
-                </div>
-            </dialog>
         </div>
     )
 }

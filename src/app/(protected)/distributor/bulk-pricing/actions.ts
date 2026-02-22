@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
+import { revalidatePath } from 'next/cache'
 
 export async function executeBulkPriceAdjustment(params: {
     scopeType: 'category' | 'category_node'
@@ -47,6 +48,11 @@ export async function executeBulkPriceAdjustment(params: {
     } catch (e: any) {
         console.error('Execute bulk price adjustment error:', e)
         return { ok: false, error: e.message }
+    } finally {
+        // Revalidate all pages that display prices
+        revalidatePath('/distributor/inventory')
+        revalidatePath('/distributor/bulk-pricing')
+        revalidatePath('/distributor/vendor-pricing')
     }
 }
 
@@ -106,7 +112,7 @@ export async function fetchSampleProducts(scopeType: 'category' | 'category_node
             .eq('distributor_id', distributorId)
             .is('deleted_at', null)
             .order('name', { ascending: true })
-            .limit(5)
+            .limit(50)
 
         if (scopeType === 'category') {
             query = query.eq('category_id', scopeId)

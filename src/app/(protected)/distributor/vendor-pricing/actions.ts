@@ -73,35 +73,3 @@ export async function removeOverride(vendorId: string, productId: string) {
         return { ok: false, error: e.message }
     }
 }
-
-export async function executeBulkAdjustment(
-    scope: 'global' | 'category' | 'category_node',
-    scopeId: string | null,
-    type: 'fixed_cents' | 'percent' | 'overwrite_cents',
-    value: number
-) {
-    try {
-        const { distributorId } = await getDistributorContext()
-        const supabase = await createClient()
-
-        if (isNaN(value)) return { ok: false, error: "Invalid adjustment value" }
-
-        const { data, error } = await supabase.rpc('execute_bulk_price_adjustment', {
-            p_distributor_id: distributorId,
-            p_scope: scope,
-            p_scope_id: scopeId,
-            p_type: type,
-            p_value: value
-        })
-
-        if (error) throw error
-
-        revalidatePath('/distributor/vendor-pricing')
-        revalidatePath('/distributor/inventory')
-
-        return { ok: true, data }
-    } catch (e: any) {
-        console.error("Execute bulk adjustment error:", e)
-        return { ok: false, error: e.message }
-    }
-}

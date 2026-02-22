@@ -315,10 +315,13 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
                                         const newPrice = computeNewPrice(currentPrice)
                                         const diff = newPrice - currentPrice
                                         return (
-                                            <tr key={p.id} className="hover:bg-slate-50">
+                                            <tr key={p.id} className={`hover:bg-slate-50 ${newPrice < 0 ? 'bg-red-50' : ''}`}>
                                                 <td className="px-3 py-2 font-medium">{p.name}</td>
                                                 <td className="px-3 py-2 text-right text-slate-500">${currentPrice.toFixed(2)}</td>
-                                                <td className="px-3 py-2 text-right font-semibold">${newPrice.toFixed(2)}</td>
+                                                <td className={`px-3 py-2 text-right font-semibold ${newPrice < 0 ? 'text-red-600' : ''}`}>
+                                                    ${Math.max(0, newPrice).toFixed(2)}
+                                                    {newPrice < 0 && <span className="ml-1 text-[10px] text-red-500">(floored to $0)</span>}
+                                                </td>
                                                 <td className={`px-3 py-2 text-right font-medium ${diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-600' : 'text-slate-400'}`}>
                                                     {diff > 0 ? '+' : ''}{diff.toFixed(2)}
                                                 </td>
@@ -328,7 +331,7 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
                                 </tbody>
                             </table>
                             <div className="px-3 py-1.5 bg-slate-50 border-t text-xs text-slate-400">
-                                Showing up to 5 sample products
+                                Showing up to 50 products
                             </div>
                         </div>
                     )}
@@ -426,6 +429,11 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
                                 Base updated: <strong>{result.base_updated}</strong> ·
                                 Overrides upserted: <strong>{result.overrides_upserted}</strong>
                             </div>
+                            {result.batch_id && (
+                                <div className="mt-1 text-xs text-green-600 font-mono">
+                                    Batch: {result.batch_id.slice(0, 8)}
+                                </div>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
