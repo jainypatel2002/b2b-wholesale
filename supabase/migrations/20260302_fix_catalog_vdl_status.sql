@@ -1,5 +1,5 @@
--- 20260301_catalog_rpc_price_case.sql
--- Update get_vendor_catalog_prices to return base_price_case_cents for the unit/case toggle
+-- 20260302_fix_catalog_vdl_status.sql
+-- HOTFIX: Remove the invalid `vdl.status = 'active'` check from get_vendor_catalog_prices which caused a 500 error in the vendor catalog because `distributor_vendors` relies solely on row existence for linking, not a status column.
 
 drop function if exists public.get_vendor_catalog_prices(uuid);
 
