@@ -14,7 +14,14 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
 
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id,status,created_at,order_items(qty,unit_price,product_name,products(name))')
+    .select(`
+      id, status, created_at,
+      order_items(
+        id, qty, unit_price, product_name,
+        products(name),
+        edited_name, edited_unit_price, edited_qty, removed
+      )
+    `)
     .eq('id', id)
     .eq('vendor_id', vendorId)
     .single()
@@ -40,7 +47,14 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
     )
   }
 
-  const subtotal = (order.order_items ?? []).reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.qty), 0)
+  // Use effective values (edited if present, else original), exclude removed
+  const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
+  const subtotal = activeItems.reduce((sum: number, it: any) => {
+    const price = it.edited_unit_price ?? it.unit_price
+    const qty = it.edited_qty ?? it.qty
+    return sum + Number(price) * Number(qty)
+  }, 0)
+
   const { data: invoice } = await supabase.from('invoices').select('id,invoice_number,payment_status,total').eq('order_id', order.id).maybeSingle()
 
   return (
@@ -61,7 +75,7 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
             <CardHeader>
               <CardTitle className="flex justify-between items-center text-lg">
                 <span>Items</span>
-                <span className="text-sm font-normal text-slate-500">{order.order_items?.length || 0} items</span>
+                <span className="text-sm font-normal text-slate-500">{activeItems.length} items</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -75,15 +89,17 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {order.order_items?.map((it: any, idx: number) => {
-                    const productName = it.product_name || it.products?.name || '(Archived Product)'
+                  {activeItems.map((it: any) => {
+                    const productName = it.edited_name ?? it.product_name ?? (Array.isArray(it.products) ? it.products[0]?.name : it.products?.name) ?? '(Archived Product)'
+                    const effectivePrice = Number(it.edited_unit_price ?? it.unit_price)
+                    const effectiveQty = Number(it.edited_qty ?? it.qty)
                     return (
-                      <TableRow key={idx}>
+                      <TableRow key={it.id}>
                         <TableCell className="font-medium">{productName}</TableCell>
-                        <TableCell className="text-right">{it.qty}</TableCell>
-                        <TableCell className="text-right">${Number(it.unit_price).toFixed(2)}</TableCell>
+                        <TableCell className="text-right">{effectiveQty}</TableCell>
+                        <TableCell className="text-right">${effectivePrice.toFixed(2)}</TableCell>
                         <TableCell className="text-right font-medium">
-                          ${(Number(it.unit_price) * Number(it.qty)).toFixed(2)}
+                          ${(effectivePrice * effectiveQty).toFixed(2)}
                         </TableCell>
                       </TableRow>
                     )

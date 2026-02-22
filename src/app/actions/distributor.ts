@@ -27,6 +27,127 @@ export async function updateOrderStatus(orderId: string, newStatus: string) {
     return { success: true }
 }
 
+// ── Edit Order Items Before Invoice ─────────────────────────────────
+
+interface OrderItemEdit {
+    order_item_id: string
+    edited_name?: string | null
+    edited_unit_price?: number | null
+    edited_qty?: number | null
+    removed?: boolean
+}
+
+export async function updateOrderItemsAction(orderId: string, items: OrderItemEdit[]) {
+    const { distributorId, profile } = await getDistributorContext()
+    const supabase = await createClient()
+
+    // 1. Verify distributor owns order
+    const { data: order, error: orderErr } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('id', orderId)
+        .eq('distributor_id', distributorId)
+        .single()
+
+    if (orderErr || !order) {
+        return { error: 'Order not found or access denied' }
+    }
+
+    // 2. Check no invoice exists (order is not locked)
+    const { data: existingInvoice } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('order_id', orderId)
+        .maybeSingle()
+
+    if (existingInvoice) {
+        return { error: 'Order is locked — invoice already generated' }
+    }
+
+    // 3. Validate each item
+    if (!items.length) {
+        return { error: 'No items to update' }
+    }
+
+    for (const item of items) {
+        if (!item.order_item_id) {
+            return { error: 'Missing order_item_id' }
+        }
+        if (item.edited_name !== undefined && item.edited_name !== null && item.edited_name.trim() === '') {
+            return { error: 'Item name cannot be empty' }
+        }
+        if (item.edited_unit_price !== undefined && item.edited_unit_price !== null && item.edited_unit_price < 0) {
+            return { error: 'Price cannot be negative' }
+        }
+        if (item.edited_qty !== undefined && item.edited_qty !== null && item.edited_qty <= 0) {
+            return { error: 'Quantity must be greater than zero' }
+        }
+    }
+
+    // 4. Verify all items belong to this order
+    const itemIds = items.map(i => i.order_item_id)
+    const { data: existingItems, error: itemsErr } = await supabase
+        .from('order_items')
+        .select('id')
+        .eq('order_id', orderId)
+        .in('id', itemIds)
+
+    if (itemsErr) {
+        return { error: `Failed to verify items: ${itemsErr.message}` }
+    }
+
+    const existingIds = new Set((existingItems ?? []).map((i: any) => i.id))
+    const invalidIds = itemIds.filter(id => !existingIds.has(id))
+    if (invalidIds.length > 0) {
+        return { error: `Items do not belong to this order: ${invalidIds.join(', ')}` }
+    }
+
+    // 5. Bulk update each item
+    const now = new Date().toISOString()
+    let updatedCount = 0
+
+    for (const item of items) {
+        const updateData: Record<string, any> = {
+            edited_at: now,
+            edited_by: profile.id,
+        }
+
+        if (item.edited_name !== undefined) updateData.edited_name = item.edited_name
+        if (item.edited_unit_price !== undefined) updateData.edited_unit_price = item.edited_unit_price
+        if (item.edited_qty !== undefined) updateData.edited_qty = item.edited_qty
+        if (item.removed !== undefined) updateData.removed = item.removed
+
+        const { error: updateErr } = await supabase
+            .from('order_items')
+            .update(updateData)
+            .eq('id', item.order_item_id)
+            .eq('order_id', orderId)
+
+        if (updateErr) {
+            console.error(`[updateOrderItemsAction] Failed to update item ${item.order_item_id}:`, updateErr)
+            return { error: `Failed to update item: ${updateErr.message}` }
+        }
+        updatedCount++
+    }
+
+    // 6. Compute new effective total
+    const { data: allItems } = await supabase
+        .from('order_items')
+        .select('qty, unit_price, edited_qty, edited_unit_price, removed')
+        .eq('order_id', orderId)
+
+    const newTotal = (allItems ?? []).reduce((sum: number, it: any) => {
+        if (it.removed) return sum
+        const effectiveQty = it.edited_qty ?? it.qty ?? 0
+        const effectivePrice = it.edited_unit_price ?? it.unit_price ?? 0
+        return sum + Number(effectivePrice) * Number(effectiveQty)
+    }, 0)
+
+    revalidatePath(`/distributor/orders/${orderId}`)
+    revalidatePath('/distributor/orders')
+    return { success: true, updated_count: updatedCount, new_total: newTotal }
+}
+
 export async function createInvoiceAction(orderId: string) {
     const { distributorId } = await getDistributorContext()
     const supabase = await createClient()
@@ -40,8 +161,9 @@ export async function createInvoiceAction(orderId: string) {
             id, 
             vendor_id, 
             order_items(
-                product_id, qty, unit_price, unit_cost,
-                order_unit, cases_qty, pieces_qty, units_per_case_snapshot, total_pieces
+                product_id, qty, unit_price, unit_cost, product_name,
+                order_unit, cases_qty, pieces_qty, units_per_case_snapshot, total_pieces,
+                edited_name, edited_unit_price, edited_qty, removed
             )
         `)
         .eq('id', orderId)
@@ -67,21 +189,21 @@ export async function createInvoiceAction(orderId: string) {
         return { success: true, invoiceId: existing.id, message: 'Invoice already exists' }
     }
 
-    // 3. Calculate Totals safely
-    const items = order.order_items ?? []
+    // 3. Filter out removed items and calculate totals with edit support
+    const allItems = order.order_items ?? []
+    const items = allItems.filter((it: any) => !it.removed)
+
     if (!items.length) {
-        console.error('[createInvoiceAction] Order has no items')
-        return { error: 'Order has no items' }
+        console.error('[createInvoiceAction] Order has no active items (all removed or empty)')
+        return { error: 'Cannot generate invoice with zero items. All items have been removed.' }
     }
 
-    // Calculate subtotal with backward compatibility
+    // Calculate subtotal using effective (edited) values
     const subtotal = items.reduce((sum: number, it: any) => {
-        // Fallback logic for various schemas
-        const qty = it.qty ?? it.total_pieces ??
+        const effectiveQty = it.edited_qty ?? it.qty ?? it.total_pieces ??
             ((it.cases_qty || 0) * (it.units_per_case_snapshot || 1) + (it.pieces_qty || 0));
-
-        const price = Number(it.unit_price || 0);
-        return sum + (price * Number(qty));
+        const effectivePrice = Number(it.edited_unit_price ?? it.unit_price ?? 0);
+        return sum + (effectivePrice * Number(effectiveQty));
     }, 0)
 
     const invoice_number = `INV-${order.id.slice(0, 8).toUpperCase()}`
@@ -111,19 +233,24 @@ export async function createInvoiceAction(orderId: string) {
 
     // 5. Create Invoice Items
     try {
-        const invoiceItems = items.map((it: any) => ({
-            invoice_id: invoice.id,
-            product_id: it.product_id,
-            qty: it.qty ?? it.total_pieces ?? 0, // Ensure strictly not null
-            unit_price: it.unit_price,
-            unit_cost: it.unit_cost,
-            // New fields with fallbacks
-            order_unit: it.order_unit || 'piece',
-            cases_qty: it.cases_qty,
-            pieces_qty: it.pieces_qty,
-            units_per_case_snapshot: it.units_per_case_snapshot,
-            total_pieces: it.total_pieces ?? it.qty
-        }))
+        const invoiceItems = items.map((it: any) => {
+            const effectiveQty = it.edited_qty ?? it.qty ?? it.total_pieces ?? 0
+            const effectivePrice = it.edited_unit_price ?? it.unit_price
+            const effectiveName = it.edited_name ?? it.product_name
+            return {
+                invoice_id: invoice.id,
+                product_id: it.product_id,
+                product_name: effectiveName,
+                qty: effectiveQty,
+                unit_price: effectivePrice,
+                unit_cost: it.unit_cost,
+                order_unit: it.order_unit || 'piece',
+                cases_qty: it.cases_qty,
+                pieces_qty: it.pieces_qty,
+                units_per_case_snapshot: it.units_per_case_snapshot,
+                total_pieces: it.total_pieces ?? it.qty
+            }
+        })
 
         const { error: itemsErr } = await supabase.from('invoice_items').insert(invoiceItems)
 
