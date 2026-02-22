@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ArrowLeft, Printer } from 'lucide-react'
+import { InvoicePrint } from '@/components/invoice-print'
 
 export default async function DistributorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -14,7 +15,12 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
 
   const { data: invoice } = await supabase
     .from('invoices')
-    .select('id,invoice_number,created_at,payment_status,paid_at,subtotal,tax,total,invoice_items(qty,unit_price,unit_cost,products(name))')
+    .select(`
+            *,
+            invoice_items(qty, unit_price, unit_cost, products(name), item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
+            invoice_taxes(*),
+            vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address)
+        `)
     .eq('id', id)
     .eq('distributor_id', distributorId)
     .single()
@@ -50,52 +56,21 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Main Content: Items */}
-        <div className="md:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Invoice Items</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table className="hidden md:table">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead className="text-right">Unit Price</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(invoice.invoice_items ?? []).map((it: any, idx: number) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">{it.products?.name ?? '-'}</TableCell>
-                      <TableCell className="text-right">{it.qty}</TableCell>
-                      <TableCell className="text-right">${Number(it.unit_price).toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        ${(Number(it.unit_price) * Number(it.qty)).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              {/* Mobile View */}
-              <div className="md:hidden divide-y divide-slate-100">
-                {(invoice.invoice_items ?? []).map((it: any, idx: number) => (
-                  <div key={idx} className="p-4 flex flex-col gap-1">
-                    <div className="flex justify-between items-start">
-                      <span className="font-medium text-slate-900">{it.products?.name ?? '-'}</span>
-                      <span className="font-bold">${(Number(it.unit_price) * Number(it.qty)).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-slate-500">
-                      <span>{it.qty} x ${Number(it.unit_price).toFixed(2)}</span>
-                    </div>
-                  </div>
-                ))}
+        {/* Main Content: Invoice Document View */}
+        <div className="md:col-span-2">
+          <div className="bg-slate-100 rounded-xl overflow-hidden shadow-inner border border-slate-200">
+            <div className="scale-[0.85] origin-top transform-gpu -mb-[15%]">
+              {/* Reuse the print layout but inject it inline as a "document view" */}
+              <div className="pointer-events-none">
+                <InvoicePrint
+                  invoice={invoice}
+                  vendor={invoice.vendor}
+                  distributor={null} // Don't need distributor block on inner view 
+                  isEmbedded={true}
+                />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
         {/* Sidebar */}

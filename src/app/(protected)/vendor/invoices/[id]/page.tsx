@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Printer } from 'lucide-react'
+import { InvoicePrint } from '@/components/invoice-print'
 
 export default async function VendorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -14,7 +15,13 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
 
   const { data: invoice } = await supabase
     .from('invoices')
-    .select('id,invoice_number,created_at,payment_status,paid_at,subtotal,tax,total,invoice_items(qty,unit_price,order_unit,units_per_case_snapshot,products(name))')
+    .select(`
+        *,
+        invoice_items(qty, unit_price, unit_cost, products(name), item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
+        invoice_taxes(*),
+        vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address),
+        distributor:profiles!invoices_distributor_id_fkey(display_name, email)
+    `)
     .eq('id', id)
     .eq('vendor_id', vendorId)
     .single()
@@ -48,54 +55,21 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Main Content: Items */}
-        <div className="md:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Invoice Items</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead className="text-right">Unit Price</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(invoice.invoice_items ?? []).map((it: any, idx: number) => {
-                    const isCase = it.order_unit === 'case'
-                    const multiplier = isCase ? (it.units_per_case_snapshot || 1) : 1
-                    const lineTotal = Number(it.unit_price) * multiplier * Number(it.qty)
-
-                    return (
-                      <TableRow key={idx}>
-                        <TableCell className="font-medium">
-                          {it.products?.name ?? '-'}
-                          {isCase && (
-                            <span className="block text-xs text-slate-500">
-                              Case of {it.units_per_case_snapshot}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {it.qty} {isCase ? 'Order' : 'Unit'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          ${Number(it.unit_price).toFixed(2)} /{isCase ? 'unit' : 'ea'}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          ${lineTotal.toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+        {/* Main Content: Invoice Document View */}
+        <div className="md:col-span-2">
+          <div className="bg-slate-100 rounded-xl overflow-hidden shadow-inner border border-slate-200">
+            <div className="scale-[0.85] origin-top transform-gpu -mb-[15%]">
+              {/* Reuse the print layout but inject it inline as a "document view" */}
+              <div className="pointer-events-none">
+                <InvoicePrint
+                  invoice={invoice}
+                  vendor={invoice.vendor}
+                  distributor={invoice.distributor}
+                  isEmbedded={true}
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Sidebar */}

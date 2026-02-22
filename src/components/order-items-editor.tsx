@@ -6,8 +6,14 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Pencil, Trash2, Undo2, Save, X, Lock } from 'lucide-react'
-import { updateOrderItemsAction } from '@/app/actions/distributor'
+import { Pencil, Trash2, Undo2, Save, X, Lock, Plus } from 'lucide-react'
+import {
+    updateOrderItemsAction,
+    addOrderAdjustmentAction,
+    removeOrderAdjustmentAction,
+    addOrderTaxAction,
+    removeOrderTaxAction
+} from '@/app/actions/distributor'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -26,6 +32,19 @@ interface OrderItem {
     edited_by: string | null
 }
 
+interface OrderAdjustment {
+    id: string
+    name: string
+    amount: number
+}
+
+interface OrderTax {
+    id: string
+    name: string
+    type: 'percent' | 'fixed'
+    rate_percent: number
+}
+
 interface EditState {
     name: string
     unit_price: string
@@ -36,10 +55,12 @@ interface EditState {
 interface OrderItemsEditorProps {
     orderId: string
     items: OrderItem[]
+    adjustments: OrderAdjustment[]
+    taxes: OrderTax[]
     invoiceExists: boolean
 }
 
-export function OrderItemsEditor({ orderId, items, invoiceExists }: OrderItemsEditorProps) {
+export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceExists }: OrderItemsEditorProps) {
     const [editing, setEditing] = useState(false)
     const [editState, setEditState] = useState<Record<string, EditState>>({})
     const [isPending, startTransition] = useTransition()
@@ -92,6 +113,54 @@ export function OrderItemsEditor({ orderId, items, invoiceExists }: OrderItemsEd
             return sum + price * qty
         }, 0)
     }, [editing, items, editState])
+
+    const finalSubtotal = liveTotal + adjustments.reduce((sum, a) => sum + Number(a.amount), 0)
+    const totalTaxes = taxes.reduce((sum, t) => {
+        if (t.type === 'percent') return sum + (finalSubtotal * (Number(t.rate_percent) / 100))
+        return sum + Number(t.rate_percent)
+    }, 0)
+    const finalTotal = finalSubtotal + totalTaxes
+
+    // Adjustment State
+    const [newAdjName, setNewAdjName] = useState('')
+    const [newAdjAmount, setNewAdjAmount] = useState('')
+
+    // Tax State
+    const [newTaxName, setNewTaxName] = useState('')
+    const [newTaxType, setNewTaxType] = useState<'percent' | 'fixed'>('percent')
+    const [newTaxRate, setNewTaxRate] = useState('')
+
+    async function handleAddAdj() {
+        if (!newAdjName || !newAdjAmount) return toast.error('Name and Amount required')
+        startTransition(async () => {
+            const res = await addOrderAdjustmentAction(orderId, newAdjName, Number(newAdjAmount))
+            if (res.error) toast.error(res.error)
+            else { setNewAdjName(''); setNewAdjAmount('') }
+        })
+    }
+
+    async function handleRemoveAdj(id: string) {
+        startTransition(async () => {
+            const res = await removeOrderAdjustmentAction(orderId, id)
+            if (res.error) toast.error(res.error)
+        })
+    }
+
+    async function handleAddTax() {
+        if (!newTaxName || !newTaxRate) return toast.error('Name and Rate required')
+        startTransition(async () => {
+            const res = await addOrderTaxAction(orderId, newTaxName, newTaxType, Number(newTaxRate))
+            if (res.error) toast.error(res.error)
+            else { setNewTaxName(''); setNewTaxRate('') }
+        })
+    }
+
+    async function handleRemoveTax(id: string) {
+        startTransition(async () => {
+            const res = await removeOrderTaxAction(orderId, id)
+            if (res.error) toast.error(res.error)
+        })
+    }
 
     function handleSave() {
         // Validate
@@ -407,13 +476,113 @@ export function OrderItemsEditor({ orderId, items, invoiceExists }: OrderItemsEd
                         </Card>
                     )
                 })}
+            </div>
+
+            {/* Adjustments & Taxes Section */}
+            <div className="grid md:grid-cols-2 gap-4 mt-6">
+
+                {/* Manual Lines / Adjustments */}
                 <Card>
-                    <CardContent className="p-4 flex justify-between items-center bg-slate-50 font-bold">
-                        <span>Subtotal</span>
-                        <span>${liveTotal.toFixed(2)}</span>
+                    <CardHeader className="py-3 px-4 bg-slate-50 border-b">
+                        <CardTitle className="text-sm font-semibold">Fees / Adjustments</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3">
+                        {adjustments.map(adj => (
+                            <div key={adj.id} className="flex justify-between items-center text-sm">
+                                <span>{adj.name}</span>
+                                <div className="flex items-center gap-3">
+                                    <span className="font-medium">${Number(adj.amount).toFixed(2)}</span>
+                                    {!invoiceExists && (
+                                        <Button variant="ghost" size="sm" onClick={() => handleRemoveAdj(adj.id)} disabled={isPending} className="h-6 w-6 p-0 text-red-500">
+                                            <X className="h-3.5 w-3.5" />
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+
+                        {!invoiceExists && (
+                            <div className="flex gap-2 pt-2 border-t mt-2">
+                                <Input placeholder="Shipping, Fee..." value={newAdjName} onChange={e => setNewAdjName(e.target.value)} className="h-8 text-sm" />
+                                <Input type="number" step="0.01" placeholder="Amount" value={newAdjAmount} onChange={e => setNewAdjAmount(e.target.value)} className="h-8 text-sm w-24" />
+                                <Button size="sm" onClick={handleAddAdj} disabled={isPending} className="h-8 px-2"><Plus className="h-4 w-4" /></Button>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Taxes */}
+                <Card>
+                    <CardHeader className="py-3 px-4 bg-slate-50 border-b">
+                        <CardTitle className="text-sm font-semibold">Taxes</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3">
+                        {taxes.map(tax => (
+                            <div key={tax.id} className="flex justify-between items-center text-sm">
+                                <span>{tax.name} {tax.type === 'percent' && `(${tax.rate_percent}%)`}</span>
+                                <div className="flex items-center gap-3">
+                                    <span className="font-medium">
+                                        {tax.type === 'percent'
+                                            ? `$${(finalSubtotal * (Number(tax.rate_percent) / 100)).toFixed(2)}`
+                                            : `$${Number(tax.rate_percent).toFixed(2)}`}
+                                    </span>
+                                    {!invoiceExists && (
+                                        <Button variant="ghost" size="sm" onClick={() => handleRemoveTax(tax.id)} disabled={isPending} className="h-6 w-6 p-0 text-red-500">
+                                            <X className="h-3.5 w-3.5" />
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+
+                        {!invoiceExists && (
+                            <div className="flex gap-2 pt-2 border-t mt-2">
+                                <Input placeholder="State Tax..." value={newTaxName} onChange={e => setNewTaxName(e.target.value)} className="h-8 text-sm w-1/3" />
+                                <select
+                                    className="h-8 text-sm border rounded-md px-2 text-slate-700 bg-white"
+                                    value={newTaxType}
+                                    onChange={e => setNewTaxType(e.target.value as any)}
+                                >
+                                    <option value="percent">%</option>
+                                    <option value="fixed">$</option>
+                                </select>
+                                <Input type="number" step="0.1" placeholder="Rate/Amt" value={newTaxRate} onChange={e => setNewTaxRate(e.target.value)} className="h-8 text-sm flex-1" />
+                                <Button size="sm" onClick={handleAddTax} disabled={isPending} className="h-8 px-2"><Plus className="h-4 w-4" /></Button>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Final Totals Table */}
+            <Card className="border-t-4 border-t-slate-800">
+                <CardContent className="p-4 md:p-6 space-y-2">
+                    <div className="flex justify-between items-center text-sm">
+                        <span className="text-slate-500">Items Subtotal</span>
+                        <span>${liveTotal.toFixed(2)}</span>
+                    </div>
+                    {adjustments.length > 0 && (
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500">Fees / Adjustments</span>
+                            <span>${(finalSubtotal - liveTotal).toFixed(2)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center font-medium border-t border-slate-100 pt-2 mt-2">
+                        <span>Pre-Tax Subtotal</span>
+                        <span>${finalSubtotal.toFixed(2)}</span>
+                    </div>
+                    {taxes.length > 0 && (
+                        <div className="flex justify-between items-center text-sm text-slate-600">
+                            <span>Taxes</span>
+                            <span>+${totalTaxes.toFixed(2)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-center font-bold text-lg border-t border-slate-200 pt-3 mt-3">
+                        <span>Preview Total</span>
+                        <span>${finalTotal.toFixed(2)}</span>
+                    </div>
+                </CardContent>
+            </Card>
         </div>
     )
 }

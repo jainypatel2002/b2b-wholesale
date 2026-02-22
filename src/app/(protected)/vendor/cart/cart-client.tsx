@@ -42,8 +42,8 @@ export function CartClient({ distributorId }: { distributorId: string }) {
     }, [distributorId, CART_KEY])
 
     const total = useMemo(() => items.reduce((s, i) => {
-        const multiplier = i.order_unit === 'case' ? (i.units_per_case || 1) : 1
-        return s + (Number(i.unit_price) * multiplier * Number(i.qty))
+        // unit_price is now the EXACT price for the selected order_unit (piece price OR case price)
+        return s + (Number(i.unit_price) * Number(i.qty))
     }, 0), [items])
 
     function save(next: CartItem[]) {
@@ -144,10 +144,10 @@ export function CartClient({ distributorId }: { distributorId: string }) {
             {/* Banner for errors / warnings */}
             {banner && (
                 <div className={`relative rounded-lg border px-4 py-3 ${banner.type === 'error'
-                        ? 'bg-red-50 border-red-200 text-red-800'
-                        : banner.type === 'warning'
-                            ? 'bg-amber-50 border-amber-200 text-amber-800'
-                            : 'bg-green-50 border-green-200 text-green-800'
+                    ? 'bg-red-50 border-red-200 text-red-800'
+                    : banner.type === 'warning'
+                        ? 'bg-amber-50 border-amber-200 text-amber-800'
+                        : 'bg-green-50 border-green-200 text-green-800'
                     }`}>
                     <button
                         className="absolute top-3 right-3 p-0.5 rounded hover:bg-black/5"
@@ -176,8 +176,8 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                     {items.length ? (
                         items.map((i, idx) => {
                             const isCase = i.order_unit === 'case'
-                            const multiplier = isCase ? (i.units_per_case || 1) : 1
-                            const lineTotal = Number(i.unit_price) * multiplier * i.qty
+                            // unit_price is now the EXACT price for the selected order_unit
+                            const lineTotal = Number(i.unit_price) * i.qty
 
                             return (
                                 <Card key={`${i.product_id}-${i.order_unit}-${idx}`}>
@@ -190,8 +190,7 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                                                 </span>
                                             </div>
                                             <div className="text-sm text-slate-500">
-                                                ${Number(i.unit_price).toFixed(2)} / unit
-                                                {isCase && ` × ${i.units_per_case} = $${(Number(i.unit_price) * multiplier).toFixed(2)} / case`}
+                                                ${Number(i.unit_price).toFixed(2)} / {isCase ? 'case' : 'unit'}
                                             </div>
                                         </div>
 

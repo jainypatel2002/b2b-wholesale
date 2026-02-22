@@ -88,7 +88,7 @@ export default async function CategoryProductsPage({ params }: { params: Promise
                 const [{ data: fallbackData, error: fallbackError }, { data: overridesData }] = await Promise.all([
                     supabase
                         .from('products')
-                        .select('id, name, sell_price, allow_case, allow_piece, units_per_case, category_id, category_node_id, stock_qty, stock_pieces, sku')
+                        .select('id, name, sell_price, price_case, allow_case, allow_piece, units_per_case, category_id, category_node_id, stock_qty, stock_pieces, sku')
                         .eq('distributor_id', distributorId)
                         .eq('category_id', categoryId)
                         .is('deleted_at', null)
@@ -108,6 +108,7 @@ export default async function CategoryProductsPage({ params }: { params: Promise
 
                 productsData = (fallbackData ?? []).map((p: any) => {
                     const baseCents = Math.round((p.sell_price || 0) * 100)
+                    const baseCaseCents = Math.round((p.price_case || 0) * 100)
                     const overrideCents = overrideMap.get(p.id)
                     return {
                         id: p.id,
@@ -115,6 +116,7 @@ export default async function CategoryProductsPage({ params }: { params: Promise
                         sku: p.sku,
                         effective_price_cents: overrideCents !== undefined ? overrideCents : baseCents,
                         base_price_cents: baseCents,
+                        base_price_case_cents: baseCaseCents,
                         allow_case: p.allow_case,
                         allow_piece: p.allow_piece,
                         units_per_case: p.units_per_case,

@@ -24,7 +24,9 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
         id, qty, unit_price, unit_cost, product_name,
         products(name),
         edited_name, edited_unit_price, edited_qty, removed, edited_at, edited_by
-      )
+      ),
+      order_adjustments(id, name, amount),
+      order_taxes(id, name, type, rate_percent)
     `)
     .eq('id', id)
     .eq('distributor_id', distributorId)
@@ -96,6 +98,8 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
           <OrderItemsEditor
             orderId={order.id}
             items={(order.order_items ?? []) as any}
+            adjustments={order.order_adjustments ?? []}
+            taxes={order.order_taxes ?? []}
             invoiceExists={!!invoice}
           />
         </div>

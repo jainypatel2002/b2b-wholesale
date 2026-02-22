@@ -13,11 +13,26 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
     // Only show toggle if both are allowed
     const showToggle = p.allow_piece && p.allow_case
 
+    // Resolve the active price for the selected unit
+    // p.effective_price_cents is the piece price (potentially with vendor override)
+    // p.base_price_case_cents is the case price (if it exists)
+    const piecePrice = (p.effective_price_cents ?? p.base_price_cents ?? 0) / 100
+    const casePrice = p.base_price_case_cents != null ? p.base_price_case_cents / 100 : null
+
+    // Determine the current price based on the mode
+    const currentPrice = unit === 'case' ? casePrice : piecePrice
+
     function addToCart() {
         if (!distributorId) {
             alert("No distributor context found. Please refresh.")
             return
         }
+
+        if (currentPrice === null || currentPrice <= 0) {
+            alert(`The price for ${unit === 'case' ? 'Cases' : 'Pieces'} is not available. Please contact your distributor.`)
+            return
+        }
+
         const key = `dv_cart_${distributorId}`
         const raw = localStorage.getItem(key)
         const cart = raw ? JSON.parse(raw) : { items: [] as any[] }
@@ -30,7 +45,7 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
             cart.items.push({
                 product_id: p.id,
                 name: p.name,
-                unit_price: p.sell_price,
+                unit_price: currentPrice, // Now securely stores the TRUE price for the chosen unit
                 qty: 1,
                 order_unit: unit,
                 units_per_case: p.units_per_case,
@@ -60,11 +75,23 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0 flex-grow">
-                <div className="mt-2 text-2xl font-bold text-slate-900">
-                    ${Number(p.sell_price).toFixed(2)}
-                </div>
+                {currentPrice !== null && currentPrice > 0 ? (
+                    <div className="mt-2 text-2xl font-bold text-slate-900">
+                        ${currentPrice.toFixed(2)}
+                    </div>
+                ) : (
+                    <div className="mt-2 text-lg font-medium text-red-500">
+                        Price Not Available
+                    </div>
+                )}
+
                 <p className="text-xs text-slate-500 mb-3">
                     {unit === 'case' ? `per case (${p.units_per_case} units)` : 'per unit'}
+                    {unit === 'case' && casePrice !== null && casePrice > 0 && p.units_per_case > 0 && (
+                        <span className="block mt-0.5 opacity-80">
+                            (${(casePrice / p.units_per_case).toFixed(2)} / unit eq.)
+                        </span>
+                    )}
                 </p>
 
                 {showToggle && (
@@ -93,13 +120,17 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
                 )}
 
                 {!showToggle && (
-                    <Badge variant="outline" className="font-normal">
+                    <Badge variant="outline" className="font-normal mt-2">
                         {unit === 'case' ? `Case Only (${p.units_per_case} count)` : 'Piece Only'}
                     </Badge>
                 )}
             </CardContent>
             <CardFooter className="p-4 pt-0">
-                <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={addToCart}>
+                <Button
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    onClick={addToCart}
+                    disabled={currentPrice === null || currentPrice <= 0}
+                >
                     <Plus className="mr-2 h-4 w-4" /> Add {unit === 'case' ? 'Case' : 'Item'}
                 </Button>
             </CardFooter>

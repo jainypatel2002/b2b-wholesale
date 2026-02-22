@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   const productIds = items.map((i) => i.product_id)
   const { data: products, error: prodErr } = await supabase
     .from('products')
-    .select('id,distributor_id,cost_price,sell_price,stock_pieces,allow_case,allow_piece,units_per_case,name')
+    .select('id,distributor_id,cost_price,sell_price,price_case,stock_pieces,allow_case,allow_piece,units_per_case,name')
     .in('id', productIds)
     .eq('distributor_id', distributorId)
     .is('deleted_at', null)
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     if (isCase && !p.allow_case) return NextResponse.json({ error: `Product ${p.name} cannot be ordered by case` }, { status: 400 })
     if (isPiece && !p.allow_piece) return NextResponse.json({ error: `Product ${p.name} cannot be ordered by piece` }, { status: 400 })
 
-    // Calculate effective pieces
+    // Calculate effective pieces for stock validation and warehouse deductions
     const unitsPerCase = p.units_per_case || 1
     const totalPiecesRequired = isCase ? (it.qty * unitsPerCase) : it.qty
 
@@ -124,12 +124,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Insufficient stock for ${p.name}. Requested: ${totalPiecesRequired}, Available: ${currentStock}` }, { status: 400 })
     }
 
-    // Apply pricing: use vendor override if exists, else base sell_price
-    const overrideCents = overrideMap.get(p.id)
-    const unitPriceSnapshot = overrideCents !== undefined
-      ? overrideCents / 100  // cents → dollars
-      : Number(p.sell_price || 0)
-    const lineTotal = unitPriceSnapshot * totalPiecesRequired
+    // Apply pricing: use explicit source of truth for the chosen mode
+    let unitPriceSnapshot = 0
+    if (isCase) {
+      // For cases, charge explicit price_case. Reject if missing.
+      if (p.price_case === null || p.price_case === undefined || Number(p.price_case) <= 0) {
+        return NextResponse.json({ error: `Case price is not configured for ${p.name}` }, { status: 400 })
+      }
+      unitPriceSnapshot = Number(p.price_case)
+    } else {
+      // For pieces, apply vendor override if exists, else base sell_price
+      const overrideCents = overrideMap.get(p.id)
+      unitPriceSnapshot = overrideCents !== undefined
+        ? overrideCents / 100  // cents → dollars
+        : Number(p.sell_price || 0)
+
+      if (unitPriceSnapshot <= 0) {
+        return NextResponse.json({ error: `Unit price is not configured for ${p.name}` }, { status: 400 })
+      }
+    }
+
+    const lineTotal = unitPriceSnapshot * it.qty
 
     orderItemsData.push({
       product_id: p.id,
@@ -140,11 +155,11 @@ export async function POST(request: NextRequest) {
       units_per_case_snapshot: isCase ? unitsPerCase : null,
       unit_price_snapshot: unitPriceSnapshot,
       total_pieces: totalPiecesRequired,
-      // Profit Center Snapshots
+      // Profit Center Snapshots (note: for profit margin logic, if case is chosen, selling_price_at_time is case price)
       selling_price_at_time: unitPriceSnapshot,
-      cost_price_at_time: p.cost_price || 0,
+      cost_price_at_time: p.cost_price || 0, // This is still unit cost. Ideally profit center tracks case cost too, but keeping it simple.
       // Legacy fields
-      qty: totalPiecesRequired,
+      qty: it.qty, // this used to be totalPiecesRequired, now properly is the requested unit (e.g. 2 cases -> qty 2)
       unit_price: unitPriceSnapshot,
       unit_cost: p.cost_price
     })

@@ -14,10 +14,11 @@ export default async function DistributorInvoicePrintPage({ params }: { params: 
     const { data: invoice } = await supabase
         .from('invoices')
         .select(`
-      *,
-      invoice_items(qty, unit_price, products(name)),
-      vendor:profiles!invoices_vendor_id_fkey(display_name, email)
-    `)
+            *,
+            invoice_items(qty, unit_price, unit_cost, products(name), item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
+            invoice_taxes(*),
+            vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address)
+        `)
         .eq('id', id)
         .eq('distributor_id', distributorId)
         .single()

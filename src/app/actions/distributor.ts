@@ -164,7 +164,9 @@ export async function createInvoiceAction(orderId: string) {
                 product_id, qty, unit_price, unit_cost, product_name,
                 order_unit, cases_qty, pieces_qty, units_per_case_snapshot, total_pieces,
                 edited_name, edited_unit_price, edited_qty, removed
-            )
+            ),
+            order_adjustments(id, name, amount),
+            order_taxes(id, name, type, rate_percent)
         `)
         .eq('id', orderId)
         .eq('distributor_id', distributorId)
@@ -192,22 +194,47 @@ export async function createInvoiceAction(orderId: string) {
     // 3. Filter out removed items and calculate totals with edit support
     const allItems = order.order_items ?? []
     const items = allItems.filter((it: any) => !it.removed)
+    const adjustments = order.order_adjustments ?? []
+    const taxes = order.order_taxes ?? []
 
-    if (!items.length) {
-        console.error('[createInvoiceAction] Order has no active items (all removed or empty)')
-        return { error: 'Cannot generate invoice with zero items. All items have been removed.' }
+    if (!items.length && !adjustments.length) {
+        console.error('[createInvoiceAction] Order has no active items or adjustments')
+        return { error: 'Cannot generate invoice with zero items.' }
     }
 
-    // Calculate subtotal using effective (edited) values
-    const subtotal = items.reduce((sum: number, it: any) => {
+    // Calculate item subtotal using effective (edited) values
+    const itemSubtotal = items.reduce((sum: number, it: any) => {
         const effectiveQty = it.edited_qty ?? it.qty ?? it.total_pieces ??
             ((it.cases_qty || 0) * (it.units_per_case_snapshot || 1) + (it.pieces_qty || 0));
         const effectivePrice = Number(it.edited_unit_price ?? it.unit_price ?? 0);
         return sum + (effectivePrice * Number(effectiveQty));
     }, 0)
 
+    const adjustmentTotal = adjustments.reduce((sum: number, adj: any) => sum + Number(adj.amount), 0)
+    const subtotal = itemSubtotal + adjustmentTotal
+
+    // Calculate Taxes
+    let taxTotal = 0
+    const calculatedTaxes = taxes.map((tax: any) => {
+        let amount = 0
+        if (tax.type === 'percent') {
+            amount = subtotal * (Number(tax.rate_percent) / 100)
+        } else if (tax.type === 'fixed') {
+            amount = Number(tax.rate_percent) || 0
+        }
+        taxTotal += amount
+        // Limit decimal places to handle floating point issues securely
+        return { ...tax, amount: Number(amount.toFixed(2)) }
+    })
+
+    // JS math rounding for exact cents
+    taxTotal = Number(taxTotal.toFixed(2))
+    const total = Number((subtotal + taxTotal).toFixed(2))
+
+    // For safety, generate a unique random ID fragment
     const invoice_number = `INV-${order.id.slice(0, 8).toUpperCase()}`
-    console.log('[createInvoiceAction] Calculated Subtotal:', subtotal)
+
+    console.log('[createInvoiceAction] Calculated Subtotal:', subtotal, 'Tax:', taxTotal, 'Total:', total)
 
     // 4. Create Invoice
     const { data: invoice, error: invErr } = await supabase
@@ -218,8 +245,10 @@ export async function createInvoiceAction(orderId: string) {
             order_id: order.id,
             invoice_number,
             subtotal,
-            tax: 0,
-            total: subtotal,
+            tax_total: taxTotal,
+            // the old column is tax, so let's save to both for backward compat for now
+            tax: taxTotal,
+            total,
             payment_method: 'cash',
             payment_status: 'unpaid'
         })
@@ -237,6 +266,8 @@ export async function createInvoiceAction(orderId: string) {
             const effectiveQty = it.edited_qty ?? it.qty ?? it.total_pieces ?? 0
             const effectivePrice = it.edited_unit_price ?? it.unit_price
             const effectiveName = it.edited_name ?? it.product_name
+            const extAmount = Number((Number(effectivePrice) * Number(effectiveQty)).toFixed(2))
+
             return {
                 invoice_id: invoice.id,
                 product_id: it.product_id,
@@ -248,18 +279,45 @@ export async function createInvoiceAction(orderId: string) {
                 cases_qty: it.cases_qty,
                 pieces_qty: it.pieces_qty,
                 units_per_case_snapshot: it.units_per_case_snapshot,
-                total_pieces: it.total_pieces ?? it.qty
+                total_pieces: it.total_pieces ?? it.qty,
+                effective_units: effectiveQty,
+                ext_amount: extAmount,
+                is_manual: false
             }
         })
 
-        const { error: itemsErr } = await supabase.from('invoice_items').insert(invoiceItems)
+        // Also map order_adjustments into invoice items (so they render safely line-by-line)
+        const manualItems = adjustments.map((adj: any) => {
+            return {
+                invoice_id: invoice.id,
+                product_name: adj.name,
+                qty: 1,
+                unit_price: adj.amount,
+                unit_cost: 0,
+                order_unit: 'piece',
+                effective_units: 1,
+                ext_amount: adj.amount,
+                is_manual: true
+            }
+        })
 
-        if (itemsErr) {
-            console.error('[createInvoiceAction] Invoice Items Insert Error:', itemsErr)
-            // Rollback
-            await supabase.from('invoices').delete().eq('id', invoice.id)
-            return { error: `Failed to create invoice items: ${itemsErr.message}` }
+        const allInvoiceItems = [...invoiceItems, ...manualItems]
+        const { error: itemsErr } = await supabase.from('invoice_items').insert(allInvoiceItems)
+
+        if (itemsErr) throw new Error(`Items Insert: ${itemsErr.message}`)
+
+        if (calculatedTaxes.length > 0) {
+            const taxRows = calculatedTaxes.map((tax: any) => ({
+                invoice_id: invoice.id,
+                name: tax.name,
+                type: tax.type,
+                rate_percent: tax.rate_percent,
+                amount: tax.amount
+            }))
+            const { error: taxErr } = await supabase.from('invoice_taxes').insert(taxRows)
+            if (taxErr) throw new Error(`Taxes Insert: ${taxErr.message}`)
         }
+
     } catch (e: any) {
         console.error('[createInvoiceAction] Exception during item prep:', e)
         await supabase.from('invoices').delete().eq('id', invoice.id)
@@ -350,5 +408,69 @@ export async function fulfillOrderAction(orderId: string) {
     revalidatePath('/distributor/orders')
     revalidatePath(`/distributor/orders/${orderId}`)
     revalidatePath('/distributor/inventory') // Inventory changes, so refresh this too
+    return { success: true }
+}
+
+// ── Manual Adjustments and Taxes ─────────────────────────────────
+
+export async function addOrderAdjustmentAction(orderId: string, name: string, amount: number) {
+    const { distributorId } = await getDistributorContext()
+    const supabase = await createClient()
+
+    // Ensure order belongs to distributor
+    const { data: order } = await supabase.from('orders').select('id').eq('id', orderId).eq('distributor_id', distributorId).single()
+    if (!order) return { error: 'Order not found' }
+
+    if (!name.trim()) return { error: 'Name is required' }
+
+    const { error } = await supabase.from('order_adjustments').insert({ order_id: orderId, name, amount })
+    if (error) return { error: error.message }
+
+    revalidatePath(`/distributor/orders/${orderId}`)
+    return { success: true }
+}
+
+export async function removeOrderAdjustmentAction(orderId: string, adjustmentId: string) {
+    const { distributorId } = await getDistributorContext()
+    const supabase = await createClient()
+
+    const { data: order } = await supabase.from('orders').select('id').eq('id', orderId).eq('distributor_id', distributorId).single()
+    if (!order) return { error: 'Order not found' }
+
+    const { error } = await supabase.from('order_adjustments').delete().eq('id', adjustmentId).eq('order_id', orderId)
+    if (error) return { error: error.message }
+
+    revalidatePath(`/distributor/orders/${orderId}`)
+    return { success: true }
+}
+
+export async function addOrderTaxAction(orderId: string, name: string, type: 'percent' | 'fixed', rate_percent: number) {
+    const { distributorId } = await getDistributorContext()
+    const supabase = await createClient()
+
+    const { data: order } = await supabase.from('orders').select('id').eq('id', orderId).eq('distributor_id', distributorId).single()
+    if (!order) return { error: 'Order not found' }
+
+    if (!name.trim()) return { error: 'Tax name is required' }
+    if (rate_percent < 0) return { error: 'Rate cannot be negative' }
+
+    const { error } = await supabase.from('order_taxes').insert({ order_id: orderId, name, type, rate_percent })
+    if (error) return { error: error.message }
+
+    revalidatePath(`/distributor/orders/${orderId}`)
+    return { success: true }
+}
+
+export async function removeOrderTaxAction(orderId: string, taxId: string) {
+    const { distributorId } = await getDistributorContext()
+    const supabase = await createClient()
+
+    const { data: order } = await supabase.from('orders').select('id').eq('id', orderId).eq('distributor_id', distributorId).single()
+    if (!order) return { error: 'Order not found' }
+
+    const { error } = await supabase.from('order_taxes').delete().eq('id', taxId).eq('order_id', orderId)
+    if (error) return { error: error.message }
+
+    revalidatePath(`/distributor/orders/${orderId}`)
     return { success: true }
 }
