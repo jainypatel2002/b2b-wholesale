@@ -10,68 +10,72 @@ import { Badge } from '@/components/ui/badge'
 import { ArchiveButton } from '@/components/archive-button'
 import { VendorFilter } from '@/components/vendor-filter'
 
+const PAGE_SIZE = 50
+
 export default async function DistributorOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string; vendor?: string }>
+  searchParams: Promise<{ archived?: string; vendor?: string; page?: string }>
 }) {
   const { distributorId } = await getDistributorContext()
   const supabase = await createClient()
 
-  const { archived, vendor: vendorFilter } = await searchParams
+  const { archived, vendor: vendorFilter, page: pageParam } = await searchParams
   const showArchived = archived === 'true'
+  const currentPage = Math.max(1, parseInt(pageParam || '1', 10) || 1)
+  const from = (currentPage - 1) * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[DistributorOrdersPage] showArchived:', showArchived, 'vendorFilter:', vendorFilter)
-  }
-
-  // Fetch vendors for filter
-  const vendors = await getLinkedVendors(distributorId)
-
-  let query = supabase
+  // ── Build orders query ──
+  let ordersQuery = supabase
     .from('orders')
-    .select('id,status,created_at,deleted_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)')
+    .select('id,status,created_at,deleted_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)', { count: 'exact' })
     .eq('distributor_id', distributorId)
     .order('created_at', { ascending: false })
+    .range(from, to)
 
   if (!showArchived) {
-    query = query.is('deleted_at', null)
+    ordersQuery = ordersQuery.is('deleted_at', null)
   }
-
   if (vendorFilter) {
-    query = query.eq('vendor_id', vendorFilter)
+    ordersQuery = ordersQuery.eq('vendor_id', vendorFilter)
   }
 
-  let result: any = await query
+  // ── Parallel fetch: vendors, orders, invoices ──
+  const [vendors, ordersResult, { data: invoices }] = await Promise.all([
+    getLinkedVendors(distributorId),
+    ordersQuery,
+    supabase
+      .from('invoices')
+      .select('id,order_id,payment_status')
+      .eq('distributor_id', distributorId),
+  ])
 
-  // Fallback for missing column (just in case migration failed)
-  if (result.error && result.error.code === '42703') {
-    console.warn('[DistributorOrdersPage] deleted_at column missing, retrying basic query')
+  let orders: any[] | null = ordersResult.data
+  let totalCount = ordersResult.count ?? 0
+
+  // Fallback for missing column
+  if (ordersResult.error && ordersResult.error.code === '42703') {
     let fallbackQuery = supabase
       .from('orders')
-      .select('id,status,created_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)')
+      .select('id,status,created_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)', { count: 'exact' })
       .eq('distributor_id', distributorId)
       .order('created_at', { ascending: false })
+      .range(from, to)
 
     if (vendorFilter) {
       fallbackQuery = fallbackQuery.eq('vendor_id', vendorFilter)
     }
 
-    result = await fallbackQuery
+    const fallbackResult = await fallbackQuery
+    orders = fallbackResult.data
+    totalCount = fallbackResult.count ?? 0
+  } else if (ordersResult.error) {
+    console.error('[DistributorOrdersPage] Error fetching orders:', JSON.stringify(ordersResult.error, null, 2))
   }
-
-  const { data: orders, error: ordersError } = result
-  if (ordersError) {
-    console.error('[DistributorOrdersPage] Error fetching orders:', JSON.stringify(ordersError, null, 2))
-  }
-
-  // Fetch invoices to map payment status
-  const { data: invoices } = await supabase
-    .from('invoices')
-    .select('id,order_id,payment_status')
-    .eq('distributor_id', distributorId)
 
   const invoiceMap = new Map(invoices?.map((i) => [i.order_id, i]))
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 
   const rows = (orders ?? []).map((o: any) => {
     const total = (o.order_items ?? []).reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.qty), 0)
@@ -81,6 +85,16 @@ export default async function DistributorOrdersPage({
       invoice: invoiceMap.get(o.id)
     }
   })
+
+  // Build pagination URL
+  function pageUrl(page: number) {
+    const params = new URLSearchParams()
+    if (showArchived) params.set('archived', 'true')
+    if (vendorFilter) params.set('vendor', vendorFilter)
+    if (page > 1) params.set('page', String(page))
+    const qs = params.toString()
+    return `/distributor/orders${qs ? `?${qs}` : ''}`
+  }
 
   return (
     <div className="space-y-6">
@@ -226,6 +240,27 @@ export default async function DistributorOrdersPage({
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-sm text-slate-500">
+            Page {currentPage} of {totalPages} ({totalCount} orders)
+          </p>
+          <div className="flex gap-2">
+            {currentPage > 1 && (
+              <Link href={pageUrl(currentPage - 1)}>
+                <Button variant="outline" size="sm">← Previous</Button>
+              </Link>
+            )}
+            {currentPage < totalPages && (
+              <Link href={pageUrl(currentPage + 1)}>
+                <Button variant="outline" size="sm">Next →</Button>
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -247,4 +282,3 @@ function ToggleArchivedButton({ showArchived }: { showArchived: boolean }) {
     </Button>
   )
 }
-

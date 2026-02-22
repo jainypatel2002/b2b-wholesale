@@ -8,35 +8,55 @@ import { Button } from '@/components/ui/button'
 import { ArchiveButton } from '@/components/archive-button'
 import { ArrowLeft } from 'lucide-react'
 
-export default async function VendorOrdersPage() {
+const PAGE_SIZE = 50
+
+export default async function VendorOrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>
+}) {
   const { vendorId } = await getVendorContext()
   const supabase = await createClient()
 
+  const { page: pageParam } = await searchParams
+  const currentPage = Math.max(1, parseInt(pageParam || '1', 10) || 1)
+  const from = (currentPage - 1) * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
+
   let result = await supabase
     .from('orders')
-    .select('id,status,created_at,order_items(qty,unit_price)')
+    .select('id,status,created_at,order_items(qty,unit_price)', { count: 'exact' })
     .eq('vendor_id', vendorId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
+    .range(from, to)
 
   if (result.error && result.error.code === '42703') {
     console.warn('[VendorOrdersPage] valid deleted_at column missing, retrying without filter')
     result = await supabase
       .from('orders')
-      .select('id,status,created_at,order_items(qty,unit_price)')
+      .select('id,status,created_at,order_items(qty,unit_price)', { count: 'exact' })
       .eq('vendor_id', vendorId)
       .order('created_at', { ascending: false })
+      .range(from, to)
   }
 
-  const { data: orders, error } = result
+  const { data: orders, error, count: totalCount } = result
   if (error) {
     console.error('[VendorOrdersPage] Error fetching orders:', error)
   }
+
+  const totalPages = Math.max(1, Math.ceil((totalCount ?? 0) / PAGE_SIZE))
 
   const rows = (orders ?? []).map((o: any) => {
     const total = (o.order_items ?? []).reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.qty), 0)
     return { ...o, total }
   })
+
+  function pageUrl(page: number) {
+    if (page <= 1) return '/vendor/orders'
+    return `/vendor/orders?page=${page}`
+  }
 
   return (
     <div className="space-y-6">
@@ -135,6 +155,27 @@ export default async function VendorOrdersPage() {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-sm text-slate-500">
+            Page {currentPage} of {totalPages} ({totalCount} orders)
+          </p>
+          <div className="flex gap-2">
+            {currentPage > 1 && (
+              <Link href={pageUrl(currentPage - 1)}>
+                <Button variant="outline" size="sm">← Previous</Button>
+              </Link>
+            )}
+            {currentPage < totalPages && (
+              <Link href={pageUrl(currentPage + 1)}>
+                <Button variant="outline" size="sm">Next →</Button>
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

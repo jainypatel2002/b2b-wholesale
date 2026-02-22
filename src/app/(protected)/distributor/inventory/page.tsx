@@ -25,6 +25,7 @@ export default async function InventoryPage() {
     .eq('distributor_id', distributorId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
+    .limit(500)
 
   if (error && (error.message?.includes('schema cache') || error.message?.includes('Could not find'))) {
     schemaPending = true
@@ -34,6 +35,7 @@ export default async function InventoryPage() {
       .eq('distributor_id', distributorId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
+      .limit(500)
     products = fallback.data
   } else {
     products = data

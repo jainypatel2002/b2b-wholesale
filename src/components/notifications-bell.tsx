@@ -27,7 +27,7 @@ export function NotificationsBell({ userId }: { userId: string }) {
 
             if (data) {
                 setNotifications(data)
-                setUnreadCount(data.filter(n => !n.is_read).length)
+                setUnreadCount(data.filter((n: any) => !n.is_read).length)
             }
         }
 
@@ -41,7 +41,7 @@ export function NotificationsBell({ userId }: { userId: string }) {
                 schema: 'public',
                 table: 'notifications',
                 filter: `user_id=eq.${userId}`
-            }, (payload) => {
+            }, (payload: any) => {
                 setNotifications(prev => [payload.new, ...prev].slice(0, 20))
                 setUnreadCount(count => count + 1)
             })

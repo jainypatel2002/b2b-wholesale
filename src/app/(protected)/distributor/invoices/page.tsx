@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { ArchiveButton } from '@/components/archive-button'
 import { VendorFilter } from '@/components/vendor-filter'
 
+const PAGE_SIZE = 50
+
 async function markPaid(formData: FormData) {
   'use server'
   const { distributorId } = await getDistributorContext()
@@ -38,56 +40,70 @@ async function markUnpaid(formData: FormData) {
 export default async function DistributorInvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string; vendor?: string }>
+  searchParams: Promise<{ archived?: string; vendor?: string; page?: string }>
 }) {
   const { distributorId } = await getDistributorContext()
   const supabase = await createClient()
 
-  const { archived, vendor: vendorFilter } = await searchParams
+  const { archived, vendor: vendorFilter, page: pageParam } = await searchParams
   const showArchived = archived === 'true'
+  const currentPage = Math.max(1, parseInt(pageParam || '1', 10) || 1)
+  const from = (currentPage - 1) * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[DistributorInvoicesPage] showArchived:', showArchived, 'vendorFilter:', vendorFilter)
-  }
-
-  // Fetch vendors for filter
-  const vendors = await getLinkedVendors(distributorId)
-
-  let query = supabase
+  // ── Build invoices query ──
+  let invoicesQuery = supabase
     .from('invoices')
-    .select('id,invoice_number,total,payment_status,created_at,deleted_at,vendor:profiles!invoices_vendor_id_fkey(display_name,email)')
+    .select('id,invoice_number,total,payment_status,created_at,deleted_at,vendor:profiles!invoices_vendor_id_fkey(display_name,email)', { count: 'exact' })
     .eq('distributor_id', distributorId)
     .order('created_at', { ascending: false })
+    .range(from, to)
 
   if (!showArchived) {
-    query = query.is('deleted_at', null)
+    invoicesQuery = invoicesQuery.is('deleted_at', null)
   }
-
   if (vendorFilter) {
-    query = query.eq('vendor_id', vendorFilter) // Assumes foreign key alias is transparent for filtering on column
+    invoicesQuery = invoicesQuery.eq('vendor_id', vendorFilter)
   }
 
-  let result: any = await query
+  // ── Parallel fetch: vendors + invoices ──
+  const [vendors, invoicesResult] = await Promise.all([
+    getLinkedVendors(distributorId),
+    invoicesQuery,
+  ])
 
-  if (result.error && result.error.code === '42703') {
-    console.warn('[DistributorInvoicesPage] valid deleted_at column missing, retrying without filter')
+  let invoices: any[] | null = invoicesResult.data
+  let totalCount = invoicesResult.count ?? 0
+
+  if (invoicesResult.error && invoicesResult.error.code === '42703') {
+    console.warn('[DistributorInvoicesPage] deleted_at column missing, retrying without filter')
     let fallbackQuery = supabase
       .from('invoices')
-      .select('id,invoice_number,total,payment_status,created_at,vendor:profiles!invoices_vendor_id_fkey(display_name,email)')
+      .select('id,invoice_number,total,payment_status,created_at,vendor:profiles!invoices_vendor_id_fkey(display_name,email)', { count: 'exact' })
       .eq('distributor_id', distributorId)
       .order('created_at', { ascending: false })
+      .range(from, to)
 
     if (vendorFilter) {
       fallbackQuery = fallbackQuery.eq('vendor_id', vendorFilter)
     }
 
-    result = await fallbackQuery
+    const fallbackResult = await fallbackQuery
+    invoices = fallbackResult.data
+    totalCount = fallbackResult.count ?? 0
+  } else if (invoicesResult.error) {
+    console.error('[DistributorInvoicesPage] Error fetching invoices (JSON):', JSON.stringify(invoicesResult.error, null, 2))
   }
 
-  const { data: invoices, error } = result
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 
-  if (error) {
-    console.error('[DistributorInvoicesPage] Error fetching invoices (JSON):', JSON.stringify(error, null, 2))
+  function pageUrl(page: number) {
+    const params = new URLSearchParams()
+    if (showArchived) params.set('archived', 'true')
+    if (vendorFilter) params.set('vendor', vendorFilter)
+    if (page > 1) params.set('page', String(page))
+    const qs = params.toString()
+    return `/distributor/invoices${qs ? `?${qs}` : ''}`
   }
 
   return (
@@ -233,6 +249,27 @@ export default async function DistributorInvoicesPage({
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-sm text-slate-500">
+            Page {currentPage} of {totalPages} ({totalCount} invoices)
+          </p>
+          <div className="flex gap-2">
+            {currentPage > 1 && (
+              <Link href={pageUrl(currentPage - 1)}>
+                <Button variant="outline" size="sm">← Previous</Button>
+              </Link>
+            )}
+            {currentPage < totalPages && (
+              <Link href={pageUrl(currentPage + 1)}>
+                <Button variant="outline" size="sm">Next →</Button>
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
