@@ -121,12 +121,20 @@ export async function updateProductAction(
         const category_id = String(formData.get('category_id') || '').trim() || null
         const category_node_id = String(formData.get('category_node_id') || '').trim() || null
 
-        const cost_price = Number(formData.get('cost_price') || 0)
-        const sell_price = Number(formData.get('sell_price') || 0)
+        // Safe number parser: returns undefined for empty/missing values
+        // This prevents overwriting existing DB values with 0
+        const safeNum = (key: string): number | undefined => {
+            const raw = formData.get(key)
+            if (raw === null || raw === undefined || raw === '') return undefined
+            const n = Number(raw)
+            return isNaN(n) ? undefined : n
+        }
 
-        // Extended pricing fields
-        const cost_case = Number(formData.get('cost_case') || 0)
-        const price_case = Number(formData.get('price_case') || 0)
+        const sell_price = safeNum('sell_price') ?? 0  // sell_price always required
+        const cost_price = safeNum('cost_price')       // preserve existing if empty
+        const cost_case = safeNum('cost_case')         // preserve existing if empty
+        const price_case = safeNum('price_case')       // preserve existing if empty
+
         const cost_mode = String(formData.get('cost_mode') || 'unit')
         const price_mode = String(formData.get('price_mode') || 'unit')
         const stock_mode = String(formData.get('stock_mode') || 'pieces')
@@ -148,28 +156,36 @@ export async function updateProductAction(
         if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
         if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
 
+        // Build update payload — only include cost/price fields when they have values
+        // This prevents bulk pricing (which only updates sell_price) from zeroing cost
+        const updatePayload: Record<string, any> = {
+            name,
+            sku,
+            barcode,
+            category_id,
+            category_node_id,
+            sell_price,
+            cost_mode,
+            price_mode,
+            stock_qty: final_stock_pieces,
+            stock_pieces: final_stock_pieces,
+            stock_mode,
+            stock_locked,
+            locked_stock_qty,
+            allow_case,
+            allow_piece,
+            units_per_case: allow_case ? units_per_case : null,
+            low_stock_threshold
+        }
+
+        // Only include cost/price fields if they have real values (not empty/undefined)
+        if (cost_price !== undefined) updatePayload.cost_price = cost_price
+        if (cost_case !== undefined) updatePayload.cost_case = cost_case
+        if (price_case !== undefined) updatePayload.price_case = price_case
+
         const { error } = await supabase
             .from('products')
-            .update({
-                name,
-                sku,
-                barcode,
-                category_id,
-                category_node_id,
-                cost_price,
-                sell_price,
-                cost_mode,
-                price_mode,
-                stock_qty: final_stock_pieces,
-                stock_pieces: final_stock_pieces,
-                stock_mode,
-                stock_locked,
-                locked_stock_qty,
-                allow_case,
-                allow_piece,
-                units_per_case: allow_case ? units_per_case : null,
-                low_stock_threshold
-            })
+            .update(updatePayload)
             .eq('id', id)
             .eq('distributor_id', distributorId)
 

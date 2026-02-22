@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,6 +42,7 @@ const FIELD_LABELS: Record<PriceField, string> = {
 }
 
 export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Category[]; vendors: Vendor[] }) {
+    const router = useRouter()
     // Scope
     const [selectedCategoryId, setSelectedCategoryId] = useState('')
     const [selectedNodeId, setSelectedNodeId] = useState('')
@@ -155,6 +157,8 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
         if (res.ok) {
             setResult(res.data)
             toast.success(`Updated ${res.data.products_affected} products`)
+            // Bust Next.js client-side router cache so inventory page shows fresh prices
+            router.refresh()
             // Refresh preview
             handleLoadPreview()
         } else {

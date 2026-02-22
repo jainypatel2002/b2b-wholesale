@@ -605,8 +605,22 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
                                 </div>
                             </TableCell>
                             <TableCell className="font-mono text-xs text-slate-500">{p.sku || '-'}</TableCell>
-                            <TableCell>${Number(p.cost_price).toFixed(2)}</TableCell>
-                            <TableCell>${Number(p.sell_price).toFixed(2)}</TableCell>
+                            <TableCell>
+                                <div className="flex flex-col">
+                                    <span>${Number(p.cost_price || 0).toFixed(2)}</span>
+                                    {p.allow_case && p.cost_case != null && Number(p.cost_case) > 0 && (
+                                        <span className="text-[10px] text-slate-400">${Number(p.cost_case).toFixed(2)}/case</span>
+                                    )}
+                                </div>
+                            </TableCell>
+                            <TableCell>
+                                <div className="flex flex-col">
+                                    <span>${Number(p.sell_price || 0).toFixed(2)}</span>
+                                    {p.allow_case && p.price_case != null && Number(p.price_case) > 0 && (
+                                        <span className="text-[10px] text-slate-400">${Number(p.price_case).toFixed(2)}/case</span>
+                                    )}
+                                </div>
+                            </TableCell>
                             <TableCell>
                                 <div className="flex flex-col gap-1 w-fit">
                                     <span className={`font-mono ${isLow ? 'text-red-600 font-bold' : ''}`}>
