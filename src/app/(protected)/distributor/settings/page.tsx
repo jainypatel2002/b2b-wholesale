@@ -1,6 +1,7 @@
 import { requireRole } from '@/lib/auth'
 import { ShareCodeCard } from '@/components/distributor/share-code-card'
 import { DisplayNameForm } from '@/components/distributor/display-name-form'
+import { NotificationEmailForm } from '@/components/distributor/notification-email-form'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { CopyButton } from '@/components/ui/copy-button'
 
@@ -20,6 +21,20 @@ export default async function DistributorSettingsPage() {
                     </CardHeader>
                     <CardContent>
                         <DisplayNameForm initialName={profile.display_name || ''} />
+                    </CardContent>
+                </Card>
+
+                {/* Notification Email */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-xl">Notification Email</CardTitle>
+                        <CardDescription>Set where order notifications are sent. Defaults to your login email if left empty.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <NotificationEmailForm
+                            currentEmail={profile.notification_email}
+                            loginEmail={profile.email}
+                        />
                     </CardContent>
                 </Card>
 
@@ -50,3 +65,4 @@ export default async function DistributorSettingsPage() {
         </div>
     )
 }
+

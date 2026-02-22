@@ -8,296 +8,270 @@ const appUrl = Deno.env.get('APP_URL') || Deno.env.get('NEXT_PUBLIC_APP_URL') ||
 const webhookSecret = Deno.env.get('WEBHOOK_SECRET')
 const resendFrom = Deno.env.get('RESEND_FROM') || 'onboarding@resend.dev'
 
+/**
+ * Resolve a user's email from profiles first, then fall back to auth.users.
+ * Uses service_role so RLS is bypassed.
+ */
+async function resolveEmail(
+  supabase: any,
+  userId: string,
+  label: string
+): Promise<{ email: string | null; notificationEmail: string | null; displayName: string | null; method: string }> {
+  // Step 1: Try profiles table (has notification_email + display_name)
+  const { data: profile, error: profErr } = await supabase
+    .from('profiles')
+    .select('email, display_name, notification_email')
+    .eq('id', userId)
+    .single()
+
+  if (profErr) {
+    console.warn(`[${label}] profiles lookup failed for ${userId}:`, profErr.message)
+  }
+
+  if (profile?.email || profile?.notification_email) {
+    console.log(`[${label}] Resolved from profiles: email=${profile.email}, notification_email=${profile.notification_email}`)
+    return {
+      email: profile.email,
+      notificationEmail: profile.notification_email,
+      displayName: profile.display_name,
+      method: 'profiles'
+    }
+  }
+
+  // Step 2: Fallback to auth.users (service_role can read this)
+  console.log(`[${label}] profiles.email is null for ${userId}, falling back to auth.users`)
+  const { data: authUser, error: authErr } = await supabase.auth.admin.getUserById(userId)
+
+  if (authErr) {
+    console.error(`[${label}] auth.users lookup failed for ${userId}:`, authErr.message)
+    return { email: null, notificationEmail: null, displayName: profile?.display_name || null, method: 'none' }
+  }
+
+  const authEmail = authUser?.user?.email || null
+  console.log(`[${label}] Resolved from auth.users: email=${authEmail}`)
+
+  // Also backfill profiles.email to prevent this fallback in the future
+  if (authEmail) {
+    const { error: updateErr } = await supabase
+      .from('profiles')
+      .update({ email: authEmail })
+      .eq('id', userId)
+    if (updateErr) {
+      console.warn(`[${label}] Failed to backfill profiles.email for ${userId}:`, updateErr.message)
+    } else {
+      console.log(`[${label}] Backfilled profiles.email for ${userId}`)
+    }
+  }
+
+  return {
+    email: authEmail,
+    notificationEmail: profile?.notification_email || null,
+    displayName: profile?.display_name || null,
+    method: 'auth.users'
+  }
+}
+
 serve(async (req) => {
-    try {
-        // 1. Webhook Authentication
-        if (webhookSecret) {
-            const reqSecret = req.headers.get('x-webhook-secret')
-            if (reqSecret !== webhookSecret) {
-                console.warn("Unauthorized webhook attempt")
-                return new Response(JSON.stringify({ ok: false, action: 'ignored', reason: 'unauthorized' }), {
-                    status: 401,
-                    headers: { 'Content-Type': 'application/json' }
-                })
-            }
-        }
-
-        const payload = await req.json()
-        const record = payload.record
-
-        if (!record || !record.id || !record.distributor_id || !record.vendor_id) {
-            console.log("Missing essential fields")
-            return new Response(JSON.stringify({ ok: true, action: 'ignored', reason: 'missing essential fields' }), {
-                headers: { 'Content-Type': 'application/json' },
-                status: 200
-            })
-        }
-
-        const { id: order_id, distributor_id, vendor_id } = record
-
-        if (!supabaseUrl || !supabaseServiceKey) {
-            console.error("Missing Supabase credentials:", { url: !!supabaseUrl, key: !!supabaseServiceKey })
-            throw new Error("Missing Supabase environment variables")
-        }
-
-        const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
-        // 2. Idempotency Check
-        const eventKey = `order_created:${order_id}`
-        const { error: eventError } = await supabase
-            .from('email_events')
-            .insert({ event_key: eventKey })
-
-        if (eventError) {
-            if (eventError.code === '23505') { // Unique violation
-                console.log(`Event ${eventKey} already processed. Skipping.`)
-                return new Response(JSON.stringify({ ok: true, action: 'skipped', reason: 'Already sent' }), {
-                    headers: { 'Content-Type': 'application/json' },
-                    status: 200
-                })
-            }
-            throw eventError
-        }
-
-        // 3. Fetch Context
-        const { data: distData } = await supabase
-            .from('profiles')
-            .select('email, display_name')
-            .eq('id', distributor_id)
-            .single()
-
-        const { data: vendorData } = await supabase
-            .from('profiles')
-            .select('display_name, email')
-            .eq('id', vendor_id)
-            .single()
-
-        const distEmail = distData?.email
-        if (!distEmail) {
-            console.log("Distributor email not found. Skipping.")
-            return new Response(JSON.stringify({ ok: true, action: 'skipped', reason: 'distributor email not found' }), {
-                headers: { 'Content-Type': 'application/json' },
-                status: 200
-            })
-        }
-
-        const distName = distData?.display_name || 'Distributor'
-        const vendorName = vendorData?.display_name || vendorData?.email || 'A vendor'
-        const vendorEmail = vendorData?.email || ''
-
-        // 4. Fetch Order Total
-        let orderTotal = 0
-        try {
-            const { data: items } = await supabase
-                .from('order_items')
-                .select('qty, unit_price')
-                .eq('order_id', order_id)
-
-            if (items && items.length > 0) {
-                orderTotal = items.reduce((sum: number, i: any) => sum + (Number(i.qty) * Number(i.unit_price || 0)), 0)
-            }
-        } catch (e) {
-            console.warn("Could not fetch order total:", e)
-        }
-
-        const orderShortId = order_id.slice(0, 8).toUpperCase()
-        const orderDate = new Date(record.created_at || Date.now()).toLocaleDateString('en-US', {
-            weekday: 'short',
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
+  try {
+    // 1. Webhook Authentication
+    if (webhookSecret) {
+      const reqSecret = req.headers.get('x-webhook-secret')
+      if (reqSecret !== webhookSecret) {
+        console.warn("Unauthorized webhook attempt")
+        return new Response(JSON.stringify({ ok: false, action: 'ignored', reason: 'unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
         })
+      }
+    }
 
-        // 5. Insert In-App Notification
-        const { error: notifError } = await supabase
-            .from('notifications')
-            .insert({
-                user_id: distributor_id,
-                type: 'order_created',
-                title: 'New Order Received',
-                body: `You have received a new order from ${vendorName}.`,
-                ref_type: 'order',
-                ref_id: order_id
-            })
+    const payload = await req.json()
+    const record = payload.record
 
-        if (notifError) {
-            console.warn("Failed to insert notification:", notifError)
-        }
+    if (!record || !record.id || !record.distributor_id || !record.vendor_id) {
+      console.log("Missing essential fields in payload:", JSON.stringify(record || {}))
+      return new Response(JSON.stringify({ ok: true, action: 'ignored', reason: 'missing essential fields' }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200
+      })
+    }
 
-        // 6. Prepare Professional Email
-        const dashboardUrl = `${appUrl}/distributor/orders/${order_id}`
+    const { id: order_id, distributor_id, vendor_id } = record
+    console.log(`[notify-order-created] Invoked for order=${order_id}, distributor=${distributor_id}, vendor=${vendor_id}`)
 
-        const emailHtml = `<!DOCTYPE html>
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Missing Supabase credentials:", { url: !!supabaseUrl, key: !!supabaseServiceKey })
+      throw new Error("Missing Supabase environment variables")
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // 2. Idempotency Check
+    const eventKey = `order_created:${order_id}`
+    const { error: eventError } = await supabase
+      .from('email_events')
+      .insert({ event_key: eventKey })
+
+    if (eventError) {
+      if (eventError.code === '23505') {
+        console.log(`Event ${eventKey} already processed. Skipping.`)
+        return new Response(JSON.stringify({
+          ok: true, action: 'skipped_duplicate', reason: 'Already sent',
+          order_id, distributor_id
+        }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200
+        })
+      }
+      console.error("email_events insert error:", eventError)
+      throw eventError
+    }
+
+    // 3. Resolve emails using robust lookup (profiles → auth.users fallback)
+    const distInfo = await resolveEmail(supabase, distributor_id, 'distributor')
+    const vendorInfo = await resolveEmail(supabase, vendor_id, 'vendor')
+
+    // Distributor receives this email
+    const distEmail = distInfo.notificationEmail || distInfo.email
+    if (!distEmail) {
+      console.error(`Distributor email not resolvable for ${distributor_id} (method: ${distInfo.method})`)
+      return new Response(JSON.stringify({
+        ok: false, action: 'skipped', reason: `distributor email not found (tried: ${distInfo.method})`,
+        order_id, distributor_id
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200
+      })
+    }
+
+    const distName = distInfo.displayName || 'Distributor'
+    const vendorName = vendorInfo.displayName || vendorInfo.email || 'A vendor'
+    const vendorEmail = vendorInfo.email || ''
+
+    console.log(`[notify-order-created] Sending to: ${distEmail} (via ${distInfo.method}), dist=${distributor_id}, vendor=${vendorName}`)
+
+    // 4. Fetch Order Total
+    let orderTotal = 0
+    try {
+      const { data: items } = await supabase
+        .from('order_items')
+        .select('qty, unit_price')
+        .eq('order_id', order_id)
+
+      if (items && items.length > 0) {
+        orderTotal = items.reduce((sum: number, i: any) => sum + (Number(i.qty) * Number(i.unit_price || 0)), 0)
+      }
+    } catch (e) {
+      console.warn("Could not fetch order total:", e)
+    }
+
+    const orderShortId = order_id.slice(0, 8).toUpperCase()
+    const orderDate = new Date(record.created_at || Date.now()).toLocaleDateString('en-US', {
+      weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    })
+
+    // 5. Insert In-App Notification
+    const { error: notifError } = await supabase
+      .from('notifications')
+      .insert({
+        user_id: distributor_id, type: 'order_created',
+        title: 'New Order Received',
+        body: `You have received a new order from ${vendorName}.`,
+        ref_type: 'order', ref_id: order_id
+      })
+    if (notifError) console.warn("Failed to insert notification:", notifError)
+
+    // 6. Prepare Email HTML
+    const dashboardUrl = `${appUrl}/distributor/orders/${order_id}`
+
+    const emailHtml = `<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>New Order Received</title>
-</head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>New Order Received</title></head>
 <body style="margin:0;padding:0;background-color:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:32px 16px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);padding:32px 40px;text-align:center;">
-              <h1 style="margin:0;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">${distName}</h1>
-              <p style="margin:6px 0 0;font-size:13px;color:#bfdbfe;font-weight:400;">Wholesale Order Notification</p>
-            </td>
-          </tr>
-
-          <!-- Main Content -->
-          <tr>
-            <td style="padding:36px 40px 20px;">
-              <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#0f172a;">🧾 New Order Received</h2>
-              <p style="margin:0 0 24px;font-size:15px;color:#475569;line-height:1.6;">
-                You have received a new order from <strong style="color:#0f172a;">${vendorName}</strong>.
-              </p>
-
-              <!-- Order Details Box -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                <tr>
-                  <td style="padding:20px 24px;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
-                          <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Order ID</span><br>
-                          <span style="font-size:15px;font-weight:600;color:#0f172a;font-family:'Courier New',monospace;">#${orderShortId}</span>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
-                          <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Vendor Name</span><br>
-                          <span style="font-size:15px;color:#0f172a;">${vendorName}</span>
-                        </td>
-                      </tr>
-                      ${vendorEmail ? `<tr>
-                        <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
-                          <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Vendor Email</span><br>
-                          <span style="font-size:15px;color:#0f172a;">${vendorEmail}</span>
-                        </td>
-                      </tr>` : ''}
-                      <tr>
-                        <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
-                          <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Order Total</span><br>
-                          <span style="font-size:18px;font-weight:700;color:#059669;">$${orderTotal.toFixed(2)}</span>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:8px 0;">
-                          <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Order Date</span><br>
-                          <span style="font-size:15px;color:#0f172a;">${orderDate}</span>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- CTA Button -->
-          <tr>
-            <td style="padding:8px 40px 36px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg,#1e40af 0%,#2563eb 100%);padding:32px 40px;text-align:center;">
+          <h1 style="margin:0;font-size:22px;font-weight:700;color:#ffffff;">${distName}</h1>
+          <p style="margin:6px 0 0;font-size:13px;color:#bfdbfe;">Wholesale Order Notification</p>
+        </td></tr>
+        <tr><td style="padding:36px 40px 20px;">
+          <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#0f172a;">🧾 New Order Received</h2>
+          <p style="margin:0 0 24px;font-size:15px;color:#475569;line-height:1.6;">You have received a new order from <strong style="color:#0f172a;">${vendorName}</strong>.</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+            <tr><td style="padding:20px 24px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td align="center">
-                    <a href="${dashboardUrl}" style="display:inline-block;padding:14px 36px;background-color:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;letter-spacing:0.2px;box-shadow:0 2px 4px rgba(37,99,235,0.3);">
-                      View Order Details →
-                    </a>
-                  </td>
-                </tr>
+                <tr><td style="padding:8px 0;border-bottom:1px solid #e2e8f0;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Order ID</span><br><span style="font-size:15px;font-weight:600;color:#0f172a;font-family:monospace;">#${orderShortId}</span></td></tr>
+                <tr><td style="padding:8px 0;border-bottom:1px solid #e2e8f0;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Vendor</span><br><span style="font-size:15px;color:#0f172a;">${vendorName}</span></td></tr>
+                ${vendorEmail ? `<tr><td style="padding:8px 0;border-bottom:1px solid #e2e8f0;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Vendor Email</span><br><span style="font-size:15px;color:#0f172a;">${vendorEmail}</span></td></tr>` : ''}
+                <tr><td style="padding:8px 0;border-bottom:1px solid #e2e8f0;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Order Total</span><br><span style="font-size:18px;font-weight:700;color:#059669;">$${orderTotal.toFixed(2)}</span></td></tr>
+                <tr><td style="padding:8px 0;"><span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;">Order Date</span><br><span style="font-size:15px;color:#0f172a;">${orderDate}</span></td></tr>
               </table>
-            </td>
-          </tr>
-
-          <!-- Divider -->
-          <tr>
-            <td style="padding:0 40px;">
-              <div style="height:1px;background-color:#e2e8f0;"></div>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="padding:24px 40px 32px;text-align:center;">
-              <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#64748b;">${distName}</p>
-              <p style="margin:0 0 12px;font-size:12px;color:#94a3b8;">${distEmail}</p>
-              <p style="margin:0;font-size:11px;color:#cbd5e1;line-height:1.5;">
-                This is an automated notification from your Wholesale Portal system.<br>
-                Please do not reply directly to this email.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:8px 40px 36px;" align="center">
+          <a href="${dashboardUrl}" style="display:inline-block;padding:14px 36px;background-color:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">View Order Details →</a>
+        </td></tr>
+        <tr><td style="padding:0 40px;"><div style="height:1px;background-color:#e2e8f0;"></div></td></tr>
+        <tr><td style="padding:24px 40px 32px;text-align:center;">
+          <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#64748b;">${distName}</p>
+          <p style="margin:0 0 12px;font-size:12px;color:#94a3b8;">${distEmail}</p>
+          <p style="margin:0;font-size:11px;color:#cbd5e1;line-height:1.5;">This is an automated notification from your Wholesale Portal system.<br>Please do not reply directly to this email.</p>
+        </td></tr>
+      </table>
+    </td></tr>
   </table>
 </body>
 </html>`
 
-        if (!resendApiKey) {
-            console.warn("RESEND_API_KEY missing, skipping actual email delivery.")
-            return new Response(JSON.stringify({ ok: true, action: 'skipped', reason: 'dry run (missing resend key)' }), {
-                headers: { 'Content-Type': 'application/json' },
-                status: 200
-            })
-        }
-
-        // 7. Send Email
-        const senderName = `${distName} Orders`
-        const fallbackSenderName = 'Wholesale Portal'
-
-        async function sendEmail(fromAddress: string, displayName: string) {
-            return await fetch('https://api.resend.com/emails', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${resendApiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    from: `${displayName} <${fromAddress}>`,
-                    to: distEmail,
-                    subject: `🧾 New Order Received – Order #${orderShortId}`,
-                    html: emailHtml
-                })
-            })
-        }
-
-        let resendRes = await sendEmail(resendFrom, senderName)
-
-        // Fallback if configured sender fails (e.g. unverified domain)
-        if (!resendRes.ok) {
-            const errText = await resendRes.text()
-            console.warn(`Resend failed with configured sender (${resendFrom}): ${errText}. Attempting fallback...`)
-
-            if (resendFrom !== 'onboarding@resend.dev' && (errText.toLowerCase().includes('domain') || resendRes.status === 403)) {
-                console.log('Falling back to onboarding@resend.dev...')
-                resendRes = await sendEmail('onboarding@resend.dev', fallbackSenderName)
-
-                if (!resendRes.ok) {
-                    throw new Error(`Resend Fallback Error: ${await resendRes.text()}`)
-                }
-            } else {
-                throw new Error(`Resend API Error: ${errText}`)
-            }
-        }
-
-        console.log(`Email successfully sent to ${distEmail}`)
-        return new Response(JSON.stringify({ ok: true, action: 'sent' }), {
-            headers: { 'Content-Type': 'application/json' },
-            status: 200
-        })
-    } catch (error: any) {
-        console.error("Function Error:", error)
-        return new Response(JSON.stringify({ ok: false, action: 'error', reason: error.message }), {
-            headers: { 'Content-Type': 'application/json' },
-            status: 400
-        })
+    if (!resendApiKey) {
+      console.warn("RESEND_API_KEY missing, skipping actual email delivery.")
+      return new Response(JSON.stringify({
+        ok: true, action: 'skipped', reason: 'dry run (missing resend key)',
+        order_id, distributor_id, recipient: distEmail, lookup_method: distInfo.method
+      }), { headers: { 'Content-Type': 'application/json' }, status: 200 })
     }
+
+    // 7. Send Email via Resend
+    const senderName = `${distName} Orders`
+
+    async function sendEmail(fromAddress: string, displayName: string) {
+      return await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: `${displayName} <${fromAddress}>`,
+          to: distEmail,
+          subject: `🧾 New Order Received – Order #${orderShortId}`,
+          html: emailHtml
+        })
+      })
+    }
+
+    let resendRes = await sendEmail(resendFrom, senderName)
+
+    if (!resendRes.ok) {
+      const errText = await resendRes.text()
+      console.warn(`Resend failed with ${resendFrom}: ${errText}. Attempting fallback...`)
+      if (resendFrom !== 'onboarding@resend.dev' && (errText.toLowerCase().includes('domain') || resendRes.status === 403)) {
+        resendRes = await sendEmail('onboarding@resend.dev', 'Wholesale Portal')
+        if (!resendRes.ok) throw new Error(`Resend Fallback Error: ${await resendRes.text()}`)
+      } else {
+        throw new Error(`Resend API Error: ${errText}`)
+      }
+    }
+
+    console.log(`[notify-order-created] Email sent to ${distEmail} for order ${order_id}`)
+    return new Response(JSON.stringify({
+      ok: true, action: 'sent', event: 'order_created',
+      order_id, distributor_id, recipient: distEmail, lookup_method: distInfo.method
+    }), { headers: { 'Content-Type': 'application/json' }, status: 200 })
+
+  } catch (error: any) {
+    console.error("[notify-order-created] Error:", error)
+    return new Response(JSON.stringify({ ok: false, action: 'error', reason: error.message }), {
+      headers: { 'Content-Type': 'application/json' }, status: 400
+    })
+  }
 })

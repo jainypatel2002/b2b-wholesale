@@ -15,7 +15,7 @@ export async function requireProfile() {
   const supabase = await createClient()
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id,email,role,display_name,active_distributor_id,distributor_code')
+    .select('id,email,role,display_name,active_distributor_id,distributor_code,notification_email')
     .eq('id', user.id)
     .single()
 
@@ -27,6 +27,7 @@ export async function requireProfile() {
     display_name: string | null
     active_distributor_id: string | null
     distributor_code: string | null
+    notification_email: string | null
   }
 }
 
