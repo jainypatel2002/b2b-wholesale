@@ -76,7 +76,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
     const [scanMode, setScanMode] = useState(false)
     const [scanStatus, setScanStatus] = useState<ScanStatus>('idle')
     const [scanStatusMessage, setScanStatusMessage] = useState('')
-    const [prefillBarcode, setPrefillBarcode] = useState<string | null>(null)
+    const [pendingScannedBarcode, setPendingScannedBarcode] = useState<string | null>(null)
 
     // ── Camera Scanner State ──
     const [cameraOpen, setCameraOpen] = useState(false)
@@ -143,8 +143,10 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
     }
 
     const openAddModal = (barcode?: string | null) => {
-        setPrefillBarcode(barcode ?? null)
-        addModalRef.current?.showModal()
+        setPendingScannedBarcode(barcode ?? null)
+        if (!addModalRef.current?.open) {
+            addModalRef.current?.showModal()
+        }
     }
 
     const handleDeleteClick = (p: Product) => {
@@ -497,8 +499,8 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                             categories={categories}
                             categoryNodes={categoryNodes}
                             type="add"
-                            onCancel={() => { addModalRef.current?.close(); setPrefillBarcode(null) }}
-                            prefillBarcode={prefillBarcode}
+                            onCancel={() => { addModalRef.current?.close(); setPendingScannedBarcode(null) }}
+                            pendingScannedBarcode={pendingScannedBarcode}
                         />
                     </div>
                 </div>
@@ -716,13 +718,13 @@ import { useRouter } from 'next/navigation'
 // ... (other imports)
 
 // ProductForm Component using useActionState
-function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel, prefillBarcode }: {
+function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel, pendingScannedBarcode }: {
     defaultValues?: any,
     categories: any[],
     categoryNodes: any[],
     type: 'add' | 'edit',
     onCancel: () => void,
-    prefillBarcode?: string | null
+    pendingScannedBarcode?: string | null
 }) {
     /**
      * STABILIZATION LOGIC & TEST PLAN (DEV-ONLY):
@@ -741,7 +743,8 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
     // Use fully controlled inputs with string state to prevent jumping/incorrect resets
     const [name, setName] = useState(defaultValues?.name || '')
     const [sku, setSku] = useState(defaultValues?.sku || '')
-    const [barcode, setBarcode] = useState(prefillBarcode || defaultValues?.barcode || '')
+    const [barcode, setBarcode] = useState(pendingScannedBarcode || defaultValues?.barcode || '')
+    const barcodeInputRef = useRef<HTMLInputElement>(null)
     const [lowStockThreshold, setLowStockThreshold] = useState(String(defaultValues?.low_stock_threshold ?? 5))
 
     const [allowCase, setAllowCase] = useState(defaultValues?.allow_case ?? false)
@@ -793,6 +796,24 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
     }, [defaultValues])
 
     const [stockInput, setStockInput] = useState<string>(initialStockInput)
+
+    const applyScannedBarcode = useCallback((rawBarcode: string) => {
+        // Sanitize: trim, remove whitespace, keep digits/letters, preserve leading zeros
+        const sanitized = rawBarcode.replace(/[\s\W_]+/g, '').trim()
+        if (sanitized.length > 0) {
+            setBarcode(sanitized)
+            // Optional: focus field
+            setTimeout(() => {
+                barcodeInputRef.current?.focus()
+            }, 0)
+        }
+    }, [])
+
+    useEffect(() => {
+        if (pendingScannedBarcode && type === 'add') {
+            applyScannedBarcode(pendingScannedBarcode)
+        }
+    }, [pendingScannedBarcode, type, applyScannedBarcode])
 
     // --- Explicit Handlers to prevent async side-effect overwrites ---
 
@@ -919,7 +940,14 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                     <Input
                         name="barcode"
                         value={barcode}
+                        ref={barcodeInputRef}
                         onChange={e => setBarcode(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault()
+                                applyScannedBarcode(e.currentTarget.value)
+                            }
+                        }}
                         placeholder="e.g. 012345678905"
                     />
                 </div>
