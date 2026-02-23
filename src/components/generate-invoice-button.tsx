@@ -20,21 +20,24 @@ export function GenerateInvoiceButton({ orderId }: { orderId: string }) {
     const handleGenerate = () => {
         startTransition(async () => {
             try {
+                console.log('[GenerateInvoiceButton] Starting generation for:', orderId)
                 const res = await createInvoiceAction(orderId)
-                console.log('[GenerateInvoiceButton] Response from createInvoiceAction:', res)
+                console.log('[GenerateInvoiceButton] Response:', res)
+
                 if (res.error) {
-                    console.error('[GenerateInvoiceButton] Error returned:', res.error)
                     alert(`Failed to generate invoice: ${res.error}`)
                     return
                 }
+
                 if (res.success && res.invoiceId) {
-                    console.log('[GenerateInvoiceButton] Success! Navigating to:', `/distributor/invoices/${res.invoiceId}`)
                     router.push(`/distributor/invoices/${res.invoiceId}`)
-                } else {
-                    console.warn('[GenerateInvoiceButton] Success but no invoiceId?', res)
                 }
             } catch (e: any) {
+                console.error('[GenerateInvoiceButton] Unexpected error:', e)
                 alert(`Unexpected error: ${e.message}`)
+            } finally {
+                // isPending will automatically become false when this async function ends
+                setShowConfirm(false) // Close modal on complete (success or handled error)
             }
         })
     }

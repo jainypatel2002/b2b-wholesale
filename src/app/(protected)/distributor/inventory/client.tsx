@@ -470,11 +470,15 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                         </div>
                         {editingProduct && (
                             <ProductForm
+                                key={editingProduct.id}
                                 defaultValues={editingProduct}
                                 categories={categories}
                                 categoryNodes={categoryNodes}
                                 type="edit"
-                                onCancel={() => modalRef.current?.close()}
+                                onCancel={() => {
+                                    modalRef.current?.close()
+                                    setEditingProduct(null)
+                                }}
                             />
                         )}
                     </div>
@@ -720,7 +724,26 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
     onCancel: () => void,
     prefillBarcode?: string | null
 }) {
-    // Configuration Fields
+    /**
+     * STABILIZATION LOGIC & TEST PLAN (DEV-ONLY):
+     * 1. Controlled State: All inputs use string-based state to allow smooth typing and prevent "0" resets.
+     * 2. Stable Keys: Component is mounted with a unique ID key to prevent stale state overlaps.
+     * 3. Init Once: Values are initialized only on mount. Background re-renders do not overwrite user input.
+     * 4. Explicit Toggles: Mode conversions happen ONLY on explicit click, not in sensitive useEffects.
+     * 
+     * TEST CHECKLIST:
+     * - [ ] Price Input: Clear field, type "1.23", change units_per_case. Value must stay "1.23".
+     * - [ ] Toggle Mode: Set price "10", click "Per Case". Value must become "10 * units". Switch back: "10".
+     * - [ ] Save Error: Simulate error. Values must NOT clear.
+     */
+
+    // --- Form State ---
+    // Use fully controlled inputs with string state to prevent jumping/incorrect resets
+    const [name, setName] = useState(defaultValues?.name || '')
+    const [sku, setSku] = useState(defaultValues?.sku || '')
+    const [barcode, setBarcode] = useState(prefillBarcode || defaultValues?.barcode || '')
+    const [lowStockThreshold, setLowStockThreshold] = useState(String(defaultValues?.low_stock_threshold ?? 5))
+
     const [allowCase, setAllowCase] = useState(defaultValues?.allow_case ?? false)
     const [allowPiece, setAllowPiece] = useState(defaultValues?.allow_piece ?? true)
 
@@ -728,8 +751,9 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
     const [stockLocked, setStockLocked] = useState(defaultValues?.stock_locked ?? false)
     const [lockedStockQty, setLockedStockQty] = useState<string>(defaultValues?.locked_stock_qty != null ? String(defaultValues.locked_stock_qty) : '')
 
-    // Units per Case (Central to calculations)
-    const [unitsPerCase, setUnitsPerCase] = useState<number>(defaultValues?.units_per_case || 1)
+    // Units per Case (Central to calculations) - String state to allow smooth typing
+    const [unitsPerCaseInput, setUnitsPerCaseInput] = useState<string>(String(defaultValues?.units_per_case || 1))
+    const unitsPerCase = Math.max(1, Number(unitsPerCaseInput || 1))
 
     // Subcategory logic
     const [selectedCategory, setSelectedCategory] = useState(defaultValues?.category_id || '')
@@ -770,26 +794,41 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
 
     const [stockInput, setStockInput] = useState<string>(initialStockInput)
 
-    // Recalculate input if mode changes? 
-    // UX: If user toggles mode, convert the input value
-    // We use a ref to track if the change comes from toggle vs user typing? 
-    // Actually, simplest is to just convert the value when toggling.
-    const prevStockMode = useRef(stockMode)
-    useEffect(() => {
-        if (prevStockMode.current !== stockMode) {
-            const val = Number(stockInput)
-            if (!isNaN(val)) {
-                if (stockMode === 'cases') {
-                    // Pieces -> Cases
-                    setStockInput(String(val / unitsPerCase)) // keep decimals if any
-                } else {
-                    // Cases -> Pieces
-                    setStockInput(String(val * unitsPerCase))
-                }
+    // --- Explicit Handlers to prevent async side-effect overwrites ---
+
+    const handlePriceModeToggle = (target: 'cost' | 'price', newMode: 'unit' | 'case') => {
+        if (target === 'cost') {
+            const currentVal = Number(costInput)
+            if (!isNaN(currentVal) && costMode !== newMode) {
+                // Convert value to match new mode
+                if (newMode === 'case') setCostInput(String(currentVal * unitsPerCase))
+                else setCostInput(String(currentVal / unitsPerCase))
             }
-            prevStockMode.current = stockMode
+            setCostMode(newMode)
+        } else {
+            const currentVal = Number(sellInput)
+            if (!isNaN(currentVal) && priceMode !== newMode) {
+                // Convert value to match new mode
+                if (newMode === 'case') setSellInput(String(currentVal * unitsPerCase))
+                else setSellInput(String(currentVal / unitsPerCase))
+            }
+            setPriceMode(newMode)
         }
-    }, [stockMode, unitsPerCase])
+    }
+
+    const handleStockModeToggle = (newMode: 'pieces' | 'cases') => {
+        const val = Number(stockInput)
+        if (!isNaN(val) && stockMode !== newMode) {
+            if (newMode === 'cases') {
+                // Pieces -> Cases
+                setStockInput(String(val / unitsPerCase))
+            } else {
+                // Cases -> Pieces
+                setStockInput(String(val * unitsPerCase))
+            }
+        }
+        setStockMode(newMode)
+    }
 
     // Calculation Helpers
     const getCostPerUnit = () => {
@@ -867,19 +906,20 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
 
             <div className="grid gap-2">
                 <label className="text-sm font-medium">Name</label>
-                <Input name="name" defaultValue={defaultValues?.name} required placeholder="Product Name" />
+                <Input name="name" value={name} onChange={e => setName(e.target.value)} required placeholder="Product Name" />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                     <label className="text-sm font-medium">SKU</label>
-                    <Input name="sku" defaultValue={defaultValues?.sku || ''} placeholder="SKU-123" />
+                    <Input name="sku" value={sku} onChange={e => setSku(e.target.value)} placeholder="SKU-123" />
                 </div>
                 <div className="grid gap-2">
                     <label className="text-sm font-medium">Barcode</label>
                     <Input
                         name="barcode"
-                        defaultValue={prefillBarcode || defaultValues?.barcode || ''}
+                        value={barcode}
+                        onChange={e => setBarcode(e.target.value)}
                         placeholder="e.g. 012345678905"
                     />
                 </div>
@@ -928,8 +968,8 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                         <Input
                             type="number"
                             name="units_per_case"
-                            value={unitsPerCase}
-                            onChange={(e) => setUnitsPerCase(Number(e.target.value))}
+                            value={unitsPerCaseInput}
+                            onChange={(e) => setUnitsPerCaseInput(e.target.value)}
                             min="1"
                             required
                             className="w-full"
@@ -961,14 +1001,14 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                         <div className="flex bg-slate-100 p-0.5 rounded-lg">
                             <button
                                 type="button"
-                                onClick={() => setCostMode('unit')}
+                                onClick={() => handlePriceModeToggle('cost', 'unit')}
                                 className={`px-2 py-0.5 text-xs rounded-md transition-colors ${costMode === 'unit' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Per Unit
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setCostMode('case')}
+                                onClick={() => handlePriceModeToggle('cost', 'case')}
                                 className={`px-2 py-0.5 text-xs rounded-md transition-colors ${costMode === 'case' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Per Case
@@ -1002,14 +1042,14 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                         <div className="flex bg-slate-100 p-0.5 rounded-lg">
                             <button
                                 type="button"
-                                onClick={() => setPriceMode('unit')}
+                                onClick={() => handlePriceModeToggle('price', 'unit')}
                                 className={`px-2 py-0.5 text-xs rounded-md transition-colors ${priceMode === 'unit' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Per Unit
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setPriceMode('case')}
+                                onClick={() => handlePriceModeToggle('price', 'case')}
                                 className={`px-2 py-0.5 text-xs rounded-md transition-colors ${priceMode === 'case' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Per Case
@@ -1087,14 +1127,14 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                     <div className="flex bg-slate-200 p-0.5 rounded-lg">
                         <button
                             type="button"
-                            onClick={() => setStockMode('pieces')}
+                            onClick={() => handleStockModeToggle('pieces')}
                             className={`px-2 py-0.5 text-xs rounded-md transition-colors ${stockMode === 'pieces' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             Pieces (Units)
                         </button>
                         <button
                             type="button"
-                            onClick={() => setStockMode('cases')}
+                            onClick={() => handleStockModeToggle('cases')}
                             className={`px-2 py-0.5 text-xs rounded-md transition-colors ${stockMode === 'cases' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             Cases
@@ -1130,7 +1170,12 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
 
             <div className="grid gap-2">
                 <label className="text-sm font-medium">Low Stock Warning</label>
-                <Input name="low_stock_threshold" type="number" defaultValue={defaultValues?.low_stock_threshold || 5} />
+                <Input
+                    name="low_stock_threshold"
+                    type="number"
+                    value={lowStockThreshold}
+                    onChange={e => setLowStockThreshold(e.target.value)}
+                />
             </div>
 
             {/* Hidden fields for Stock */}

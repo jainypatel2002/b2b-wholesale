@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText } from 'lucide-react'
-import { formatPriceLabel, formatQtyLabel } from '@/lib/pricing-engine'
+import { normalizeInvoiceItem, computeInvoiceSubtotal, formatMoney } from '@/lib/pricing-engine'
 
 export default async function VendorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -50,13 +50,9 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
     )
   }
 
-  // Use effective values (edited if present, else original), exclude removed
+  // Use centralized canonical logic for subtotal
   const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
-  const subtotal = activeItems.reduce((sum: number, it: any) => {
-    const price = it.edited_unit_price ?? it.unit_price
-    const qty = it.edited_qty ?? it.qty
-    return sum + Number(price) * Number(qty)
-  }, 0)
+  const subtotal = computeInvoiceSubtotal(activeItems)
 
   const { data: invoice } = await supabase.from('invoices').select('id,invoice_number,payment_status,total').eq('order_id', order.id).maybeSingle()
 
@@ -92,31 +88,33 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {activeItems.map((it: any) => {
-                    const productName = it.edited_name ?? it.product_name ?? (Array.isArray(it.products) ? it.products[0]?.name : it.products?.name) ?? '(Archived Product)'
-                    const effectivePrice = Number(it.edited_unit_price ?? it.unit_price)
-                    const effectiveQty = Number(it.edited_qty ?? it.qty)
+                  {activeItems.map((rawItem: any) => {
+                    const item = normalizeInvoiceItem(rawItem)
+                    const effectivePrice = item.mode === 'case' ? item.casePrice : item.unitPrice
                     return (
-                      <TableRow key={it.id}>
-                        <TableCell className="font-medium">{productName}</TableCell>
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.productName}</TableCell>
                         <TableCell className="text-right">
-                          {formatQtyLabel(effectiveQty, it.order_unit)}
-                          {it.order_unit === 'case' && (it.units_per_case_snapshot ?? 0) > 0 && (
-                            <div className="text-[10px] text-slate-400">@ {it.units_per_case_snapshot}/case</div>
+                          <div className="font-medium">
+                            {item.qty} {item.mode === 'case' ? (item.qty === 1 ? 'case' : 'cases') : (item.qty === 1 ? 'unit' : 'units')}
+                          </div>
+                          {item.mode === 'case' && item.unitsPerCase > 0 && (
+                            <div className="text-[10px] text-slate-400">@ {item.unitsPerCase}/case</div>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
-                          {formatPriceLabel(effectivePrice, it.order_unit)}
+                        <TableCell className="text-right whitespace-nowrap">
+                          {formatMoney(effectivePrice)}
+                          <span className="text-[10px] text-slate-400 ml-1">/ {item.mode === 'case' ? 'case' : 'unit'}</span>
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          ${(effectivePrice * effectiveQty).toFixed(2)}
+                          {formatMoney(item.lineTotal)}
                         </TableCell>
                       </TableRow>
                     )
                   })}
                   <TableRow>
                     <TableCell colSpan={3} className="text-right font-bold">Total</TableCell>
-                    <TableCell className="text-right font-bold">${subtotal.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-bold">{formatMoney(subtotal)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

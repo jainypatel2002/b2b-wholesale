@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { InvoicePrint } from '@/components/invoice-print'
+import { formatMoney } from '@/lib/pricing-engine'
 
 export default async function VendorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -19,7 +20,14 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
     .from('invoices')
     .select(`
         id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
-        invoice_items(qty, unit_price, unit_cost, item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name, order_unit, units_per_case_snapshot),
+        invoice_items(
+            qty, unit_price, unit_cost, item_code, upc, category_name, 
+            effective_units, ext_amount, is_manual, product_name, 
+            order_unit, units_per_case_snapshot,
+            product_name_snapshot, category_name_snapshot, order_mode, 
+            quantity_snapshot, line_total_snapshot,
+            unit_price_snapshot, case_price_snapshot
+        ),
         invoice_taxes(*),
         vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address),
         distributor:profiles!invoices_distributor_id_fkey(display_name, email)
@@ -111,15 +119,15 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
               <div className="pt-4 border-t border-slate-100 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-slate-600">Subtotal</span>
-                  <span className="font-medium">${Number(invoice.subtotal).toFixed(2)}</span>
+                  <span className="font-medium">{formatMoney(invoice.subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Tax</span>
-                  <span className="font-medium">${Number(invoice.tax).toFixed(2)}</span>
+                  <span className="font-medium">{formatMoney(invoice.tax)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
                   <span>Total</span>
-                  <span>${Number(invoice.total).toFixed(2)}</span>
+                  <span>{formatMoney(invoice.total)}</span>
                 </div>
               </div>
 

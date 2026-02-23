@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect } from 'react'
-import { formatPriceLabel, formatQtyLabel, OrderMode } from '@/lib/pricing-engine'
+import { formatPriceLabel, formatQtyLabel, OrderMode, normalizeInvoiceItem, formatMoney } from '@/lib/pricing-engine'
 
 interface InvoicePrintProps {
     invoice: any
@@ -72,52 +72,56 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
             {/* Main Item Grid */}
             <table className="w-full text-sm mb-10 border-collapse">
                 <thead>
-                    <tr className="bg-slate-50 border-y border-slate-200">
-                        <th className="py-3 px-2 text-left font-semibold text-slate-600">Item</th>
-                        <th className="py-3 px-2 text-left font-semibold text-slate-600 w-[120px]">UPC/SKU</th>
-                        <th className="py-3 px-2 text-right font-semibold text-slate-600 w-[80px]">Qty</th>
-                        <th className="py-3 px-2 text-right font-semibold text-slate-600 w-[100px]">Rate</th>
-                        <th className="py-3 px-2 text-right font-semibold text-slate-600 w-[100px]">Amount</th>
+                    <tr className="bg-slate-50 border-y border-slate-200 uppercase text-[10px] tracking-wider">
+                        <th className="py-3 px-2 text-left font-bold text-slate-500">Category</th>
+                        <th className="py-3 px-2 text-left font-bold text-slate-500">Item</th>
+                        <th className="py-3 px-2 text-center font-bold text-slate-500 w-[80px]">Units/Case</th>
+                        <th className="py-3 px-2 text-center font-bold text-slate-500 w-[100px]">Qty</th>
+                        <th className="py-3 px-2 text-right font-bold text-slate-500 w-[100px]">Price</th>
+                        <th className="py-3 px-2 text-right font-bold text-slate-500 w-[100px]">Total</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                    {items.map((item: any, idx: number) => {
-                        if (item.is_manual) {
+                    {items.map((rawItem: any, idx: number) => {
+                        const item = normalizeInvoiceItem(rawItem)
+                        const price = item.mode === 'case' ? item.casePrice : item.unitPrice
+
+                        if (item.isManual) {
                             return (
-                                <tr key={idx} className="group hover:bg-slate-50">
-                                    <td className="py-3 px-2 font-medium text-slate-800">{item.product_name}</td>
-                                    <td className="py-3 px-2 text-slate-500">—</td>
-                                    <td className="py-3 px-2 text-right text-slate-800">1</td>
-                                    <td className="py-3 px-2 text-right text-slate-800">${Number(item.unit_price).toFixed(2)}</td>
-                                    <td className="py-3 px-2 text-right font-medium text-slate-900">${Number(item.ext_amount).toFixed(2)}</td>
+                                <tr key={idx} className="group hover:bg-slate-50 align-top">
+                                    <td className="py-4 px-2 text-slate-400">—</td>
+                                    <td className="py-4 px-2 font-medium text-slate-800">{item.productName}</td>
+                                    <td className="py-4 px-2 text-center text-slate-400">—</td>
+                                    <td className="py-4 px-2 text-center text-slate-800">{item.qty} {item.qty === 1 ? 'unit' : 'units'}</td>
+                                    <td className="py-4 px-2 text-right text-slate-800">{formatMoney(price)}</td>
+                                    <td className="py-4 px-2 text-right font-medium text-slate-900">{formatMoney(item.lineTotal)}</td>
                                 </tr>
                             )
                         }
 
-                        const name = item.product_name || item.products?.name || 'Unknown Product'
-                        const effectiveQty = item.effective_units ?? item.qty
-                        const extAmount = item.ext_amount ?? (effectiveQty * Number(item.unit_price))
-
                         return (
-                            <tr key={idx} className="group hover:bg-slate-50">
-                                <td className="py-3 px-2">
-                                    <div className="font-medium text-slate-800">{name}</div>
-                                    {item.category_name && <div className="text-xs text-slate-400 mt-0.5">{item.category_name}</div>}
+                            <tr key={idx} className="group hover:bg-slate-50 align-top">
+                                <td className="py-4 px-2 text-slate-500 text-xs">
+                                    {item.categoryName}
                                 </td>
-                                <td className="py-3 px-2 text-slate-600">
-                                    <div className="truncate">{item.item_code || item.upc || '—'}</div>
+                                <td className="py-4 px-2">
+                                    <div className="font-medium text-slate-800">{item.productName}</div>
+                                    {item.itemCode && <div className="text-[10px] text-slate-400 mt-0.5 font-mono">{item.itemCode}</div>}
                                 </td>
-                                <td className="py-3 px-2 text-right text-slate-800">
-                                    {formatQtyLabel(effectiveQty, item.order_unit)}
-                                    {item.order_unit === 'case' && (item.units_per_case_snapshot ?? 0) > 0 && (
-                                        <div className="text-[10px] text-slate-400">@ {item.units_per_case_snapshot}/case</div>
-                                    )}
+                                <td className="py-4 px-2 text-center text-slate-600">
+                                    {item.mode === 'case' && item.unitsPerCase > 0 ? item.unitsPerCase : '—'}
                                 </td>
-                                <td className="py-3 px-2 text-right text-slate-800">
-                                    {formatPriceLabel(Number(item.unit_price), item.order_unit)}
+                                <td className="py-4 px-2 text-center text-slate-800">
+                                    <div className="font-medium">
+                                        {item.qty} {item.mode === 'case' ? (item.qty === 1 ? 'case' : 'cases') : (item.qty === 1 ? 'unit' : 'units')}
+                                    </div>
                                 </td>
-                                <td className="py-3 px-2 text-right font-medium text-slate-900">
-                                    ${Number(extAmount).toFixed(2)}
+                                <td className="py-4 px-2 text-right text-slate-800 whitespace-nowrap">
+                                    {formatMoney(price)}
+                                    <span className="text-[10px] text-slate-400 ml-1">/ {item.mode === 'case' ? 'case' : 'unit'}</span>
+                                </td>
+                                <td className="py-4 px-2 text-right font-medium text-slate-900">
+                                    {formatMoney(item.lineTotal)}
                                 </td>
                             </tr>
                         )
@@ -132,13 +136,13 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
                         <tbody>
                             <tr>
                                 <td className="py-2 text-slate-600">Subtotal</td>
-                                <td className="py-2 text-right font-medium text-slate-900">${Number(invoice.subtotal).toFixed(2)}</td>
+                                <td className="py-2 text-right font-medium text-slate-900">{formatMoney(invoice.subtotal)}</td>
                             </tr>
 
                             {taxes.map((tax: any) => (
                                 <tr key={tax.id}>
                                     <td className="py-2 text-slate-600">{tax.name} {tax.type === 'percent' && `(${tax.rate_percent}%)`}</td>
-                                    <td className="py-2 text-right text-slate-900">${Number(tax.amount).toFixed(2)}</td>
+                                    <td className="py-2 text-right text-slate-900">{formatMoney(tax.amount)}</td>
                                 </tr>
                             ))}
 
@@ -146,13 +150,13 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
                             {taxes.length === 0 && Number(invoice.tax) > 0 && (
                                 <tr>
                                     <td className="py-2 text-slate-600">Tax</td>
-                                    <td className="py-2 text-right text-slate-900">${Number(invoice.tax).toFixed(2)}</td>
+                                    <td className="py-2 text-right text-slate-900">{formatMoney(invoice.tax)}</td>
                                 </tr>
                             )}
 
                             <tr className="border-t-2 border-slate-900">
                                 <td className="py-3 font-bold text-slate-900 uppercase">Total</td>
-                                <td className="py-3 text-right font-bold text-lg text-slate-900">${Number(invoice.total).toFixed(2)}</td>
+                                <td className="py-3 text-right font-bold text-lg text-slate-900">{formatMoney(invoice.total)}</td>
                             </tr>
 
                             {/* Payment Status Ribbon */}

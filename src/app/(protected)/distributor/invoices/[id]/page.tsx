@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { InvoicePrint } from '@/components/invoice-print'
+import { normalizeInvoiceItem, formatMoney } from '@/lib/pricing-engine'
 
 export default async function DistributorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -19,7 +20,13 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
     .from('invoices')
     .select(`
             id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
-            invoice_items(qty, unit_price, unit_cost, item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
+            invoice_items(
+                qty, unit_price, unit_cost, item_code, upc, category_name, 
+                effective_units, ext_amount, is_manual, product_name,
+                product_name_snapshot, category_name_snapshot, order_mode, 
+                quantity_snapshot, line_total_snapshot,
+                unit_price_snapshot, case_price_snapshot, units_per_case_snapshot
+            ),
             invoice_taxes(*),
             vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address)
         `)
@@ -52,7 +59,18 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
     )
   }
 
-  const profit = (invoice.invoice_items ?? []).reduce((sum: number, it: any) => sum + (Number(it.unit_price) - Number(it.unit_cost)) * Number(it.qty), 0)
+  const profit = (invoice.invoice_items ?? []).reduce((sum: number, it: any) => {
+    // We still use unit_price and unit_cost for profit estimation
+    // But we favor unit_price_snapshot if available
+    const effectivePrice = Number(it.unit_price_snapshot ?? it.unit_price ?? 0)
+    const effectiveCost = Number(it.unit_cost ?? 0)
+    const isCase = (it.order_mode || it.order_unit) === 'case'
+
+    // Total pieces for profit calculation
+    const totalPieces = Number(it.total_pieces ?? (isCase ? (it.cases_qty * it.units_per_case_snapshot) : it.pieces_qty) ?? it.qty ?? 0)
+
+    return sum + (effectivePrice - effectiveCost) * totalPieces
+  }, 0)
 
   return (
     <div className="space-y-6">
@@ -112,19 +130,19 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
               <div className="pt-4 border-t border-slate-100 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-slate-600">Subtotal</span>
-                  <span className="font-medium">${Number(invoice.subtotal).toFixed(2)}</span>
+                  <span className="font-medium">{formatMoney(invoice.subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Tax</span>
-                  <span className="font-medium">${Number(invoice.tax).toFixed(2)}</span>
+                  <span className="font-medium">{formatMoney(invoice.tax)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
                   <span>Total</span>
-                  <span>${Number(invoice.total).toFixed(2)}</span>
+                  <span>{formatMoney(invoice.total)}</span>
                 </div>
                 <div className="flex justify-between pt-2 text-xs text-emerald-600">
                   <span>Profit (est)</span>
-                  <span>${profit.toFixed(2)}</span>
+                  <span>{formatMoney(profit)}</span>
                 </div>
               </div>
             </CardContent>

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { computeInvoiceSubtotal } from '@/lib/pricing-engine'
 
 export async function updateOrderStatus(orderId: string, newStatus: string) {
     const { distributorId } = await getDistributorContext()
@@ -136,12 +137,7 @@ export async function updateOrderItemsAction(orderId: string, items: OrderItemEd
         .select('qty, unit_price, edited_qty, edited_unit_price, removed')
         .eq('order_id', orderId)
 
-    const newTotal = (allItems ?? []).reduce((sum: number, it: any) => {
-        if (it.removed) return sum
-        const effectiveQty = it.edited_qty ?? it.qty ?? 0
-        const effectivePrice = it.edited_unit_price ?? it.unit_price ?? 0
-        return sum + Number(effectivePrice) * Number(effectiveQty)
-    }, 0)
+    const newTotal = computeInvoiceSubtotal(allItems ?? [])
 
     revalidatePath(`/distributor/orders/${orderId}`)
     revalidatePath('/distributor/orders')

@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import { GenerateInvoiceButton } from '@/components/generate-invoice-button'
 import { OrderItemsEditor } from '@/components/order-items-editor'
+import { computeInvoiceSubtotal } from '@/lib/pricing-engine'
 
 export default async function DistributorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -58,13 +59,9 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
   const vendor = Array.isArray(order.vendor) ? order.vendor[0] : order.vendor
   const { data: invoice } = await supabase.from('invoices').select('id,invoice_number,payment_status,total').eq('order_id', order.id).maybeSingle()
 
-  // Compute subtotal using effective values, excluding removed items
+  // Compute subtotal using centralized canonical logic
   const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
-  const subtotal = activeItems.reduce((sum: number, it: any) => {
-    const price = it.edited_unit_price ?? it.unit_price
-    const qty = it.edited_qty ?? it.qty
-    return sum + Number(price) * Number(qty)
-  }, 0)
+  const subtotal = computeInvoiceSubtotal(activeItems)
 
   // Actions
   async function transitionStatus(newStatus: string) {

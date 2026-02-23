@@ -16,7 +16,7 @@ import {
 } from '@/app/actions/distributor'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { formatQtyLabel, formatPriceLabel, OrderMode } from '@/lib/pricing-engine'
+import { formatQtyLabel, formatPriceLabel, OrderMode, normalizeInvoiceItem, computeInvoiceSubtotal, formatMoney } from '@/lib/pricing-engine'
 
 interface OrderItem {
     id: string
@@ -99,22 +99,26 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
         }))
     }
 
-    // Compute live total from edit state
+    // Compute live total from edit state or canonical row values
     const liveTotal = useMemo(() => {
         if (!editing) {
-            return items.reduce((sum, it) => {
-                if (it.removed) return sum
-                const price = it.edited_unit_price ?? it.unit_price
-                const qty = it.edited_qty ?? it.qty
-                return sum + Number(price) * Number(qty)
-            }, 0)
+            return computeInvoiceSubtotal(items)
         }
-        return Object.values(editState).reduce((sum, s) => {
-            if (s.removed) return sum
-            const price = parseFloat(s.unit_price) || 0
-            const qty = parseFloat(s.qty) || 0
-            return sum + price * qty
-        }, 0)
+
+        // When editing, we map the editState back into a shape normalizeInvoiceItem can handle
+        const editedItems = items.map(it => {
+            const s = editState[it.id]
+            if (!s) return it
+            return {
+                ...it,
+                edited_name: s.name,
+                edited_unit_price: parseFloat(s.unit_price) || 0,
+                edited_qty: parseFloat(s.qty) || 0,
+                removed: s.removed
+            }
+        }).filter(it => !it.removed)
+
+        return computeInvoiceSubtotal(editedItems)
     }, [editing, items, editState])
 
     // Adjustment State
@@ -300,11 +304,18 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                         <TableBody>
                             {items.map(item => {
                                 const s = editState[item.id]
-                                const isRemoved = editing ? s?.removed : item.removed
-                                const effectiveName = editing ? s?.name : getEffectiveName(item)
-                                const effectivePrice = editing ? parseFloat(s?.unit_price || '0') : Number(item.edited_unit_price ?? item.unit_price)
-                                const effectiveQty = editing ? parseFloat(s?.qty || '0') : Number(item.edited_qty ?? item.qty)
-                                const lineTotal = effectivePrice * effectiveQty
+                                const normalizedItem = normalizeInvoiceItem({
+                                    ...item,
+                                    ...(editing ? {
+                                        edited_name: s?.name,
+                                        edited_unit_price: parseFloat(s?.unit_price || '0'),
+                                        edited_qty: parseFloat(s?.qty || '0'),
+                                        removed: s?.removed
+                                    } : {})
+                                })
+                                const isRemoved = normalizedItem.isManual ? false : (editing ? s?.removed : item.removed)
+                                const lineTotal = normalizedItem.lineTotal
+                                const effectivePrice = normalizedItem.mode === 'case' ? normalizedItem.casePrice : normalizedItem.unitPrice
                                 const wasEdited = isItemEdited(item)
 
                                 return (
@@ -318,7 +329,7 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                                 />
                                             ) : (
                                                 <div>
-                                                    <span className="font-medium">{effectiveName}</span>
+                                                    <span className="font-medium">{normalizedItem.productName}</span>
                                                     {wasEdited && !editing && (
                                                         <Badge variant="secondary" className="ml-2 text-[10px] py-0">Edited</Badge>
                                                     )}
@@ -345,8 +356,8 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                                 />
                                             ) : (
                                                 <>
-                                                    <span>{formatQtyLabel(effectiveQty, item.order_unit)}</span>
-                                                    {item.order_unit === 'case' && (item.units_per_case_snapshot ?? 0) > 0 && (
+                                                    <span>{formatQtyLabel(normalizedItem.qty, normalizedItem.mode)}</span>
+                                                    {normalizedItem.mode === 'case' && normalizedItem.unitsPerCase > 0 && (
                                                         <div className="text-[10px] text-slate-400">@ {item.units_per_case_snapshot}/case</div>
                                                     )}
                                                 </>
@@ -366,11 +377,11 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                                     />
                                                 </div>
                                             ) : (
-                                                <span>{formatPriceLabel(effectivePrice, item.order_unit)}</span>
+                                                <span>{formatPriceLabel(effectivePrice, normalizedItem.mode)}</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right font-medium">
-                                            {isRemoved ? '—' : `$${lineTotal.toFixed(2)}`}
+                                            {isRemoved ? '—' : formatMoney(lineTotal)}
                                         </TableCell>
                                         {editing && (
                                             <TableCell className="text-center">
@@ -402,7 +413,7 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                 <TableCell colSpan={editing ? 3 : 3} className="text-right font-bold">
                                     Subtotal
                                 </TableCell>
-                                <TableCell className="text-right font-bold">${liveTotal.toFixed(2)}</TableCell>
+                                <TableCell className="text-right font-bold">{formatMoney(liveTotal)}</TableCell>
                                 {editing && <TableCell />}
                             </TableRow>
                         </TableBody>
@@ -583,27 +594,27 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                 <CardContent className="p-4 md:p-6 space-y-2">
                     <div className="flex justify-between items-center text-sm">
                         <span className="text-slate-500">Items Subtotal</span>
-                        <span>${liveTotal.toFixed(2)}</span>
+                        <span>{formatMoney(liveTotal)}</span>
                     </div>
                     {adjustments.length > 0 && (
                         <div className="flex justify-between items-center text-sm">
                             <span className="text-slate-500">Fees / Adjustments</span>
-                            <span>${(finalSubtotal - liveTotal).toFixed(2)}</span>
+                            <span>{formatMoney(finalSubtotal - liveTotal)}</span>
                         </div>
                     )}
                     <div className="flex justify-between items-center font-medium border-t border-slate-100 pt-2 mt-2">
                         <span>Pre-Tax Subtotal</span>
-                        <span>${finalSubtotal.toFixed(2)}</span>
+                        <span>{formatMoney(finalSubtotal)}</span>
                     </div>
                     {taxes.length > 0 && (
                         <div className="flex justify-between items-center text-sm text-slate-600">
                             <span>Taxes</span>
-                            <span>+${totalTaxes.toFixed(2)}</span>
+                            <span>+{formatMoney(totalTaxes)}</span>
                         </div>
                     )}
                     <div className="flex justify-between items-center font-bold text-lg border-t border-slate-200 pt-3 mt-3">
                         <span>Preview Total</span>
-                        <span>${finalTotal.toFixed(2)}</span>
+                        <span>{formatMoney(finalTotal)}</span>
                     </div>
                 </CardContent>
             </Card>
