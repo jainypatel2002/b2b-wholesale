@@ -21,7 +21,7 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
     .select(`
             id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
             invoice_items(
-                qty, unit_price, unit_cost, item_code, upc, category_name, 
+                qty, unit_price, unit_cost, item_code, upc,
                 effective_units, ext_amount, is_manual, product_name,
                 product_name_snapshot, category_name_snapshot, order_mode, 
                 quantity_snapshot, line_total_snapshot,

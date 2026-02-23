@@ -17,7 +17,7 @@ export async function executeBulkPriceAdjustment(params: {
         const { distributorId } = await getDistributorContext()
         const supabase = await createClient()
 
-        if (isNaN(params.value)) {
+        if (!Number.isFinite(params.value)) {
             return { ok: false, error: 'Invalid value' }
         }
 
@@ -53,6 +53,8 @@ export async function executeBulkPriceAdjustment(params: {
         revalidatePath('/distributor/inventory')
         revalidatePath('/distributor/bulk-pricing')
         revalidatePath('/distributor/vendor-pricing')
+        revalidatePath('/vendor/catalog', 'layout')
+        revalidatePath('/vendor/cart', 'layout')
     }
 }
 

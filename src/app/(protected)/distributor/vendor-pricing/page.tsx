@@ -24,6 +24,7 @@ export default async function VendorPricingPage() {
                 id, 
                 name, 
                 sku, 
+                sell_per_unit,
                 sell_price, 
                 stock_pieces,
                 category_id, 
@@ -45,7 +46,7 @@ export default async function VendorPricingPage() {
         id: p.id,
         name: p.name,
         sku: p.sku,
-        base_price: p.sell_price, // Already stored logically on front-end as Dollars
+        base_price: p.sell_per_unit ?? p.sell_price, // Canonical first, legacy fallback
         stock_pieces: p.stock_pieces,
         category_id: p.category_id,
         category_node_id: p.category_node_id,

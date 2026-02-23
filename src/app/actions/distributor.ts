@@ -145,7 +145,7 @@ export async function updateOrderItemsAction(orderId: string, items: OrderItemEd
 }
 
 export async function createInvoiceAction(orderId: string) {
-    const { distributorId } = await getDistributorContext()
+    await getDistributorContext()
     const supabase = await createClient()
 
     console.log('[createInvoiceAction] ATOMIC-V2 starting for order:', orderId)
@@ -158,7 +158,7 @@ export async function createInvoiceAction(orderId: string) {
 
     if (error) {
         console.error('[createInvoiceAction] RPC Error:', error)
-        return { error: `Failed to generate invoice: ${error.message}` }
+        return { error: error.message }
     }
 
     if (!invoiceId) {
@@ -200,24 +200,30 @@ export async function markInvoicePaid(invoiceId: string) {
 export async function updateProduct(formData: FormData) {
     const { distributorId } = await getDistributorContext()
     const supabase = await createClient()
+    const parseNumber = (raw: FormDataEntryValue | null): number | null => {
+        if (raw === null || raw === undefined || raw === '') return null
+        const n = Number(raw)
+        return Number.isFinite(n) ? n : null
+    }
 
     const id = String(formData.get('id'))
     const name = String(formData.get('name') || '').trim()
     const sku = String(formData.get('sku') || '').trim() || null
     const category_id = String(formData.get('category_id') || '').trim() || null
 
-    const cost_price = Number(formData.get('cost_price') || 0)
-    const sell_price = Number(formData.get('sell_price') || 0)
+    const cost_price = parseNumber(formData.get('cost_price'))
+    const sell_price = parseNumber(formData.get('sell_price'))
 
     // New fields
-    const stock_pieces = Number(formData.get('stock_qty') || 0) // Map stock entry to pieces
+    const stock_pieces = parseNumber(formData.get('stock_qty')) // Map stock entry to pieces
     const allow_case = formData.get('allow_case') === 'on'
     const allow_piece = formData.get('allow_piece') === 'on'
-    const units_per_case = Number(formData.get('units_per_case') || 1)
-    const low_stock_threshold = Number(formData.get('low_stock_threshold') || 5)
+    const units_per_case = parseNumber(formData.get('units_per_case')) ?? 1
+    const low_stock_threshold = parseNumber(formData.get('low_stock_threshold')) ?? 5
 
     if (!id) return { error: 'Product ID required' }
     if (!name) return { error: 'Product name required' }
+    if (sell_price === null || cost_price === null || stock_pieces === null) return { error: 'Invalid numeric input' }
     if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
     if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
 

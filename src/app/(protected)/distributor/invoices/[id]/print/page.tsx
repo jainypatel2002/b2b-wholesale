@@ -15,7 +15,13 @@ export default async function DistributorInvoicePrintPage({ params }: { params: 
         .from('invoices')
         .select(`
             *,
-            invoice_items(qty, unit_price, unit_cost, products(name), item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
+            invoice_items(
+                qty, unit_price, unit_cost, products(name), item_code, upc,
+                effective_units, ext_amount, is_manual, product_name,
+                product_name_snapshot, category_name_snapshot, order_mode, 
+                quantity_snapshot, line_total_snapshot,
+                unit_price_snapshot, case_price_snapshot, units_per_case_snapshot
+            ),
             invoice_taxes(*),
             vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address)
         `)

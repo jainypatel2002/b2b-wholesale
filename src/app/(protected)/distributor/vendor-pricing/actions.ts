@@ -24,7 +24,7 @@ export async function saveOverride(vendorId: string, productId: string, priceDol
         const supabase = await createClient()
 
         // Validate and convert to integer cents
-        if (isNaN(priceDollars) || priceDollars < 0) {
+        if (!Number.isFinite(priceDollars) || priceDollars < 0) {
             return { ok: false, error: 'Invalid price amount' }
         }
 
@@ -36,13 +36,16 @@ export async function saveOverride(vendorId: string, productId: string, priceDol
                 distributor_id: distributorId,
                 vendor_id: vendorId,
                 product_id: productId,
-                price_cents: priceCents,
+                price_per_unit: priceDollars,
+                price_cents: priceCents, // Keep legacy synced
                 updated_at: new Date().toISOString()
             }, { onConflict: 'distributor_id, vendor_id, product_id' })
 
         if (error) throw error
 
         revalidatePath('/distributor/vendor-pricing')
+        revalidatePath('/vendor/catalog', 'layout')
+        revalidatePath('/vendor/cart', 'layout')
         return { ok: true }
     } catch (e: any) {
         console.error("Save override error:", e)
@@ -67,6 +70,8 @@ export async function removeOverride(vendorId: string, productId: string) {
         if (error) throw error
 
         revalidatePath('/distributor/vendor-pricing')
+        revalidatePath('/vendor/catalog', 'layout')
+        revalidatePath('/vendor/cart', 'layout')
         return { ok: true }
     } catch (e: any) {
         console.error("Remove override error:", e)

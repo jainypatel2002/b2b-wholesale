@@ -47,9 +47,9 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
         result = [...result].sort((a, b) => {
             switch (sortOrder) {
                 case 'price_asc':
-                    return Number(a.sell_price) - Number(b.sell_price)
+                    return (a.sell_per_unit || 0) - (b.sell_per_unit || 0)
                 case 'price_desc':
-                    return Number(b.sell_price) - Number(a.sell_price)
+                    return (b.sell_per_unit || 0) - (a.sell_per_unit || 0)
                 case 'name_asc':
                 default:
                     return a.name.localeCompare(b.name)

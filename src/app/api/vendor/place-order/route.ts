@@ -94,15 +94,14 @@ export async function POST(request: NextRequest) {
   // ── Load Vendor Pricing Overrides ──────────────────────────────────
   const { data: overrides } = await supabase
     .from('vendor_price_overrides')
-    .select('product_id, price_cents')
+    .select('product_id, price_per_unit, price_per_case, price_cents')
     .eq('distributor_id', distributorId)
     .eq('vendor_id', auth.user.id)
     .in('product_id', productIds)
 
-  const overrideMap = new Map((overrides || []).map((o: any) => [o.product_id, o.price_cents]))
+  const overrideMap = new Map((overrides || []).map((o: any) => [o.product_id, o]))
 
   // ── Build Order Items ──────────────────────────────────────────────
-  const updates = []
   const orderItemsData = []
 
   for (const it of validItems) {
@@ -126,28 +125,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Apply pricing: use explicit source of truth for the chosen mode
+    const override = overrideMap.get(p.id)
     const pricingProduct: ProductPricing = {
       sell_per_unit: p.sell_per_unit,
-      cost_per_unit: p.cost_per_unit,
       sell_per_case: p.sell_per_case,
-      cost_per_case: p.cost_per_case,
       units_per_case: unitsPerCase,
       allow_piece: p.allow_piece,
       allow_case: p.allow_case,
 
-      // Fallback for incomplete data
+      // Canonical overrides
+      override_unit_price: override?.price_per_unit ?? null,
+      override_case_price: override?.price_per_case ?? null,
+
+      // Fallback for incomplete data or legacy reasons
       sell_price: p.sell_price,
       price_case: p.price_case,
-      vendor_price_override: overrideMap.has(p.id) ? overrideMap.get(p.id)! / 100 : null
+      vendor_price_override: override?.price_cents != null ? Number(override.price_cents) / 100 : null
     }
 
     const unitPriceSnapshot = getEffectivePrice(pricingProduct, it.order_unit as 'piece' | 'case')
 
-    if (!unitPriceSnapshot || unitPriceSnapshot <= 0) {
+    if (unitPriceSnapshot === null || unitPriceSnapshot <= 0) {
       return NextResponse.json({ error: `Price is not configured for ${p.name}` }, { status: 400 })
     }
 
-    const casePriceSnapshot = isCase ? unitPriceSnapshot : (getEffectivePrice(pricingProduct, 'case') || (unitPriceSnapshot * unitsPerCase))
+    const casePriceSnapshot = isCase
+      ? unitPriceSnapshot
+      : (getEffectivePrice(pricingProduct, 'case') ?? (unitPriceSnapshot * unitsPerCase))
 
     orderItemsData.push({
       product_id: p.id,
@@ -168,7 +172,6 @@ export async function POST(request: NextRequest) {
       unit_cost: p.cost_per_unit ?? p.cost_price
     })
 
-    updates.push({ id: p.id, decrement: totalPiecesRequired })
   }
 
   // ── Create Order ───────────────────────────────────────────────────

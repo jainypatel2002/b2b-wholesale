@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getVendorContext } from '@/lib/data'
@@ -88,7 +90,7 @@ export default async function CategoryProductsPage({ params }: { params: Promise
                 const [{ data: fallbackData, error: fallbackError }, { data: overridesData }] = await Promise.all([
                     supabase
                         .from('products')
-                        .select('id, name, sell_price, price_case, allow_case, allow_piece, units_per_case, category_id, category_node_id, stock_qty, stock_pieces, sku')
+                        .select('id, name, sell_per_unit, sell_per_case, allow_case, allow_piece, units_per_case, category_id, category_node_id, stock_qty, stock_pieces, sku')
                         .eq('distributor_id', distributorId)
                         .eq('category_id', categoryId)
                         .is('deleted_at', null)
@@ -96,7 +98,7 @@ export default async function CategoryProductsPage({ params }: { params: Promise
                     currentVendorId
                         ? supabase
                             .from('vendor_price_overrides')
-                            .select('product_id, price_cents')
+                            .select('product_id, price_per_unit, price_per_case, price_cents')
                             .eq('distributor_id', distributorId)
                             .eq('vendor_id', currentVendorId)
                         : Promise.resolve({ data: [], error: null })
@@ -104,19 +106,19 @@ export default async function CategoryProductsPage({ params }: { params: Promise
 
                 if (fallbackError) throw fallbackError
 
-                const overrideMap = new Map((overridesData || []).map((o: any) => [o.product_id, o.price_cents]))
+                const overrideMap = new Map((overridesData || []).map((o: any) => [o.product_id, o]))
 
                 productsData = (fallbackData ?? []).map((p: any) => {
-                    const baseCents = Math.round((p.sell_price || 0) * 100)
-                    const baseCaseCents = Math.round((p.price_case || 0) * 100)
-                    const overrideCents = overrideMap.get(p.id)
+                    const override = overrideMap.get(p.id)
+                    const legacyUnit = override?.price_cents != null ? Number(override.price_cents) / 100 : null
                     return {
                         id: p.id,
                         name: p.name,
                         sku: p.sku,
-                        effective_price_cents: overrideCents !== undefined ? overrideCents : baseCents,
-                        base_price_cents: baseCents,
-                        base_price_case_cents: baseCaseCents,
+                        base_unit_price: p.sell_per_unit,
+                        base_case_price: p.sell_per_case,
+                        override_unit_price: override?.price_per_unit ?? legacyUnit,
+                        override_case_price: override?.price_per_case ?? null,
                         allow_case: p.allow_case,
                         allow_piece: p.allow_piece,
                         units_per_case: p.units_per_case,
@@ -138,9 +140,16 @@ export default async function CategoryProductsPage({ params }: { params: Promise
             id: p.id,
             name: p.name,
             sku: p.sku,
-            sell_price: (p.base_price_cents ?? 0) / 100, // Normalized to dollars
-            price_case: p.base_price_case_cents ? p.base_price_case_cents / 100 : null,
-            vendor_price_override: p.effective_price_cents !== p.base_price_cents ? p.effective_price_cents / 100 : null,
+            sell_per_unit: p.base_unit_price ?? (p.base_price_cents != null ? Number(p.base_price_cents) / 100 : null),
+            sell_per_case: p.base_case_price ?? (p.base_price_case_cents != null ? Number(p.base_price_case_cents) / 100 : null),
+            override_unit_price: p.override_unit_price ?? (
+                p.effective_price_cents != null &&
+                    p.base_price_cents != null &&
+                    Number(p.effective_price_cents) !== Number(p.base_price_cents)
+                    ? Number(p.effective_price_cents) / 100
+                    : null
+            ),
+            override_case_price: p.override_case_price ?? null,
             allow_case: p.allow_case,
             allow_piece: p.allow_piece,
             units_per_case: p.units_per_case,
@@ -148,7 +157,14 @@ export default async function CategoryProductsPage({ params }: { params: Promise
             category_node_id: p.category_node_id,
             stock_qty: p.stock_qty,
             stock_pieces: p.stock_pieces,
-            is_overridden: p.effective_price_cents !== p.base_price_cents,
+            is_overridden:
+                p.override_unit_price != null ||
+                p.override_case_price != null ||
+                (
+                    p.effective_price_cents != null &&
+                    p.base_price_cents != null &&
+                    Number(p.effective_price_cents) !== Number(p.base_price_cents)
+                ),
             categories: { name: categoryName },
             subcategories: p.category_node_id ? { name: nodeMap.get(p.category_node_id) || 'Unknown' } : null
         }))

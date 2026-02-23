@@ -40,7 +40,12 @@ export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], 
             try {
                 const data = await fetchOverrides(selectedVendorId)
                 const newMap = new Map<string, number>()
-                data.forEach((o: any) => newMap.set(o.product_id, o.price_cents))
+                data.forEach((o: any) => {
+                    const cents = Number.isFinite(Number(o.price_cents))
+                        ? Number(o.price_cents)
+                        : (Number.isFinite(Number(o.price_per_unit)) ? Math.round(Number(o.price_per_unit) * 100) : NaN)
+                    if (Number.isFinite(cents)) newMap.set(o.product_id, cents)
+                })
                 setOverrides(newMap)
             } catch (e) {
                 toast.error("Failed to load vendor overrides")

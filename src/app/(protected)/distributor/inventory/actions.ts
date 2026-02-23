@@ -32,28 +32,40 @@ export async function createProductAction(
 ): Promise<InventoryActionState> {
     try {
         const { distributorId } = await getDistributorContext()
+        const parseRequiredNumber = (key: string): number | null => {
+            const raw = formData.get(key)
+            if (raw === null || raw === undefined || raw === '') return null
+            const n = Number(raw)
+            return Number.isFinite(n) ? n : null
+        }
+        const parseOptionalNumber = (key: string): number | null | typeof Number.NaN => {
+            const raw = formData.get(key)
+            if (raw === null || raw === undefined || raw === '') return null
+            const n = Number(raw)
+            return Number.isFinite(n) ? n : Number.NaN
+        }
         const name = String(formData.get('name') || '').trim()
         const sku = String(formData.get('sku') || '').trim() || null
         const barcode = String(formData.get('barcode') || '').trim() || null
         const category_id = String(formData.get('category_id') || '').trim() || null
         const category_node_id = String(formData.get('category_node_id') || '').trim() || null
 
-        const cost_price = Number(formData.get('cost_price') || 0)
-        const sell_price = Number(formData.get('sell_price') || 0)
+        const cost_price = parseRequiredNumber('cost_price')
+        const sell_price = parseRequiredNumber('sell_price')
 
         // Extended pricing fields
-        const cost_case = Number(formData.get('cost_case') || 0)
-        const price_case = Number(formData.get('price_case') || 0)
+        const cost_case = parseOptionalNumber('cost_case')
+        const price_case = parseOptionalNumber('price_case')
         const cost_mode = String(formData.get('cost_mode') || 'unit')
         const price_mode = String(formData.get('price_mode') || 'unit')
         const stock_mode = String(formData.get('stock_mode') || 'pieces')
 
-        const stock_pieces = Number(formData.get('stock_qty') || 0)
+        const stock_pieces = parseRequiredNumber('stock_qty')
 
         const stock_locked = formData.get('stock_locked') === 'true' || formData.get('stock_locked') === 'on'
         const locked_stock_qty_raw = formData.get('locked_stock_qty')
         const locked_stock_qty = stock_locked && locked_stock_qty_raw ? Number(locked_stock_qty_raw) : null
-        const final_stock_pieces = stock_locked && locked_stock_qty !== null ? locked_stock_qty : stock_pieces
+        const final_stock_pieces = stock_locked && locked_stock_qty !== null ? locked_stock_qty : (stock_pieces ?? 0)
 
         const allow_case = formData.get('allow_case') === 'on'
         const allow_piece = formData.get('allow_piece') === 'on'
@@ -61,6 +73,11 @@ export async function createProductAction(
         const low_stock_threshold = Number(formData.get('low_stock_threshold') || 5)
 
         if (!name) return { error: 'Product name required' }
+        if (cost_price === null || sell_price === null || stock_pieces === null) return { error: 'Invalid numeric input' }
+        if (!Number.isFinite(cost_price) || !Number.isFinite(sell_price) || !Number.isFinite(stock_pieces)) return { error: 'Invalid numeric input' }
+        if ((cost_case as any) !== null && !Number.isFinite(cost_case as number)) return { error: 'Invalid case cost' }
+        if ((price_case as any) !== null && !Number.isFinite(price_case as number)) return { error: 'Invalid case price' }
+        if (!Number.isFinite(units_per_case) || !Number.isFinite(low_stock_threshold)) return { error: 'Invalid numeric input' }
         if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
         if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
 
@@ -74,6 +91,8 @@ export async function createProductAction(
             barcode,
             cost_price,
             sell_price,
+            cost_case,
+            price_case,
             cost_mode,
             price_mode,
             stock_qty: final_stock_pieces,    // Sync legacy
@@ -89,8 +108,8 @@ export async function createProductAction(
             // Canonical Field Sync
             cost_per_unit: cost_price,
             sell_per_unit: sell_price,
-            cost_per_case: cost_case > 0 ? cost_case : null,
-            sell_per_case: price_case > 0 ? price_case : null
+            cost_per_case: cost_case,
+            sell_per_case: price_case
         })
 
         if (error) {
@@ -136,7 +155,7 @@ export async function updateProductAction(
             return isNaN(n) ? undefined : n
         }
 
-        const sell_price = safeNum('sell_price') ?? 0  // sell_price always required
+        const sell_price = safeNum('sell_price')  // sell_price always required
         const cost_price = safeNum('cost_price')       // preserve existing if empty
         const cost_case = safeNum('cost_case')         // preserve existing if empty
         const price_case = safeNum('price_case')       // preserve existing if empty
@@ -145,12 +164,12 @@ export async function updateProductAction(
         const price_mode = String(formData.get('price_mode') || 'unit')
         const stock_mode = String(formData.get('stock_mode') || 'pieces')
 
-        const stock_pieces = Number(formData.get('stock_qty') || 0)
+        const stock_pieces = safeNum('stock_qty')
 
         const stock_locked = formData.get('stock_locked') === 'true' || formData.get('stock_locked') === 'on'
         const locked_stock_qty_raw = formData.get('locked_stock_qty')
         const locked_stock_qty = stock_locked && locked_stock_qty_raw ? Number(locked_stock_qty_raw) : null
-        const final_stock_pieces = stock_locked && locked_stock_qty !== null ? locked_stock_qty : stock_pieces
+        const final_stock_pieces = stock_locked && locked_stock_qty !== null ? locked_stock_qty : (stock_pieces ?? 0)
 
         const allow_case = formData.get('allow_case') === 'on'
         const allow_piece = formData.get('allow_piece') === 'on'
@@ -159,6 +178,9 @@ export async function updateProductAction(
 
         if (!id) return { error: 'Product ID required' }
         if (!name) return { error: 'Product name required' }
+        if (sell_price === undefined) return { error: 'Sell price is required' }
+        if (stock_pieces === undefined) return { error: 'Stock quantity is required' }
+        if (!Number.isFinite(sell_price) || !Number.isFinite(stock_pieces)) return { error: 'Invalid numeric input' }
         if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
         if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
 

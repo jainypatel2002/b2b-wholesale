@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
 import { InventoryClient } from './client'
 
+export const dynamic = 'force-dynamic'
+
 export default async function InventoryPage() {
   const { distributorId } = await getDistributorContext()
   const supabase = await createClient()

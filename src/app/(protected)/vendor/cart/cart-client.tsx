@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Trash2, ShoppingCart, AlertTriangle, X } from 'lucide-react'
-import { formatPriceLabel, formatQtyLabel, OrderMode } from '@/lib/pricing-engine'
+import { formatPriceLabel, formatQtyLabel, computeLineTotal, OrderMode } from '@/lib/pricing-engine'
 
 type CartItem = {
     product_id: string;
@@ -43,8 +43,7 @@ export function CartClient({ distributorId }: { distributorId: string }) {
     }, [distributorId, CART_KEY])
 
     const total = useMemo(() => items.reduce((s, i) => {
-        // unit_price is now the EXACT price for the selected order_unit (piece price OR case price)
-        return s + (Number(i.unit_price) * Number(i.qty))
+        return s + computeLineTotal(Number(i.qty), Number(i.unit_price))
     }, 0), [items])
 
     function save(next: CartItem[]) {
@@ -178,7 +177,7 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                         items.map((i, idx) => {
                             const isCase = i.order_unit === 'case'
                             // unit_price is now the EXACT price for the selected order_unit
-                            const lineTotal = Number(i.unit_price) * i.qty
+                            const lineTotal = computeLineTotal(i.qty, Number(i.unit_price))
 
                             return (
                                 <Card key={`${i.product_id}-${i.order_unit}-${idx}`}>

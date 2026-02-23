@@ -14,7 +14,13 @@ export default async function VendorInvoicePrintPage({ params }: { params: Promi
         .from('invoices')
         .select(`
             id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
-            invoice_items(qty, unit_price, unit_cost, item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
+            invoice_items(
+                qty, unit_price, unit_cost, item_code, upc,
+                effective_units, ext_amount, is_manual, product_name,
+                product_name_snapshot, category_name_snapshot, order_mode, 
+                quantity_snapshot, line_total_snapshot,
+                unit_price_snapshot, case_price_snapshot, units_per_case_snapshot
+            ),
             invoice_taxes(*),
             distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone)
         `)
