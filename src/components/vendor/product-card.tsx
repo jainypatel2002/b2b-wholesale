@@ -5,6 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
+import { getEffectivePrice, formatPriceLabel } from '@/lib/pricing-engine'
 
 export function ProductCard({ product: p, distributorId }: { product: any, distributorId: string }) {
     // Determine default unit: Piece if allowed, else Case
@@ -13,11 +14,9 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
     // Only show toggle if both are allowed
     const showToggle = p.allow_piece && p.allow_case
 
-    // Resolve the active price for the selected unit
-    // p.effective_price_cents is the piece price (potentially with vendor override)
-    // p.base_price_case_cents is the case price (if it exists)
-    const piecePrice = (p.effective_price_cents ?? p.base_price_cents ?? 0) / 100
-    const casePrice = p.base_price_case_cents != null ? p.base_price_case_cents / 100 : null
+    // Resolve the active prices using the centralized helper
+    const piecePrice = getEffectivePrice(p, 'piece')
+    const casePrice = getEffectivePrice(p, 'case')
 
     // Determine the current price based on the mode
     const currentPrice = unit === 'case' ? casePrice : piecePrice
@@ -77,7 +76,7 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
             <CardContent className="p-4 pt-0 flex-grow">
                 {currentPrice !== null && currentPrice > 0 ? (
                     <div className="mt-2 text-2xl font-bold text-slate-900">
-                        ${currentPrice.toFixed(2)}
+                        {formatPriceLabel(currentPrice, unit)}
                     </div>
                 ) : (
                     <div className="mt-2 text-lg font-medium text-red-500">
@@ -86,10 +85,10 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
                 )}
 
                 <p className="text-xs text-slate-500 mb-3">
-                    {unit === 'case' ? `per case (${p.units_per_case} units)` : 'per unit'}
-                    {unit === 'case' && casePrice !== null && casePrice > 0 && p.units_per_case > 0 && (
+                    {unit === 'case' ? `Pack of ${p.units_per_case ?? 1}` : 'Single unit'}
+                    {unit === 'case' && casePrice !== null && casePrice > 0 && (p.units_per_case ?? 0) > 0 && (
                         <span className="block mt-0.5 opacity-80">
-                            (${(casePrice / p.units_per_case).toFixed(2)} / unit eq.)
+                            (${(casePrice / (p.units_per_case ?? 1)).toFixed(2)} / item eq.)
                         </span>
                     )}
                 </p>

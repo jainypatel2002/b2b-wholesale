@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
+
+export const dynamic = 'force-dynamic'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,17 +15,27 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
   const { distributorId } = await getDistributorContext()
   const supabase = await createClient()
 
-  const { data: invoice } = await supabase
+  const { data: invoice, error: invoiceErr } = await supabase
     .from('invoices')
     .select(`
-            *,
-            invoice_items(qty, unit_price, unit_cost, products(name), item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
+            id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+            invoice_items(qty, unit_price, unit_cost, item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
             invoice_taxes(*),
             vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address)
         `)
     .eq('id', id)
     .eq('distributor_id', distributorId)
-    .single()
+    .maybeSingle()
+
+  if (invoiceErr) {
+    console.error('[DistributorInvoiceDetailPage] Query Error raw:', invoiceErr)
+    console.error('[DistributorInvoiceDetailPage] Query Error details:', {
+      code: invoiceErr.code,
+      message: invoiceErr.message,
+      details: invoiceErr.details,
+      hint: invoiceErr.hint
+    })
+  }
 
   if (!invoice) {
     return (

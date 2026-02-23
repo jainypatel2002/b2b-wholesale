@@ -152,181 +152,34 @@ export async function createInvoiceAction(orderId: string) {
     const { distributorId } = await getDistributorContext()
     const supabase = await createClient()
 
-    console.log('[createInvoiceAction] Starting for order:', orderId, 'Distributor:', distributorId)
+    console.log('[createInvoiceAction] ATOMIC-V2 starting for order:', orderId)
+    console.log('[createInvoiceAction] __filename:', typeof __filename !== 'undefined' ? __filename : 'unknown')
 
-    // 1. Fetch Order & Check existence
-    const { data: order, error: orderErr } = await supabase
-        .from('orders')
-        .select(`
-            id, 
-            vendor_id, 
-            order_items(
-                product_id, qty, unit_price, unit_cost, product_name,
-                order_unit, cases_qty, pieces_qty, units_per_case_snapshot, total_pieces,
-                edited_name, edited_unit_price, edited_qty, removed
-            ),
-            order_adjustments(id, name, amount),
-            order_taxes(id, name, type, rate_percent)
-        `)
-        .eq('id', orderId)
-        .eq('distributor_id', distributorId)
-        .single()
-
-    if (orderErr || !order) {
-        console.error('[createInvoiceAction] Order not found or error:', orderErr)
-        return { error: 'Order not found' }
-    }
-
-    console.log('[createInvoiceAction] Order found:', order.id, 'Items count:', order.order_items?.length)
-
-    // 2. Check if invoice already exists
-    const { data: existing } = await supabase
-        .from('invoices')
-        .select('id')
-        .eq('order_id', orderId)
-        .maybeSingle()
-
-    if (existing) {
-        console.log('[createInvoiceAction] Invoice already exists:', existing.id)
-        return { success: true, invoiceId: existing.id, message: 'Invoice already exists' }
-    }
-
-    // 3. Filter out removed items and calculate totals with edit support
-    const allItems = order.order_items ?? []
-    const items = allItems.filter((it: any) => !it.removed)
-    const adjustments = order.order_adjustments ?? []
-    const taxes = order.order_taxes ?? []
-
-    if (!items.length && !adjustments.length) {
-        console.error('[createInvoiceAction] Order has no active items or adjustments')
-        return { error: 'Cannot generate invoice with zero items.' }
-    }
-
-    // Calculate item subtotal using effective (edited) values
-    const itemSubtotal = items.reduce((sum: number, it: any) => {
-        const effectiveQty = it.edited_qty ?? it.qty ?? it.total_pieces ??
-            ((it.cases_qty || 0) * (it.units_per_case_snapshot || 1) + (it.pieces_qty || 0));
-        const effectivePrice = Number(it.edited_unit_price ?? it.unit_price ?? 0);
-        return sum + (effectivePrice * Number(effectiveQty));
-    }, 0)
-
-    const adjustmentTotal = adjustments.reduce((sum: number, adj: any) => sum + Number(adj.amount), 0)
-    const subtotal = itemSubtotal + adjustmentTotal
-
-    // Calculate Taxes
-    let taxTotal = 0
-    const calculatedTaxes = taxes.map((tax: any) => {
-        let amount = 0
-        if (tax.type === 'percent') {
-            amount = subtotal * (Number(tax.rate_percent) / 100)
-        } else if (tax.type === 'fixed') {
-            amount = Number(tax.rate_percent) || 0
-        }
-        taxTotal += amount
-        // Limit decimal places to handle floating point issues securely
-        return { ...tax, amount: Number(amount.toFixed(2)) }
+    // Call the database function that handles validation + snapshots + locking in one transaction
+    const { data: invoiceId, error } = await supabase.rpc('generate_invoice', {
+        p_order_id: orderId
     })
 
-    // JS math rounding for exact cents
-    taxTotal = Number(taxTotal.toFixed(2))
-    const total = Number((subtotal + taxTotal).toFixed(2))
-
-    // For safety, generate a unique random ID fragment
-    const invoice_number = `INV-${order.id.slice(0, 8).toUpperCase()}`
-
-    console.log('[createInvoiceAction] Calculated Subtotal:', subtotal, 'Tax:', taxTotal, 'Total:', total)
-
-    // 4. Create Invoice
-    const { data: invoice, error: invErr } = await supabase
-        .from('invoices')
-        .insert({
-            distributor_id: distributorId,
-            vendor_id: order.vendor_id,
-            order_id: order.id,
-            invoice_number,
-            subtotal,
-            tax_total: taxTotal,
-            // the old column is tax, so let's save to both for backward compat for now
-            tax: taxTotal,
-            total,
-            payment_method: 'cash',
-            payment_status: 'unpaid'
-        })
-        .select('id')
-        .single()
-
-    if (invErr) {
-        console.error('[createInvoiceAction] Invoice Insert Error:', invErr)
-        return { error: `Failed to create invoice: ${invErr.message}` }
+    if (error) {
+        console.error('[createInvoiceAction] RPC Error:', error)
+        return { error: `Failed to generate invoice: ${error.message}` }
     }
 
-    // 5. Create Invoice Items
-    try {
-        const invoiceItems = items.map((it: any) => {
-            const effectiveQty = it.edited_qty ?? it.qty ?? it.total_pieces ?? 0
-            const effectivePrice = it.edited_unit_price ?? it.unit_price
-            const effectiveName = it.edited_name ?? it.product_name
-            const extAmount = Number((Number(effectivePrice) * Number(effectiveQty)).toFixed(2))
-
-            return {
-                invoice_id: invoice.id,
-                product_id: it.product_id,
-                product_name: effectiveName,
-                qty: effectiveQty,
-                unit_price: effectivePrice,
-                unit_cost: it.unit_cost,
-                order_unit: it.order_unit || 'piece',
-                cases_qty: it.cases_qty,
-                pieces_qty: it.pieces_qty,
-                units_per_case_snapshot: it.units_per_case_snapshot,
-                total_pieces: it.total_pieces ?? it.qty,
-                effective_units: effectiveQty,
-                ext_amount: extAmount,
-                is_manual: false
-            }
-        })
-
-        // Also map order_adjustments into invoice items (so they render safely line-by-line)
-        const manualItems = adjustments.map((adj: any) => {
-            return {
-                invoice_id: invoice.id,
-                product_name: adj.name,
-                qty: 1,
-                unit_price: adj.amount,
-                unit_cost: 0,
-                order_unit: 'piece',
-                effective_units: 1,
-                ext_amount: adj.amount,
-                is_manual: true
-            }
-        })
-
-        const allInvoiceItems = [...invoiceItems, ...manualItems]
-        const { error: itemsErr } = await supabase.from('invoice_items').insert(allInvoiceItems)
-
-        if (itemsErr) throw new Error(`Items Insert: ${itemsErr.message}`)
-
-        if (calculatedTaxes.length > 0) {
-            const taxRows = calculatedTaxes.map((tax: any) => ({
-                invoice_id: invoice.id,
-                name: tax.name,
-                type: tax.type,
-                rate_percent: tax.rate_percent,
-                amount: tax.amount
-            }))
-            const { error: taxErr } = await supabase.from('invoice_taxes').insert(taxRows)
-            if (taxErr) throw new Error(`Taxes Insert: ${taxErr.message}`)
-        }
-
-    } catch (e: any) {
-        console.error('[createInvoiceAction] Exception during item prep:', e)
-        await supabase.from('invoices').delete().eq('id', invoice.id)
-        return { error: `Error preparing invoice items: ${e.message}` }
+    if (!invoiceId) {
+        console.error('[createInvoiceAction] RPC returned no ID')
+        return { error: 'Failed to generate invoice: No ID returned' }
     }
 
+    console.log('[createInvoiceAction] Success! Created/Found Invoice:', invoiceId)
+
+    // Revalidate relevant views aggressively
     revalidatePath('/distributor/orders')
     revalidatePath(`/distributor/orders/${orderId}`)
-    return { success: true, invoiceId: invoice.id }
+    revalidatePath('/distributor/invoices')
+    revalidatePath(`/distributor/invoices/${invoiceId}`)
+    revalidatePath('/', 'layout')
+
+    return { success: true, invoiceId }
 }
 
 export async function markInvoicePaid(invoiceId: string) {

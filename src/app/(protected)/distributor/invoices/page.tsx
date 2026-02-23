@@ -4,6 +4,8 @@ import { getDistributorContext, getLinkedVendors } from '@/lib/data'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+
+export const dynamic = 'force-dynamic'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { ArchiveButton } from '@/components/archive-button'
@@ -91,9 +93,12 @@ export default async function DistributorInvoicesPage({
     const fallbackResult = await fallbackQuery
     invoices = fallbackResult.data
     totalCount = fallbackResult.count ?? 0
+    if (fallbackResult.error) console.error('[DistributorInvoicesPage] Fallback Error:', fallbackResult.error)
   } else if (invoicesResult.error) {
-    console.error('[DistributorInvoicesPage] Error fetching invoices (JSON):', JSON.stringify(invoicesResult.error, null, 2))
+    console.error('[DistributorInvoicesPage] Error fetching invoices:', JSON.stringify(invoicesResult.error, null, 2))
   }
+
+  console.log('[DistributorInvoicesPage] distributorId:', distributorId, 'count:', totalCount, 'first Invoice:', invoices?.[0]?.invoice_number)
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 

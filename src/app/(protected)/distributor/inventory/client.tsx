@@ -745,11 +745,17 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
     // However, to show "Calculated" values, we need state.
 
     // Initial load: prefer stored mode values if available, else derive
-    const initialCostVal = defaultValues?.cost_mode === 'case' ? defaultValues?.cost_case : defaultValues?.cost_price
-    const initialSellVal = defaultValues?.price_mode === 'case' ? defaultValues?.price_case : defaultValues?.sell_price
+    // BUG FIX: Handle 0 correctly (don't fallback to '' if value is 0)
+    const initialCostVal =
+        defaultValues?.cost_per_unit ??
+        (defaultValues?.cost_mode === 'case' ? defaultValues?.cost_case : defaultValues?.cost_price);
 
-    const [costInput, setCostInput] = useState<string>(initialCostVal ? String(initialCostVal) : '')
-    const [sellInput, setSellInput] = useState<string>(initialSellVal ? String(initialSellVal) : '')
+    const initialSellVal =
+        defaultValues?.sell_per_unit ??
+        (defaultValues?.price_mode === 'case' ? defaultValues?.price_case : defaultValues?.sell_price);
+
+    const [costInput, setCostInput] = useState<string>(initialCostVal != null ? String(initialCostVal) : '')
+    const [sellInput, setSellInput] = useState<string>(initialSellVal != null ? String(initialSellVal) : '')
 
     // Stock Logic
     const [stockMode, setStockMode] = useState<'pieces' | 'cases'>(defaultValues?.stock_mode || 'pieces')

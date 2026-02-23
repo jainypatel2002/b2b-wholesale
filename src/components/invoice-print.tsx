@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect } from 'react'
+import { formatPriceLabel, formatQtyLabel, OrderMode } from '@/lib/pricing-engine'
 
 interface InvoicePrintProps {
     invoice: any
@@ -107,10 +108,13 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
                                     <div className="truncate">{item.item_code || item.upc || '—'}</div>
                                 </td>
                                 <td className="py-3 px-2 text-right text-slate-800">
-                                    {effectiveQty}
+                                    {formatQtyLabel(effectiveQty, item.order_unit)}
+                                    {item.order_unit === 'case' && (item.units_per_case_snapshot ?? 0) > 0 && (
+                                        <div className="text-[10px] text-slate-400">@ {item.units_per_case_snapshot}/case</div>
+                                    )}
                                 </td>
                                 <td className="py-3 px-2 text-right text-slate-800">
-                                    ${Number(item.unit_price).toFixed(2)}
+                                    {formatPriceLabel(Number(item.unit_price), item.order_unit)}
                                 </td>
                                 <td className="py-3 px-2 text-right font-medium text-slate-900">
                                     ${Number(extAmount).toFixed(2)}

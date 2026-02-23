@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
+
+export const dynamic = 'force-dynamic'
 import { StatusBadge } from '@/components/status-badge'
 import { updateOrderStatus, createInvoiceAction, markInvoicePaid } from '@/app/actions/distributor'
 import { FulfillButton } from '@/components/fulfill-button'
@@ -21,7 +23,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
       id, status, created_at, vendor_id,
       vendor:profiles!orders_vendor_id_fkey(display_name, email),
       order_items(
-        id, qty, unit_price, unit_cost, product_name,
+        id, qty, unit_price, unit_cost, product_name, order_unit, units_per_case_snapshot,
         products(name),
         edited_name, edited_unit_price, edited_qty, removed, edited_at, edited_by
       ),

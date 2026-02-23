@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getVendorContext } from '@/lib/data'
+
+export const dynamic = 'force-dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/status-badge'
@@ -13,18 +15,28 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
   const { vendorId } = await getVendorContext()
   const supabase = await createClient()
 
-  const { data: invoice } = await supabase
+  const { data: invoice, error: invoiceErr } = await supabase
     .from('invoices')
     .select(`
-        *,
-        invoice_items(qty, unit_price, unit_cost, products(name), item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
+        id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+        invoice_items(qty, unit_price, unit_cost, item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name, order_unit, units_per_case_snapshot),
         invoice_taxes(*),
         vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address),
         distributor:profiles!invoices_distributor_id_fkey(display_name, email)
     `)
     .eq('id', id)
     .eq('vendor_id', vendorId)
-    .single()
+    .maybeSingle()
+
+  if (invoiceErr) {
+    console.error('[VendorInvoiceDetailPage] Query Error raw:', invoiceErr)
+    console.error('[VendorInvoiceDetailPage] Query Error details:', {
+      code: invoiceErr.code,
+      message: invoiceErr.message,
+      details: invoiceErr.details,
+      hint: invoiceErr.hint
+    })
+  }
 
   if (!invoice) {
     return (

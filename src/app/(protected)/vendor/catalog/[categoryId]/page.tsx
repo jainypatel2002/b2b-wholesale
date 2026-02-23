@@ -138,7 +138,9 @@ export default async function CategoryProductsPage({ params }: { params: Promise
             id: p.id,
             name: p.name,
             sku: p.sku,
-            sell_price: (p.effective_price_cents || 0) / 100, // Cents to Dollars
+            sell_price: (p.base_price_cents ?? 0) / 100, // Normalized to dollars
+            price_case: p.base_price_case_cents ? p.base_price_case_cents / 100 : null,
+            vendor_price_override: p.effective_price_cents !== p.base_price_cents ? p.effective_price_cents / 100 : null,
             allow_case: p.allow_case,
             allow_piece: p.allow_piece,
             units_per_case: p.units_per_case,

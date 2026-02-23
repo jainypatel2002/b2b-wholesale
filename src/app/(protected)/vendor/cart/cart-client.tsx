@@ -5,13 +5,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Trash2, ShoppingCart, AlertTriangle, X } from 'lucide-react'
+import { formatPriceLabel, formatQtyLabel, OrderMode } from '@/lib/pricing-engine'
 
 type CartItem = {
     product_id: string;
     name: string;
     unit_price: number;
     qty: number;
-    order_unit: 'piece' | 'case';
+    order_unit: OrderMode;
     units_per_case?: number;
 }
 
@@ -185,19 +186,22 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                                         <div className="flex-1">
                                             <div className="font-semibold text-lg flex items-center gap-2">
                                                 {i.name}
-                                                <span className="text-xs font-normal px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 uppercase">
-                                                    {isCase ? `Case (${i.units_per_case})` : 'Piece'}
+                                                <span className="text-[10px] font-normal px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 uppercase">
+                                                    {i.order_unit}
                                                 </span>
                                             </div>
                                             <div className="text-sm text-slate-500">
-                                                ${Number(i.unit_price).toFixed(2)} / {isCase ? 'case' : 'unit'}
+                                                {formatPriceLabel(Number(i.unit_price), i.order_unit)}
+                                                {isCase && (i.units_per_case ?? 0) > 0 && (
+                                                    <span className="ml-2 text-xs opacity-70">({i.units_per_case} units/case)</span>
+                                                )}
                                             </div>
                                         </div>
 
                                         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
                                             <div className="flex items-center rounded-md border border-slate-200">
                                                 <button className="h-10 w-10 flex items-center justify-center hover:bg-slate-50 text-lg" onClick={() => dec(i.product_id, i.order_unit)}>-</button>
-                                                <div className="w-12 text-center font-medium">{i.qty}</div>
+                                                <div className="w-16 text-center font-medium">{formatQtyLabel(i.qty, i.order_unit)}</div>
                                                 <button className="h-10 w-10 flex items-center justify-center hover:bg-slate-50 text-lg" onClick={() => inc(i.product_id, i.order_unit)}>+</button>
                                             </div>
                                             <div className="text-right min-w-[80px] font-medium text-lg">

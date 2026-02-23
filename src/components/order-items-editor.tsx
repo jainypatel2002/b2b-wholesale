@@ -16,6 +16,7 @@ import {
 } from '@/app/actions/distributor'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { formatQtyLabel, formatPriceLabel, OrderMode } from '@/lib/pricing-engine'
 
 interface OrderItem {
     id: string
@@ -28,6 +29,8 @@ interface OrderItem {
     edited_unit_price: number | null
     edited_qty: number | null
     removed: boolean
+    order_unit: OrderMode
+    units_per_case_snapshot: number | null
     edited_at: string | null
     edited_by: string | null
 }
@@ -114,13 +117,6 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
         }, 0)
     }, [editing, items, editState])
 
-    const finalSubtotal = liveTotal + adjustments.reduce((sum, a) => sum + Number(a.amount), 0)
-    const totalTaxes = taxes.reduce((sum, t) => {
-        if (t.type === 'percent') return sum + (finalSubtotal * (Number(t.rate_percent) / 100))
-        return sum + Number(t.rate_percent)
-    }, 0)
-    const finalTotal = finalSubtotal + totalTaxes
-
     // Adjustment State
     const [newAdjName, setNewAdjName] = useState('')
     const [newAdjAmount, setNewAdjAmount] = useState('')
@@ -129,6 +125,29 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
     const [newTaxName, setNewTaxName] = useState('')
     const [newTaxType, setNewTaxType] = useState<'percent' | 'fixed'>('percent')
     const [newTaxRate, setNewTaxRate] = useState('')
+
+    // ── Live Recalculations ──────────────────────────────────────────
+    const finalSubtotal = liveTotal + adjustments.reduce((sum, a) => sum + Number(a.amount), 0)
+
+    // Calculate taxes including existing ones + the one currently being typed (preview)
+    const existingTaxes = taxes.reduce((sum, t) => {
+        if (t.type === 'percent') return sum + (finalSubtotal * (Number(t.rate_percent) / 100))
+        return sum + Number(t.rate_percent)
+    }, 0)
+
+    // Draft tax preview (if user is typing a valid rate/amount)
+    let draftTax = 0
+    const draftRate = parseFloat(newTaxRate)
+    if (!isNaN(draftRate) && draftRate > 0) {
+        if (newTaxType === 'percent') {
+            draftTax = finalSubtotal * (draftRate / 100)
+        } else {
+            draftTax = draftRate
+        }
+    }
+
+    const totalTaxes = existingTaxes + draftTax
+    const finalTotal = finalSubtotal + totalTaxes
 
     async function handleAddAdj() {
         if (!newAdjName || !newAdjAmount) return toast.error('Name and Amount required')
@@ -325,7 +344,12 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                                     className="h-8 text-sm text-right w-20 ml-auto"
                                                 />
                                             ) : (
-                                                <span>{effectiveQty}</span>
+                                                <>
+                                                    <span>{formatQtyLabel(effectiveQty, item.order_unit)}</span>
+                                                    {item.order_unit === 'case' && (item.units_per_case_snapshot ?? 0) > 0 && (
+                                                        <div className="text-[10px] text-slate-400">@ {item.units_per_case_snapshot}/case</div>
+                                                    )}
+                                                </>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right">
@@ -342,7 +366,7 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                                     />
                                                 </div>
                                             ) : (
-                                                <span>${effectivePrice.toFixed(2)}</span>
+                                                <span>{formatPriceLabel(effectivePrice, item.order_unit)}</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-right font-medium">
@@ -468,7 +492,7 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                             <span className="font-bold">{isRemoved ? '—' : `$${lineTotal.toFixed(2)}`}</span>
                                         </div>
                                         <div className="text-sm text-slate-500">
-                                            {effectiveQty} × ${effectivePrice.toFixed(2)}
+                                            {formatQtyLabel(effectiveQty, item.order_unit)} × {formatPriceLabel(effectivePrice, item.order_unit)}
                                         </div>
                                     </div>
                                 )}

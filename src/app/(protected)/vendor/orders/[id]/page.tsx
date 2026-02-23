@@ -1,11 +1,14 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getVendorContext } from '@/lib/data'
+
+export const dynamic = 'force-dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText } from 'lucide-react'
+import { formatPriceLabel, formatQtyLabel } from '@/lib/pricing-engine'
 
 export default async function VendorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -17,7 +20,7 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
     .select(`
       id, status, created_at,
       order_items(
-        id, qty, unit_price, product_name,
+        id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
         products(name),
         edited_name, edited_unit_price, edited_qty, removed
       )
@@ -96,8 +99,15 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
                     return (
                       <TableRow key={it.id}>
                         <TableCell className="font-medium">{productName}</TableCell>
-                        <TableCell className="text-right">{effectiveQty}</TableCell>
-                        <TableCell className="text-right">${effectivePrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">
+                          {formatQtyLabel(effectiveQty, it.order_unit)}
+                          {it.order_unit === 'case' && (it.units_per_case_snapshot ?? 0) > 0 && (
+                            <div className="text-[10px] text-slate-400">@ {it.units_per_case_snapshot}/case</div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatPriceLabel(effectivePrice, it.order_unit)}
+                        </TableCell>
                         <TableCell className="text-right font-medium">
                           ${(effectivePrice * effectiveQty).toFixed(2)}
                         </TableCell>

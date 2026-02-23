@@ -84,7 +84,13 @@ export async function createProductAction(
             allow_case,
             allow_piece,
             units_per_case: allow_case ? units_per_case : null,
-            low_stock_threshold
+            low_stock_threshold,
+
+            // Canonical Field Sync
+            cost_per_unit: cost_price,
+            sell_per_unit: sell_price,
+            cost_per_case: cost_case > 0 ? cost_case : null,
+            sell_per_case: price_case > 0 ? price_case : null
         })
 
         if (error) {
@@ -175,13 +181,23 @@ export async function updateProductAction(
             allow_case,
             allow_piece,
             units_per_case: allow_case ? units_per_case : null,
-            low_stock_threshold
+            low_stock_threshold,
+
+            // Canonical Field Sync
+            sell_per_unit: sell_price,
+            cost_per_unit: cost_price ?? undefined
         }
 
         // Only include cost/price fields if they have real values (not empty/undefined)
         if (cost_price !== undefined) updatePayload.cost_price = cost_price
-        if (cost_case !== undefined) updatePayload.cost_case = cost_case
-        if (price_case !== undefined) updatePayload.price_case = price_case
+        if (cost_case !== undefined) {
+            updatePayload.cost_case = cost_case
+            updatePayload.cost_per_case = cost_case
+        }
+        if (price_case !== undefined) {
+            updatePayload.price_case = price_case
+            updatePayload.sell_per_case = price_case
+        }
 
         const { error } = await supabase
             .from('products')

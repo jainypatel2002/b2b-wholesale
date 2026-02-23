@@ -10,17 +10,21 @@ export default async function VendorInvoicePrintPage({ params }: { params: Promi
     const { vendorId, profile } = await getVendorContext()
     const supabase = await createClient()
 
-    const { data: invoice } = await supabase
+    const { data: invoice, error: invoiceErr } = (await supabase
         .from('invoices')
         .select(`
-            *,
-            invoice_items(qty, unit_price, unit_cost, products(name), item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
+            id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+            invoice_items(qty, unit_price, unit_cost, item_code, upc, category_name, effective_units, ext_amount, is_manual, product_name),
             invoice_taxes(*),
-            distributor:profiles!invoices_distributor_id_fkey(display_name, email)
+            distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone)
         `)
         .eq('id', id)
         .eq('vendor_id', vendorId)
-        .single()
+        .single()) as any
+
+    if (invoiceErr) {
+        console.error('[VendorInvoicePrintPage] Query Error:', invoiceErr)
+    }
 
     if (!invoice) return notFound()
 
@@ -31,10 +35,11 @@ export default async function VendorInvoicePrintPage({ params }: { params: Promi
         phone: p.phone,
     }
 
-    const distributorInfo = invoice.distributor ? {
-        business_name: invoice.distributor.display_name || invoice.distributor.email,
-        email: invoice.distributor.email,
-        phone: invoice.distributor.phone
+    const dist = Array.isArray(invoice.distributor) ? invoice.distributor[0] : invoice.distributor
+    const distributorInfo = dist ? {
+        business_name: dist.display_name || dist.email,
+        email: dist.email,
+        phone: dist.phone
     } : undefined
 
     return <InvoicePrint invoice={invoice} distributor={distributorInfo} vendor={vendorInfo} />
