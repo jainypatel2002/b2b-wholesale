@@ -4,24 +4,104 @@ import Link from 'next/link'
 import { useState, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Search, ShoppingCart, ArrowLeft, X } from 'lucide-react'
+import { Search, ShoppingCart, ArrowLeft, Star, X } from 'lucide-react'
 import { ProductCard } from '@/components/vendor/product-card'
+import { toast } from 'sonner'
+import { usePathname, useSearchParams } from 'next/navigation'
 
 interface CategoryProductsClientProps {
     products: any[]
     categoryName: string
     subcategories: any[]
     distributorId: string
+    favoritesOnly: boolean
+    initialFavoriteProductIds: string[]
 }
 
-export function CategoryProductsClient({ products, categoryName, subcategories, distributorId }: CategoryProductsClientProps) {
+export function CategoryProductsClient({
+    products,
+    categoryName,
+    subcategories,
+    distributorId,
+    favoritesOnly,
+    initialFavoriteProductIds
+}: CategoryProductsClientProps) {
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedSubcategory, setSelectedSubcategory] = useState<string>('all')
     const [inStockOnly, setInStockOnly] = useState(false)
     const [sortOrder, setSortOrder] = useState<string>('name_asc')
+    const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set(initialFavoriteProductIds))
+    const [pendingFavorites, setPendingFavorites] = useState<Set<string>>(() => new Set())
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
+
+    const favoritesHref = useMemo(() => {
+        const params = new URLSearchParams(searchParams.toString())
+        params.set('favorites', '1')
+        const qs = params.toString()
+        return qs ? `${pathname}?${qs}` : pathname
+    }, [pathname, searchParams])
+
+    const allProductsHref = useMemo(() => {
+        const params = new URLSearchParams(searchParams.toString())
+        params.delete('favorites')
+        const qs = params.toString()
+        return qs ? `${pathname}?${qs}` : pathname
+    }, [pathname, searchParams])
+
+    async function toggleFavorite(productId: string) {
+        if (!productId || pendingFavorites.has(productId)) return
+
+        const optimisticWasFavorite = favoriteIds.has(productId)
+        const optimisticNext = new Set(favoriteIds)
+        if (optimisticWasFavorite) optimisticNext.delete(productId)
+        else optimisticNext.add(productId)
+
+        setFavoriteIds(optimisticNext)
+        setPendingFavorites((prev) => new Set(prev).add(productId))
+
+        try {
+            const res = await fetch('/api/vendor/favorites', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ product_id: productId })
+            })
+
+            const json = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                throw new Error(json?.error || 'Failed to update favorite')
+            }
+
+            const confirmedIsFavorite = !!json?.favorited
+            setFavoriteIds((prev) => {
+                const next = new Set(prev)
+                if (confirmedIsFavorite) next.add(productId)
+                else next.delete(productId)
+                return next
+            })
+        } catch (error: any) {
+            setFavoriteIds((prev) => {
+                const next = new Set(prev)
+                if (optimisticWasFavorite) next.add(productId)
+                else next.delete(productId)
+                return next
+            })
+            toast.error(error?.message || 'Could not update favorite')
+        } finally {
+            setPendingFavorites((prev) => {
+                const next = new Set(prev)
+                next.delete(productId)
+                return next
+            })
+        }
+    }
 
     const filteredProducts = useMemo(() => {
         let result = products
+
+        if (favoritesOnly) {
+            result = result.filter((p: any) => favoriteIds.has(p.id))
+        }
 
         // 1. Search
         if (searchTerm.trim()) {
@@ -57,7 +137,7 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
         })
 
         return result
-    }, [products, searchTerm, selectedSubcategory, inStockOnly, sortOrder])
+    }, [products, favoritesOnly, favoriteIds, searchTerm, selectedSubcategory, inStockOnly, sortOrder])
 
     return (
         <div className="space-y-6">
@@ -76,6 +156,19 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
             <div className="flex flex-col gap-4">
                 {/* Top Row: Search & Cart */}
                 <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+                    <div className="flex w-full items-center gap-2 sm:w-auto">
+                        <Link href={allProductsHref}>
+                            <Button variant={favoritesOnly ? 'outline' : 'secondary'} size="sm" className="w-full sm:w-auto">
+                                All Products
+                            </Button>
+                        </Link>
+                        <Link href={favoritesHref}>
+                            <Button variant={favoritesOnly ? 'secondary' : 'outline'} size="sm" className="w-full sm:w-auto">
+                                <Star className="mr-2 h-4 w-4" />
+                                Favorites
+                            </Button>
+                        </Link>
+                    </div>
                     <div className="relative w-full max-w-md">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
                         <Input
@@ -162,6 +255,7 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
                 {/* Results Count */}
                 <div className="text-xs text-slate-500 font-medium px-1">
                     Showing {filteredProducts.length} of {products.length} products
+                    {favoritesOnly && <span className="ml-2 text-amber-700">Favorites only</span>}
                 </div>
             </div>
 
@@ -184,7 +278,14 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {filteredProducts.map((p) => (
-                        <ProductCard key={p.id} product={p} distributorId={distributorId} />
+                        <ProductCard
+                            key={p.id}
+                            product={p}
+                            distributorId={distributorId}
+                            isFavorite={favoriteIds.has(p.id)}
+                            favoriteBusy={pendingFavorites.has(p.id)}
+                            onToggleFavorite={toggleFavorite}
+                        />
                     ))}
                 </div>
             )}

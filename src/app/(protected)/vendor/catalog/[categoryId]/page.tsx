@@ -8,10 +8,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { ArrowLeft, AlertTriangle } from 'lucide-react'
 import { notFound } from 'next/navigation'
+import { getFavoriteProductIdsForVendor } from '@/lib/vendor/favorites'
 
-export default async function CategoryProductsPage({ params }: { params: Promise<{ categoryId: string }> }) {
+export default async function CategoryProductsPage({
+    params,
+    searchParams
+}: {
+    params: Promise<{ categoryId: string }>
+    searchParams: Promise<{ favorites?: string }>
+}) {
     const { categoryId } = await params
-    const { distributorId } = await getVendorContext({ strict: false })
+    const { favorites } = await searchParams
+    const favoritesOnly = favorites === '1' || favorites === 'true'
+    const { distributorId, vendorId } = await getVendorContext({ strict: false })
     const supabase = await createClient()
 
     if (!distributorId) {
@@ -33,6 +42,7 @@ export default async function CategoryProductsPage({ params }: { params: Promise
     let products: any[] = []
     let categoryName = ''
     let subcategories: any[] = []
+    let favoriteProductIds: string[] = []
     let errorMsg = ''
 
     try {
@@ -67,71 +77,94 @@ export default async function CategoryProductsPage({ params }: { params: Promise
         categoryName = category.name
         subcategories = categoryNodes || []
 
+        favoriteProductIds = await getFavoriteProductIdsForVendor({
+            supabase,
+            vendorId,
+            distributorId
+        })
+
         // Build a fast lookup map for node names
         const nodeMap = new Map()
         subcategories.forEach((n: any) => nodeMap.set(n.id, n.name))
 
         // 2. Fetch Products via the Pricing RPC Engine
         let productsData: any[] = []
-        const { data: rpcData, error: prodError } = await supabase
-            .rpc('get_vendor_catalog_prices', {
-                p_distributor_id: distributorId
-            })
-            .eq('category_id', categoryId)
 
-        if (prodError) {
-            if (prodError.code === 'PGRST202') {
-                console.warn('RPC get_vendor_catalog_prices not found, falling back to direct queries')
+        if (favoritesOnly && favoriteProductIds.length === 0) {
+            productsData = []
+        } else {
+            let rpcQuery = supabase
+                .rpc('get_vendor_catalog_prices', {
+                    p_distributor_id: distributorId
+                })
+                .eq('category_id', categoryId)
 
-                // Get the current vendor's user ID for override scoping
-                const { data: { user } } = await supabase.auth.getUser()
-                const currentVendorId = user?.id
+            if (favoritesOnly) {
+                rpcQuery = rpcQuery.in('id', favoriteProductIds)
+            }
 
-                const [{ data: fallbackData, error: fallbackError }, { data: overridesData }] = await Promise.all([
-                    supabase
+            const { data: rpcData, error: prodError } = await rpcQuery
+
+            if (prodError) {
+                if (prodError.code === 'PGRST202') {
+                    console.warn('RPC get_vendor_catalog_prices not found, falling back to direct queries')
+
+                    // Get the current vendor's user ID for override scoping
+                    const { data: { user } } = await supabase.auth.getUser()
+                    const currentVendorId = user?.id
+
+                    let fallbackQuery = supabase
                         .from('products')
                         .select('id, name, sell_per_unit, sell_per_case, allow_case, allow_piece, units_per_case, category_id, category_node_id, stock_qty, stock_pieces, sku')
                         .eq('distributor_id', distributorId)
                         .eq('category_id', categoryId)
                         .is('deleted_at', null)
-                        .order('name', { ascending: true }),
-                    currentVendorId
-                        ? supabase
-                            .from('vendor_price_overrides')
-                            .select('product_id, price_per_unit, price_per_case')
-                            .eq('distributor_id', distributorId)
-                            .eq('vendor_id', currentVendorId)
-                        : Promise.resolve({ data: [], error: null })
-                ])
+                        .order('name', { ascending: true })
 
-                if (fallbackError) throw fallbackError
-
-                const overrideMap = new Map((overridesData || []).map((o: any) => [o.product_id, o]))
-
-                productsData = (fallbackData ?? []).map((p: any) => {
-                    const override = overrideMap.get(p.id)
-                    return {
-                        id: p.id,
-                        name: p.name,
-                        sku: p.sku,
-                        base_unit_price: p.sell_per_unit,
-                        base_case_price: p.sell_per_case,
-                        override_unit_price: override?.price_per_unit ?? null,
-                        override_case_price: override?.price_per_case ?? null,
-                        allow_case: p.allow_case,
-                        allow_piece: p.allow_piece,
-                        units_per_case: p.units_per_case,
-                        category_id: p.category_id,
-                        category_node_id: p.category_node_id,
-                        stock_qty: p.stock_qty,
-                        stock_pieces: p.stock_pieces
+                    if (favoritesOnly) {
+                        fallbackQuery = fallbackQuery.in('id', favoriteProductIds)
                     }
-                })
+
+                    const [{ data: fallbackData, error: fallbackError }, { data: overridesData }] = await Promise.all([
+                        fallbackQuery,
+                        currentVendorId
+                            ? supabase
+                                .from('vendor_price_overrides')
+                                .select('product_id, price_per_unit, price_per_case')
+                                .eq('distributor_id', distributorId)
+                                .eq('vendor_id', currentVendorId)
+                            : Promise.resolve({ data: [], error: null })
+                    ])
+
+                    if (fallbackError) throw fallbackError
+
+                    const overrideMap = new Map((overridesData || []).map((o: any) => [o.product_id, o]))
+
+                    productsData = (fallbackData ?? []).map((p: any) => {
+                        const override = overrideMap.get(p.id)
+                        return {
+                            id: p.id,
+                            name: p.name,
+                            sku: p.sku,
+                            base_unit_price: p.sell_per_unit,
+                            base_case_price: p.sell_per_case,
+                            override_unit_price: override?.price_per_unit ?? null,
+                            override_case_price: override?.price_per_case ?? null,
+                            allow_case: p.allow_case,
+                            allow_piece: p.allow_piece,
+                            units_per_case: p.units_per_case,
+                            category_id: p.category_id,
+                            category_node_id: p.category_node_id,
+                            stock_qty: p.stock_qty,
+                            stock_pieces: p.stock_pieces
+                        }
+                    })
+                } else {
+                    throw prodError
+                }
             } else {
-                throw prodError
+                productsData = rpcData || []
             }
-        } else {
-            productsData = rpcData || []
         }
 
         // Map the RPC row schema to the client component's expectation smoothly
@@ -190,6 +223,8 @@ export default async function CategoryProductsPage({ params }: { params: Promise
             categoryName={categoryName}
             subcategories={subcategories}
             distributorId={distributorId}
+            favoritesOnly={favoritesOnly}
+            initialFavoriteProductIds={favoriteProductIds}
         />
     )
 }

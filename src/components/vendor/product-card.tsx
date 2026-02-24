@@ -4,11 +4,25 @@ import { useState } from 'react'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus } from 'lucide-react'
+import { Plus, Star } from 'lucide-react'
 import { getEffectivePrice, formatPriceLabel } from '@/lib/pricing-engine'
 import { computeEquivalentCase, computeEquivalentUnit } from '@/lib/pricing/getEffectivePrice'
 
-export function ProductCard({ product: p, distributorId }: { product: any, distributorId: string }) {
+type ProductCardProps = {
+    product: any
+    distributorId: string
+    isFavorite?: boolean
+    favoriteBusy?: boolean
+    onToggleFavorite?: (productId: string) => void
+}
+
+export function ProductCard({
+    product: p,
+    distributorId,
+    isFavorite = false,
+    favoriteBusy = false,
+    onToggleFavorite
+}: ProductCardProps) {
     // Determine default unit: Piece if allowed, else Case
     const [unit, setUnit] = useState<'piece' | 'case'>(p.allow_piece ? 'piece' : 'case')
 
@@ -72,6 +86,20 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
                     <Badge variant="secondary" className="mb-2">
                         {p.categories?.name ?? 'Uncategorized'}
                     </Badge>
+                    {onToggleFavorite && (
+                        <button
+                            type="button"
+                            className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${isFavorite
+                                ? 'border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100'
+                                : 'border-slate-200 bg-white text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                                }`}
+                            onClick={() => onToggleFavorite(p.id)}
+                            disabled={favoriteBusy}
+                            aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        >
+                            <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
+                        </button>
+                    )}
                 </div>
                 <CardTitle className="text-base font-semibold line-clamp-2" title={p.name}>
                     {p.name}
