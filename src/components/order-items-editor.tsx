@@ -514,7 +514,7 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
             </div>
 
             {/* Adjustments & Taxes Section */}
-            <div className="grid md:grid-cols-2 gap-4 mt-6">
+            <div className="grid gap-4 mt-6">
 
                 {/* Manual Lines / Adjustments */}
                 <Card>
