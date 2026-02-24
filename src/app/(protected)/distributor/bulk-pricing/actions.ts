@@ -3,39 +3,67 @@
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
 import { revalidatePath } from 'next/cache'
+import type { PriceUnit } from '@/lib/pricing/types'
+import { parseNumericInput, parsePriceUnit } from '@/lib/pricing/priceValidation'
 
 export async function executeBulkPriceAdjustment(params: {
-    scopeType: 'category' | 'category_node'
-    scopeId: string
+    distributorId: string
+    scope: {
+        type: 'category' | 'category_node'
+        id: string
+    }
     applyMode: 'base_only' | 'base_and_overrides' | 'overrides_only'
     vendorIds: string[] | null
     changeType: 'percent' | 'fixed' | 'set'
     value: number
     field: 'sell_price' | 'price_case' | 'cost_price'
+    priceUnit: PriceUnit
 }) {
     try {
         const { distributorId } = await getDistributorContext()
         const supabase = await createClient()
 
-        if (!Number.isFinite(params.value)) {
-            return { ok: false, error: 'Invalid value' }
+        if (params.distributorId !== distributorId) {
+            return { ok: false, error: 'Distributor mismatch' }
+        }
+
+        const parsedUnit = parsePriceUnit(params.priceUnit)
+        if (!parsedUnit.ok) {
+            return { ok: false, error: parsedUnit.error }
+        }
+
+        const expectedUnit = params.field === 'price_case' ? 'case' : 'unit'
+        if (parsedUnit.value !== expectedUnit) {
+            return {
+                ok: false,
+                error: `Invalid price unit for ${params.field}. Expected ${expectedUnit}.`
+            }
+        }
+
+        const parsedValue = parseNumericInput(params.value, 'value', {
+            allowNegative: params.changeType !== 'set',
+            roundTo: 4
+        })
+        if (!parsedValue.ok) {
+            return { ok: false, error: parsedValue.error }
         }
 
         const { data, error } = await supabase.rpc('bulk_adjust_prices', {
             p_distributor_id: distributorId,
-            p_scope_type: params.scopeType,
-            p_scope_id: params.scopeId,
+            p_scope_type: params.scope.type,
+            p_scope_id: params.scope.id,
             p_apply_mode: params.applyMode,
             p_vendor_ids: params.vendorIds,
             p_change_type: params.changeType,
-            p_value: params.value,
-            p_field: params.field
+            p_value: parsedValue.value,
+            p_field: params.field,
+            p_price_unit: parsedUnit.value
         })
 
         if (error) {
             console.error('Bulk price adjustment RPC error:', error)
             if (error.code === 'PGRST202') {
-                return { ok: false, error: 'The bulk_adjust_prices function is not yet available. Please apply the migration 20260226150000_bulk_pricing.sql in Supabase SQL Editor.' }
+                return { ok: false, error: 'The bulk_adjust_prices function is not yet available. Please apply migration 20260309000001_bulk_price_unit_contract.sql in Supabase SQL Editor.' }
             }
             return { ok: false, error: error.message }
         }

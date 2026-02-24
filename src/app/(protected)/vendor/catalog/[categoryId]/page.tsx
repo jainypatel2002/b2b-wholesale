@@ -98,7 +98,7 @@ export default async function CategoryProductsPage({ params }: { params: Promise
                     currentVendorId
                         ? supabase
                             .from('vendor_price_overrides')
-                            .select('product_id, price_per_unit, price_per_case, price_cents')
+                            .select('product_id, price_per_unit, price_per_case')
                             .eq('distributor_id', distributorId)
                             .eq('vendor_id', currentVendorId)
                         : Promise.resolve({ data: [], error: null })
@@ -110,14 +110,13 @@ export default async function CategoryProductsPage({ params }: { params: Promise
 
                 productsData = (fallbackData ?? []).map((p: any) => {
                     const override = overrideMap.get(p.id)
-                    const legacyUnit = override?.price_cents != null ? Number(override.price_cents) / 100 : null
                     return {
                         id: p.id,
                         name: p.name,
                         sku: p.sku,
                         base_unit_price: p.sell_per_unit,
                         base_case_price: p.sell_per_case,
-                        override_unit_price: override?.price_per_unit ?? legacyUnit,
+                        override_unit_price: override?.price_per_unit ?? null,
                         override_case_price: override?.price_per_case ?? null,
                         allow_case: p.allow_case,
                         allow_piece: p.allow_piece,
@@ -140,15 +139,9 @@ export default async function CategoryProductsPage({ params }: { params: Promise
             id: p.id,
             name: p.name,
             sku: p.sku,
-            sell_per_unit: p.base_unit_price ?? (p.base_price_cents != null ? Number(p.base_price_cents) / 100 : null),
-            sell_per_case: p.base_case_price ?? (p.base_price_case_cents != null ? Number(p.base_price_case_cents) / 100 : null),
-            override_unit_price: p.override_unit_price ?? (
-                p.effective_price_cents != null &&
-                    p.base_price_cents != null &&
-                    Number(p.effective_price_cents) !== Number(p.base_price_cents)
-                    ? Number(p.effective_price_cents) / 100
-                    : null
-            ),
+            sell_per_unit: p.base_unit_price ?? null,
+            sell_per_case: p.base_case_price ?? null,
+            override_unit_price: p.override_unit_price ?? null,
             override_case_price: p.override_case_price ?? null,
             allow_case: p.allow_case,
             allow_piece: p.allow_piece,
@@ -159,12 +152,7 @@ export default async function CategoryProductsPage({ params }: { params: Promise
             stock_pieces: p.stock_pieces,
             is_overridden:
                 p.override_unit_price != null ||
-                p.override_case_price != null ||
-                (
-                    p.effective_price_cents != null &&
-                    p.base_price_cents != null &&
-                    Number(p.effective_price_cents) !== Number(p.base_price_cents)
-                ),
+                p.override_case_price != null,
             categories: { name: categoryName },
             subcategories: p.category_node_id ? { name: nodeMap.get(p.category_node_id) || 'Unknown' } : null
         }))

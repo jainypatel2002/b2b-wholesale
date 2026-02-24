@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { getEffectivePrice, formatPriceLabel } from '@/lib/pricing-engine'
+import { computeEquivalentCase, computeEquivalentUnit } from '@/lib/pricing/getEffectivePrice'
 
 export function ProductCard({ product: p, distributorId }: { product: any, distributorId: string }) {
     // Determine default unit: Piece if allowed, else Case
@@ -17,6 +18,9 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
     // Resolve the active prices using the centralized helper
     const piecePrice = getEffectivePrice(p, 'piece')
     const casePrice = getEffectivePrice(p, 'case')
+    const unitsPerCase = Number(p.units_per_case ?? 1)
+    const equivalentUnit = casePrice !== null ? computeEquivalentUnit(casePrice, unitsPerCase) : null
+    const equivalentCase = piecePrice !== null ? computeEquivalentCase(piecePrice, unitsPerCase) : null
 
     // Determine the current price based on the mode
     const currentPrice = unit === 'case' ? casePrice : piecePrice
@@ -86,12 +90,32 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
 
                 <p className="text-xs text-slate-500 mb-3">
                     {unit === 'case' ? `Pack of ${p.units_per_case ?? 1}` : 'Single unit'}
-                    {unit === 'case' && casePrice !== null && casePrice > 0 && (p.units_per_case ?? 0) > 0 && (
+                    {unit === 'case' && equivalentUnit !== null && casePrice !== null && casePrice > 0 && (
                         <span className="block mt-0.5 opacity-80">
-                            (${(casePrice / (p.units_per_case ?? 1)).toFixed(2)} / item eq.)
+                            (${equivalentUnit.toFixed(2)} / item eq.)
                         </span>
                     )}
                 </p>
+
+                <div className="mb-3 text-xs text-slate-500 space-y-1">
+                    {p.allow_piece && (
+                        <div>
+                            {piecePrice !== null && piecePrice > 0
+                                ? `$${piecePrice.toFixed(2)} / unit`
+                                : 'Set unit price in inventory'}
+                        </div>
+                    )}
+                    {p.allow_case && (
+                        <div>
+                            {casePrice !== null && casePrice > 0
+                                ? `$${casePrice.toFixed(2)} / case`
+                                : 'Set case price in inventory'}
+                            {casePrice === null && equivalentCase !== null && equivalentCase > 0 && (
+                                <span className="ml-1 opacity-80">(${equivalentCase.toFixed(2)} / case eq.)</span>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 {showToggle && (
                     <div className="flex rounded-md shadow-sm" role="group">

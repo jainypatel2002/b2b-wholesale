@@ -4,7 +4,11 @@
  * Centralized logic for all price and quantity calculations.
  * Standardizes the handling of Pieces vs Cases.
  */
-import { getEffectivePrice as resolveEffectivePrice } from '@/lib/pricing/getEffectivePrice'
+import {
+    getEffectivePrice as resolveEffectivePrice,
+    getRequiredEffectivePrice as resolveRequiredEffectivePrice,
+    MissingEffectivePriceError
+} from '@/lib/pricing/getEffectivePrice'
 
 export type OrderMode = 'piece' | 'case';
 
@@ -28,9 +32,9 @@ export interface ProductPricing {
  * Guarantees a number or null if completely unpriced.
  * 
  * Hierarchy:
- * 1. Override (canonical first, then legacy)
- * 2. Explicit Base Price (for the requested mode)
- * 3. Derived Price (multiplying/dividing by units_per_case)
+ * 1. Override for requested mode
+ * 2. Base price for requested mode
+ * 3. Null (no implicit unit/case conversion)
  */
 export function getEffectivePrice(
     product: ProductPricing,
@@ -52,6 +56,30 @@ export function getEffectivePrice(
     })
     return price
 }
+
+export function getEffectivePriceOrThrow(
+    product: ProductPricing,
+    mode: OrderMode
+): number {
+    const { price } = resolveRequiredEffectivePrice({
+        unitType: mode,
+        product: {
+            sell_per_unit: product.sell_per_unit,
+            sell_per_case: product.sell_per_case,
+            sell_price: product.sell_price,
+            price_case: product.price_case,
+            units_per_case: product.units_per_case
+        },
+        vendorOverride: {
+            price_per_unit: product.override_unit_price ?? product.vendor_price_override,
+            price_per_case: product.override_case_price
+        }
+    })
+
+    return price
+}
+
+export { MissingEffectivePriceError }
 
 /**
  * Safely computes the line total based strictly on final qty and final resolved price.

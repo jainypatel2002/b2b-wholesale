@@ -1,6 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { getEffectivePrice } from './getEffectivePrice'
+import {
+  computeEquivalentCase,
+  computeEquivalentUnit,
+  getEffectivePrice,
+  getRequiredEffectivePrice,
+  MissingEffectivePriceError,
+  resolveEffectivePrice
+} from './getEffectivePrice'
 
 test('vendor override wins over bulk and default', () => {
   const result = getEffectivePrice({
@@ -35,14 +42,14 @@ test('default product pricing is used when overrides missing', () => {
   assert.equal(result.source, 'product_default')
 })
 
-test('case pricing derives from unit price when explicit case is missing', () => {
+test('case pricing stays null when explicit case price is missing', () => {
   const result = getEffectivePrice({
     unitType: 'case',
     product: { sell_per_unit: 2, units_per_case: 12 }
   })
 
-  assert.equal(result.price, 24)
-  assert.equal(result.source, 'product_default')
+  assert.equal(result.price, null)
+  assert.equal(result.source, null)
 })
 
 test('empty values stay null and do not coerce to zero', () => {
@@ -57,3 +64,38 @@ test('empty values stay null and do not coerce to zero', () => {
   assert.equal(result.source, null)
 })
 
+test('computeEquivalentUnit derives display-only item equivalent', () => {
+  assert.equal(computeEquivalentUnit(55, 10), 5.5)
+  assert.equal(computeEquivalentUnit(55, 0), null)
+})
+
+test('computeEquivalentCase derives display-only case equivalent', () => {
+  assert.equal(computeEquivalentCase(5.5, 10), 55)
+  assert.equal(computeEquivalentCase(5.5, 0), null)
+})
+
+test('resolveEffectivePrice uses strict unit-specific precedence', () => {
+  const result = resolveEffectivePrice({
+    priceUnit: 'case',
+    product: { sell_per_unit: 10, sell_per_case: 90, units_per_case: 10 },
+    bulkOverride: { price_per_unit: 8.5, price_per_case: 88 },
+    vendorOverride: { price_per_unit: 7.5 }
+  })
+
+  assert.equal(result.price, 88)
+  assert.equal(result.source, 'bulk_override')
+})
+
+test('getRequiredEffectivePrice throws controlled error when missing case price', () => {
+  assert.throws(() => {
+    getRequiredEffectivePrice({
+      unitType: 'case',
+      product: { sell_per_unit: 10, units_per_case: 12 }
+    })
+  }, (error: unknown) => {
+    assert.ok(error instanceof MissingEffectivePriceError)
+    assert.equal((error as MissingEffectivePriceError).unitType, 'case')
+    assert.equal((error as MissingEffectivePriceError).message, 'Set case price in inventory before ordering by case.')
+    return true
+  })
+})

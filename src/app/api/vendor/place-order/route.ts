@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase/route'
-import { getEffectivePrice, type ProductPricing } from '@/lib/pricing-engine'
+import {
+  getEffectivePrice,
+  getEffectivePriceOrThrow,
+  type ProductPricing,
+  MissingEffectivePriceError
+} from '@/lib/pricing-engine'
 
 type OrderUnit = 'piece' | 'case'
 
@@ -94,7 +99,7 @@ export async function POST(request: NextRequest) {
   // ── Load Vendor Pricing Overrides ──────────────────────────────────
   const { data: overrides } = await supabase
     .from('vendor_price_overrides')
-    .select('product_id, price_per_unit, price_per_case, price_cents')
+    .select('product_id, price_per_unit, price_per_case')
     .eq('distributor_id', distributorId)
     .eq('vendor_id', auth.user.id)
     .in('product_id', productIds)
@@ -139,19 +144,26 @@ export async function POST(request: NextRequest) {
 
       // Fallback for incomplete data or legacy reasons
       sell_price: p.sell_price,
-      price_case: p.price_case,
-      vendor_price_override: override?.price_cents != null ? Number(override.price_cents) / 100 : null
+      price_case: p.price_case
     }
 
-    const unitPriceSnapshot = getEffectivePrice(pricingProduct, it.order_unit as 'piece' | 'case')
+    let unitPriceSnapshot: number
+    try {
+      unitPriceSnapshot = getEffectivePriceOrThrow(pricingProduct, it.order_unit as 'piece' | 'case')
+    } catch (error) {
+      if (error instanceof MissingEffectivePriceError && error.unitType === 'case') {
+        return NextResponse.json({ error: `Set case price in inventory before ordering ${p.name} by case` }, { status: 400 })
+      }
+      return NextResponse.json({ error: `Price is not configured for ${p.name}` }, { status: 400 })
+    }
 
-    if (unitPriceSnapshot === null || unitPriceSnapshot <= 0) {
+    if (unitPriceSnapshot <= 0) {
       return NextResponse.json({ error: `Price is not configured for ${p.name}` }, { status: 400 })
     }
 
     const casePriceSnapshot = isCase
       ? unitPriceSnapshot
-      : (getEffectivePrice(pricingProduct, 'case') ?? (unitPriceSnapshot * unitsPerCase))
+      : getEffectivePrice(pricingProduct, 'case')
 
     orderItemsData.push({
       product_id: p.id,

@@ -25,7 +25,7 @@ export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], 
     const [selectedVendorId, setSelectedVendorId] = useState<string>('')
     const [searchTerm, setSearchTerm] = useState('')
 
-    // Overrides state: map of productId -> price_cents
+    // Overrides state: map of productId -> override unit price in cents
     const [overrides, setOverrides] = useState<Map<string, number>>(new Map())
     const [isLoadingOverrides, setIsLoadingOverrides] = useState(false)
 
@@ -41,9 +41,9 @@ export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], 
                 const data = await fetchOverrides(selectedVendorId)
                 const newMap = new Map<string, number>()
                 data.forEach((o: any) => {
-                    const cents = Number.isFinite(Number(o.price_cents))
-                        ? Number(o.price_cents)
-                        : (Number.isFinite(Number(o.price_per_unit)) ? Math.round(Number(o.price_per_unit) * 100) : NaN)
+                    const cents = Number.isFinite(Number(o.price_per_unit))
+                        ? Math.round(Number(o.price_per_unit) * 100)
+                        : NaN
                     if (Number.isFinite(cents)) newMap.set(o.product_id, cents)
                 })
                 setOverrides(newMap)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Loader2, TrendingUp, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { executeBulkPriceAdjustment, fetchScopeProductCount, fetchSampleProducts } from './actions'
+import type { PriceUnit } from '@/lib/pricing/types'
+import { parseNumericInput } from '@/lib/pricing/priceValidation'
 
 type CategoryNode = { id: string; name: string; category_id: string; children: CategoryNode[] }
 type Category = { id: string; name: string; nodes: CategoryNode[] }
@@ -41,7 +43,15 @@ const FIELD_LABELS: Record<PriceField, string> = {
     cost_price: 'Cost Price'
 }
 
-export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Category[]; vendors: Vendor[] }) {
+export function BulkPricingClient({
+    categoryTree,
+    vendors,
+    distributorId
+}: {
+    categoryTree: Category[]
+    vendors: Vendor[]
+    distributorId: string
+}) {
     const router = useRouter()
     // Scope
     const [selectedCategoryId, setSelectedCategoryId] = useState('')
@@ -85,6 +95,7 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
             : selectedCategory?.name || ''
 
     const showVendorSection = applyMode !== 'base_only'
+    const priceUnit: PriceUnit = field === 'price_case' ? 'case' : 'unit'
 
     const handleCategoryChange = (catId: string) => {
         setSelectedCategoryId(catId)
@@ -131,9 +142,17 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
     const handleExecute = async () => {
         confirmRef.current?.close()
 
-        const numValue = parseFloat(value)
-        if (isNaN(numValue)) {
-            toast.error('Please enter a valid number')
+        if (!effectiveScopeId) {
+            toast.error('Please select a scope')
+            return
+        }
+
+        const parsedValue = parseNumericInput(value, 'Value', {
+            allowNegative: changeType !== 'set',
+            roundTo: 4
+        })
+        if (!parsedValue.ok) {
+            toast.error(parsedValue.error)
             return
         }
 
@@ -145,13 +164,17 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
             : null
 
         const res = await executeBulkPriceAdjustment({
-            scopeType: effectiveScopeType as any,
-            scopeId: effectiveScopeId,
+            distributorId,
+            scope: {
+                type: effectiveScopeType as 'category' | 'category_node',
+                id: effectiveScopeId
+            },
             applyMode,
             vendorIds,
             changeType,
-            value: numValue,
-            field
+            value: parsedValue.value,
+            field,
+            priceUnit
         })
 
         if (res.ok) {
@@ -167,7 +190,10 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
         setIsExecuting(false)
     }
 
-    const canExecute = effectiveScopeId && value.trim() && !isNaN(parseFloat(value))
+    const canExecute = Boolean(effectiveScopeId) && parseNumericInput(value, 'Value', {
+        allowNegative: changeType !== 'set',
+        roundTo: 4
+    }).ok
 
     // Compute preview prices
     const computeNewPrice = (oldPrice: number) => {
@@ -467,6 +493,7 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
                     <div className="text-sm text-slate-600 space-y-2">
                         <p><strong>Scope:</strong> {scopeLabel || 'Not selected'}</p>
                         <p><strong>Field:</strong> {FIELD_LABELS[field]}</p>
+                        <p><strong>Price Unit:</strong> {priceUnit === 'case' ? 'Case' : 'Unit'}</p>
                         <p><strong>Change:</strong> {changeType === 'percent' ? `${value}%` : changeType === 'set' ? `Set to $${value}` : `$${value}`}</p>
                         <p><strong>Mode:</strong> {APPLY_MODE_INFO[applyMode].label}</p>
                         {showVendorSection && (
@@ -474,6 +501,11 @@ export function BulkPricingClient({ categoryTree, vendors }: { categoryTree: Cat
                         )}
                         {previewCount !== null && (
                             <p><strong>Products affected:</strong> ~{previewCount}</p>
+                        )}
+                        {changeType === 'set' && (
+                            <p className="font-semibold text-amber-700">
+                                You are setting {priceUnit.toUpperCase()} price to ${Number(value || 0).toFixed(2)} for {previewCount ?? 'selected'} products.
+                            </p>
                         )}
                     </div>
 

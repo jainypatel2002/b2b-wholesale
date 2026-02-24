@@ -78,7 +78,7 @@ export default async function BulkPricingPage() {
                 </Link>
             </div>
 
-            <BulkPricingClient categoryTree={categoryTree} vendors={vendors} />
+            <BulkPricingClient categoryTree={categoryTree} vendors={vendors} distributorId={distributorId} />
         </div>
     )
 }

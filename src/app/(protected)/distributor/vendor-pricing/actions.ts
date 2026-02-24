@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
 import { revalidatePath } from 'next/cache'
+import { parseNumericInput } from '@/lib/pricing/priceValidation'
 
 export async function fetchOverrides(vendorId: string) {
     const { distributorId } = await getDistributorContext()
@@ -23,12 +24,15 @@ export async function saveOverride(vendorId: string, productId: string, priceDol
         const { distributorId } = await getDistributorContext()
         const supabase = await createClient()
 
-        // Validate and convert to integer cents
-        if (!Number.isFinite(priceDollars) || priceDollars < 0) {
-            return { ok: false, error: 'Invalid price amount' }
+        const parsedPrice = parseNumericInput(priceDollars, 'Override price', {
+            allowNegative: false,
+            roundTo: 2
+        })
+        if (!parsedPrice.ok) {
+            return { ok: false, error: parsedPrice.error }
         }
 
-        const priceCents = Math.round(priceDollars * 100)
+        const priceCents = Math.round(parsedPrice.value * 100)
 
         const { error } = await supabase
             .from('vendor_price_overrides')
@@ -36,7 +40,7 @@ export async function saveOverride(vendorId: string, productId: string, priceDol
                 distributor_id: distributorId,
                 vendor_id: vendorId,
                 product_id: productId,
-                price_per_unit: priceDollars,
+                price_per_unit: parsedPrice.value,
                 price_cents: priceCents, // Keep legacy synced
                 updated_at: new Date().toISOString()
             }, { onConflict: 'distributor_id, vendor_id, product_id' })
