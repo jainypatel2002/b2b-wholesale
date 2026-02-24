@@ -538,9 +538,9 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
 
                         {!invoiceExists && (
                             <div className="relative z-10 mt-2 border-t pt-3">
-                                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(120px,180px)_auto] sm:items-end">
-                                    <div className="min-w-0">
-                                        <label htmlFor="new-adjustment-name" className="mb-1 block text-xs font-medium text-slate-600">
+                                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(120px,180px)_auto] sm:items-end lg:grid-cols-[1.2fr_1fr_auto] lg:gap-4">
+                                    <div className="min-w-0 lg:min-w-0">
+                                        <label htmlFor="new-adjustment-name" className="mb-1 block text-xs font-medium text-slate-600 lg:mb-2 lg:whitespace-nowrap lg:leading-normal">
                                             Fee Name
                                         </label>
                                         <Input
@@ -548,11 +548,11 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                             placeholder="Shipping, Fee..."
                                             value={newAdjName}
                                             onChange={e => setNewAdjName(e.target.value)}
-                                            className="h-11 w-full text-base sm:h-10 sm:text-sm"
+                                            className="h-11 w-full text-base sm:h-10 sm:text-sm lg:h-11"
                                         />
                                     </div>
-                                    <div className="min-w-0">
-                                        <label htmlFor="new-adjustment-amount" className="mb-1 block text-xs font-medium text-slate-600">
+                                    <div className="min-w-0 lg:min-w-0">
+                                        <label htmlFor="new-adjustment-amount" className="mb-1 block text-xs font-medium text-slate-600 lg:mb-2 lg:whitespace-nowrap lg:leading-normal">
                                             Amount
                                         </label>
                                         <Input
@@ -563,14 +563,14 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                             placeholder="Amount"
                                             value={newAdjAmount}
                                             onChange={e => setNewAdjAmount(e.target.value)}
-                                            className="h-11 w-full text-base sm:h-10 sm:text-sm"
+                                            className="h-11 w-full text-base sm:h-10 sm:text-sm lg:h-11"
                                         />
                                     </div>
                                     <Button
                                         size="sm"
                                         onClick={handleAddAdj}
                                         disabled={isPending}
-                                        className="h-11 w-full shrink-0 px-3 sm:h-10 sm:w-11 sm:px-0"
+                                        className="h-11 w-full shrink-0 px-3 sm:h-10 sm:w-11 sm:px-0 lg:h-11 lg:w-11"
                                         aria-label="Add adjustment"
                                     >
                                         <Plus className="h-4 w-4" />
@@ -607,9 +607,9 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
 
                         {!invoiceExists && (
                             <div className="relative z-10 mt-2 border-t pt-3">
-                                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_100px_minmax(0,1fr)_auto] sm:items-end">
-                                    <div className="min-w-0">
-                                        <label htmlFor="new-tax-name" className="mb-1 block text-xs font-medium text-slate-600">
+                                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_100px_minmax(0,1fr)_auto] sm:items-end lg:grid-cols-[1.2fr_0.8fr_0.8fr_auto] lg:gap-4">
+                                    <div className="min-w-0 lg:min-w-0">
+                                        <label htmlFor="new-tax-name" className="mb-1 block text-xs font-medium text-slate-600 lg:mb-2 lg:whitespace-nowrap lg:leading-normal">
                                             Tax Name
                                         </label>
                                         <Input
@@ -617,16 +617,16 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                             placeholder="State Tax..."
                                             value={newTaxName}
                                             onChange={e => setNewTaxName(e.target.value)}
-                                            className="h-11 w-full text-base sm:h-10 sm:text-sm"
+                                            className="h-11 w-full text-base sm:h-10 sm:text-sm lg:h-11"
                                         />
                                     </div>
-                                    <div className="min-w-0">
-                                        <label htmlFor="new-tax-type" className="mb-1 block text-xs font-medium text-slate-600">
+                                    <div className="min-w-0 lg:min-w-0">
+                                        <label htmlFor="new-tax-type" className="mb-1 block text-xs font-medium text-slate-600 lg:mb-2 lg:whitespace-nowrap lg:leading-normal">
                                             Type
                                         </label>
                                         <select
                                             id="new-tax-type"
-                                            className="form-select h-11 w-full rounded-md px-2 text-base sm:h-10 sm:text-sm"
+                                            className="form-select h-11 w-full rounded-md px-2 text-base sm:h-10 sm:text-sm lg:h-11"
                                             value={newTaxType}
                                             onChange={e => setNewTaxType(e.target.value as any)}
                                         >
@@ -634,8 +634,8 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                             <option value="fixed">$</option>
                                         </select>
                                     </div>
-                                    <div className="min-w-0">
-                                        <label htmlFor="new-tax-rate" className="mb-1 block text-xs font-medium text-slate-600">
+                                    <div className="min-w-0 lg:min-w-0">
+                                        <label htmlFor="new-tax-rate" className="mb-1 block text-xs font-medium text-slate-600 lg:mb-2 lg:whitespace-nowrap lg:leading-normal">
                                             {newTaxType === 'percent' ? 'Rate (%)' : 'Amount ($)'}
                                         </label>
                                         <Input
@@ -646,14 +646,14 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                             placeholder="Rate / Amount"
                                             value={newTaxRate}
                                             onChange={e => setNewTaxRate(e.target.value)}
-                                            className="h-11 w-full text-base sm:h-10 sm:text-sm"
+                                            className="h-11 w-full text-base sm:h-10 sm:text-sm lg:h-11"
                                         />
                                     </div>
                                     <Button
                                         size="sm"
                                         onClick={handleAddTax}
                                         disabled={isPending}
-                                        className="h-11 w-full shrink-0 px-3 sm:h-10 sm:w-11 sm:px-0"
+                                        className="h-11 w-full shrink-0 px-3 sm:h-10 sm:w-11 sm:px-0 lg:h-11 lg:w-11"
                                         aria-label="Add tax"
                                     >
                                         <Plus className="h-4 w-4" />
