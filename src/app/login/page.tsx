@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 import { AuthCard } from '@/components/auth/AuthCard'
-import { BrandPanel } from '@/components/auth/BrandPanel'
+import { AuthShell } from '@/components/auth/AuthShell'
 
 export default function LoginPage() {
   const supabase = createClient()
@@ -38,24 +38,18 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-slate-50 px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
-      <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-12 lg:gap-8">
-        <BrandPanel className="lg:col-span-5" />
-
-        <section className="flex items-center justify-center lg:col-span-7">
-          <AuthCard
-            email={email}
-            password={password}
-            loading={loading}
-            role={role}
-            onEmailChange={setEmail}
-            onPasswordChange={setPassword}
-            onRoleChange={setRole}
-            onSignIn={signIn}
-            onSignUp={signUp}
-          />
-        </section>
-      </div>
-    </main>
+    <AuthShell>
+      <AuthCard
+        email={email}
+        password={password}
+        loading={loading}
+        role={role}
+        onEmailChange={setEmail}
+        onPasswordChange={setPassword}
+        onRoleChange={setRole}
+        onSignIn={signIn}
+        onSignUp={signUp}
+      />
+    </AuthShell>
   )
 }

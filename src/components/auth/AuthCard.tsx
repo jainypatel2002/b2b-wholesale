@@ -166,10 +166,6 @@ export function AuthCard({
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
               {activeTab === 'sign-in' ? 'Sign in' : `Create account (${role})`}
             </Button>
-
-            <p className="text-xs text-slate-500">
-              Tip: You can enable or disable email confirmation in Supabase Auth settings.
-            </p>
           </form>
         </CardContent>
       </Card>

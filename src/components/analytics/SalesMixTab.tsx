@@ -190,7 +190,7 @@ export function SalesMixTab({ categories, items }: SalesMixTabProps) {
 
             {/* Item Sales Share */}
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardHeader className="flex flex-col items-stretch gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-1">
                         <CardTitle>Item Sales Share</CardTitle>
                         <CardDescription>Top products in selected category</CardDescription>
@@ -198,7 +198,7 @@ export function SalesMixTab({ categories, items }: SalesMixTabProps) {
                     <select
                         value={selectedCategoryId}
                         onChange={(e) => setSelectedCategoryId(e.target.value)}
-                        className="h-10 w-[180px] rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-[180px]"
                     >
                         <option value="all">All Categories</option>
                         {categories.map(c => (
