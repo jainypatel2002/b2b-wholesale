@@ -136,7 +136,7 @@ export function CartClient({ distributorId }: { distributorId: string }) {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="flex min-h-[100dvh] flex-col gap-6 md:min-h-0">
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900">Shopping Cart</h1>
                 <Link href="/vendor/catalog">
@@ -174,100 +174,125 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                 </div>
             )}
 
-            <div className="grid gap-6 md:grid-cols-3 pb-48 md:pb-0">
-                <div className="md:col-span-2 space-y-4">
-                    {items.length ? (
-                        items.map((i, idx) => {
-                            const isCase = i.order_unit === 'case'
-                            // unit_price is now the EXACT price for the selected order_unit
-                            const lineTotal = computeLineTotal(i.qty, Number(i.unit_price))
+            <div className="grid min-h-0 flex-1 gap-6 md:grid-cols-3">
+                <div className="md:col-span-2">
+                    <div className="flex min-h-0 flex-col">
+                        <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+12rem)] pr-1 [-webkit-overflow-scrolling:touch] md:overflow-visible md:pb-0 md:pr-0">
+                            {items.length ? (
+                                items.map((i, idx) => {
+                                    const isCase = i.order_unit === 'case'
+                                    // unit_price is now the EXACT price for the selected order_unit
+                                    const lineTotal = computeLineTotal(i.qty, Number(i.unit_price))
 
-                            return (
-                                <Card key={`${i.product_id}-${i.order_unit}-${idx}`}>
-                                    <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                                        <div className="flex-1">
-                                            <div className="font-semibold text-lg flex items-center gap-2">
-                                                {i.name}
-                                                <span className="text-[10px] font-normal px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 uppercase">
-                                                    {i.order_unit}
-                                                </span>
-                                            </div>
-                                            <div className="text-sm text-slate-500">
-                                                {formatPriceLabel(Number(i.unit_price), i.order_unit)}
-                                                {isCase && (i.units_per_case ?? 0) > 0 && (
-                                                    <span className="ml-2 text-xs opacity-70">({i.units_per_case} units/case)</span>
-                                                )}
-                                            </div>
-                                        </div>
+                                    return (
+                                        <Card key={`${i.product_id}-${i.order_unit}-${idx}`}>
+                                            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                                <div className="flex-1">
+                                                    <div className="font-semibold text-lg flex items-center gap-2">
+                                                        {i.name}
+                                                        <span className="text-[10px] font-normal px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 uppercase">
+                                                            {i.order_unit}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-sm text-slate-500">
+                                                        {formatPriceLabel(Number(i.unit_price), i.order_unit)}
+                                                        {isCase && (i.units_per_case ?? 0) > 0 && (
+                                                            <span className="ml-2 text-xs opacity-70">({i.units_per_case} units/case)</span>
+                                                        )}
+                                                    </div>
+                                                </div>
 
-                                        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
-                                            <div className="flex items-center rounded-md border border-slate-200">
-                                                <button className="h-10 w-10 flex items-center justify-center hover:bg-slate-50 text-lg" onClick={() => dec(i.product_id, i.order_unit)}>-</button>
-                                                <div className="w-16 text-center font-medium">{formatQtyLabel(i.qty, i.order_unit)}</div>
-                                                <button className="h-10 w-10 flex items-center justify-center hover:bg-slate-50 text-lg" onClick={() => inc(i.product_id, i.order_unit)}>+</button>
-                                            </div>
-                                            <div className="text-right min-w-[80px] font-medium text-lg">
-                                                ${lineTotal.toFixed(2)}
-                                            </div>
-                                            <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => remove(i.product_id, i.order_unit)}>
-                                                <Trash2 className="h-5 w-5" />
-                                            </Button>
-                                        </div>
+                                                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
+                                                    <div className="flex items-center rounded-md border border-slate-200">
+                                                        <button className="h-10 w-10 flex items-center justify-center hover:bg-slate-50 text-lg" onClick={() => dec(i.product_id, i.order_unit)}>-</button>
+                                                        <div className="w-16 text-center font-medium">{formatQtyLabel(i.qty, i.order_unit)}</div>
+                                                        <button className="h-10 w-10 flex items-center justify-center hover:bg-slate-50 text-lg" onClick={() => inc(i.product_id, i.order_unit)}>+</button>
+                                                    </div>
+                                                    <div className="text-right min-w-[80px] font-medium text-lg">
+                                                        ${lineTotal.toFixed(2)}
+                                                    </div>
+                                                    <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => remove(i.product_id, i.order_unit)}>
+                                                        <Trash2 className="h-5 w-5" />
+                                                    </Button>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )
+                                })
+                            ) : (
+                                <Card className="border-dashed">
+                                    <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                                        <ShoppingCart className="h-12 w-12 text-slate-300 mb-4" />
+                                        <h3 className="text-lg font-medium text-slate-900">Your cart is empty</h3>
+                                        <p className="text-slate-500 mt-1 mb-6">Looks like you haven&apos;t added anything to your cart yet.</p>
+                                        <Link href="/vendor/catalog">
+                                            <Button>Browse Catalog</Button>
+                                        </Link>
                                     </CardContent>
                                 </Card>
-                            )
-                        })
-                    ) : (
-                        <Card className="border-dashed">
-                            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                                <ShoppingCart className="h-12 w-12 text-slate-300 mb-4" />
-                                <h3 className="text-lg font-medium text-slate-900">Your cart is empty</h3>
-                                <p className="text-slate-500 mt-1 mb-6">Looks like you haven&apos;t added anything to your cart yet.</p>
-                                <Link href="/vendor/catalog">
-                                    <Button>Browse Catalog</Button>
-                                </Link>
-                            </CardContent>
-                        </Card>
-                    )}
+                            )}
+
+                            <Card className="md:hidden">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-base">Note for distributor (optional)</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-2 p-4 pt-0">
+                                    <textarea
+                                        id="vendor-note-mobile"
+                                        value={vendorNote}
+                                        onChange={(e) => setVendorNote(e.target.value)}
+                                        maxLength={MAX_VENDOR_NOTE_LENGTH}
+                                        rows={3}
+                                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-primary/20"
+                                        placeholder="Visible in order details only."
+                                    />
+                                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                                        <span>Not shown on invoice.</span>
+                                        <span>{vendorNote.length}/{MAX_VENDOR_NOTE_LENGTH}</span>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Desktop Summary */}
                 <div className="hidden md:block md:col-span-1">
-                        <Card className="sticky top-24">
-                            <CardHeader>
-                                <CardTitle>Order Summary</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
+                    <Card className="sticky top-24">
+                        <CardHeader>
+                            <CardTitle>Order Summary</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
                             <div className="flex justify-between text-sm">
                                 <span className="text-slate-600">Subtotal</span>
                                 <span className="font-medium">${total.toFixed(2)}</span>
                             </div>
-                                <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
-                                    <span className="text-base font-bold">Total</span>
-                                    <span className="text-xl font-bold">${total.toFixed(2)}</span>
+                            <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                                <span className="text-base font-bold">Total</span>
+                                <span className="text-xl font-bold">${total.toFixed(2)}</span>
+                            </div>
+                            <div className="space-y-2 border-t border-slate-100 pt-4">
+                                <label htmlFor="vendor-note-desktop" className="text-sm font-medium text-slate-700">
+                                    Note for distributor (optional)
+                                </label>
+                                <textarea
+                                    id="vendor-note-desktop"
+                                    value={vendorNote}
+                                    onChange={(e) => setVendorNote(e.target.value)}
+                                    maxLength={MAX_VENDOR_NOTE_LENGTH}
+                                    rows={4}
+                                    className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-primary/20"
+                                    placeholder="Add delivery instructions, special handling, or other context."
+                                />
+                                <div className="flex items-center justify-between text-xs text-slate-500">
+                                    <span>Visible to distributor in order details. Not shown on invoice.</span>
+                                    <span>{vendorNote.length}/{MAX_VENDOR_NOTE_LENGTH}</span>
                                 </div>
-                                <div className="space-y-2 border-t border-slate-100 pt-4">
-                                    <label htmlFor="vendor-note-desktop" className="text-sm font-medium text-slate-700">
-                                        Note for distributor (optional)
-                                    </label>
-                                    <textarea
-                                        id="vendor-note-desktop"
-                                        value={vendorNote}
-                                        onChange={(e) => setVendorNote(e.target.value)}
-                                        maxLength={MAX_VENDOR_NOTE_LENGTH}
-                                        rows={4}
-                                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-primary/20"
-                                        placeholder="Add delivery instructions, special handling, or other context."
-                                    />
-                                    <div className="flex items-center justify-between text-xs text-slate-500">
-                                        <span>Visible to distributor in order details. Not shown on invoice.</span>
-                                        <span>{vendorNote.length}/{MAX_VENDOR_NOTE_LENGTH}</span>
-                                    </div>
-                                </div>
-                            </CardContent>
-                            <CardFooter className="flex-col gap-3">
-                                <Button className="w-full" size="lg" disabled={items.length === 0 || loading} onClick={placeOrder}>
-                                    {loading ? 'Processing...' : 'Place Order'}
+                            </div>
+                        </CardContent>
+                        <CardFooter className="flex-col gap-3">
+                            <Button className="w-full" size="lg" disabled={items.length === 0 || loading} onClick={placeOrder}>
+                                {loading ? 'Processing...' : 'Place Order'}
                             </Button>
                             <p className="text-xs text-center text-slate-500">
                                 Payment due upon invoice creation.
@@ -275,28 +300,12 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                         </CardFooter>
                     </Card>
                 </div>
+            </div>
 
-                {/* Mobile Fixed Bottom Bar */}
-                <div className="fixed bottom-16 left-0 right-0 z-40 border-t border-white/70 bg-white/90 p-4 shadow-[0_-10px_24px_-20px_rgba(15,23,42,0.8)] backdrop-blur-xl md:hidden">
-                    <div className="mb-3 space-y-2">
-                        <label htmlFor="vendor-note-mobile" className="block text-xs font-medium text-slate-600">
-                            Note for distributor (optional)
-                        </label>
-                        <textarea
-                            id="vendor-note-mobile"
-                            value={vendorNote}
-                            onChange={(e) => setVendorNote(e.target.value)}
-                            maxLength={MAX_VENDOR_NOTE_LENGTH}
-                            rows={2}
-                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-primary/20"
-                            placeholder="Visible in order details only."
-                        />
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
-                            <span>Not shown on invoice.</span>
-                            <span>{vendorNote.length}/{MAX_VENDOR_NOTE_LENGTH}</span>
-                        </div>
-                    </div>
-                    <div className="flex items-center justify-between mb-3">
+            {/* Mobile Fixed Bottom Bar */}
+            <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-40 border-t border-white/70 bg-white/95 px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3 shadow-[0_-10px_24px_-20px_rgba(15,23,42,0.8)] backdrop-blur-xl md:hidden">
+                <div className="mx-auto w-full max-w-7xl">
+                    <div className="mb-3 flex items-center justify-between">
                         <span className="text-sm font-medium text-slate-500">Total</span>
                         <span className="text-xl font-bold text-slate-900">${total.toFixed(2)}</span>
                     </div>
