@@ -537,10 +537,45 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                         ))}
 
                         {!invoiceExists && (
-                            <div className="flex gap-2 pt-2 border-t mt-2">
-                                <Input placeholder="Shipping, Fee..." value={newAdjName} onChange={e => setNewAdjName(e.target.value)} className="h-8 text-sm" />
-                                <Input type="number" step="0.01" placeholder="Amount" value={newAdjAmount} onChange={e => setNewAdjAmount(e.target.value)} className="h-8 text-sm w-24" />
-                                <Button size="sm" onClick={handleAddAdj} disabled={isPending} className="h-8 px-2"><Plus className="h-4 w-4" /></Button>
+                            <div className="relative z-10 mt-2 border-t pt-3">
+                                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(120px,180px)_auto] sm:items-end">
+                                    <div className="min-w-0">
+                                        <label htmlFor="new-adjustment-name" className="mb-1 block text-xs font-medium text-slate-600">
+                                            Fee Name
+                                        </label>
+                                        <Input
+                                            id="new-adjustment-name"
+                                            placeholder="Shipping, Fee..."
+                                            value={newAdjName}
+                                            onChange={e => setNewAdjName(e.target.value)}
+                                            className="h-11 w-full text-base sm:h-10 sm:text-sm"
+                                        />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <label htmlFor="new-adjustment-amount" className="mb-1 block text-xs font-medium text-slate-600">
+                                            Amount
+                                        </label>
+                                        <Input
+                                            id="new-adjustment-amount"
+                                            type="number"
+                                            inputMode="decimal"
+                                            step="0.01"
+                                            placeholder="Amount"
+                                            value={newAdjAmount}
+                                            onChange={e => setNewAdjAmount(e.target.value)}
+                                            className="h-11 w-full text-base sm:h-10 sm:text-sm"
+                                        />
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        onClick={handleAddAdj}
+                                        disabled={isPending}
+                                        className="h-11 w-full shrink-0 px-3 sm:h-10 sm:w-11 sm:px-0"
+                                        aria-label="Add adjustment"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </CardContent>
@@ -571,18 +606,59 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                         ))}
 
                         {!invoiceExists && (
-                            <div className="flex gap-2 pt-2 border-t mt-2">
-                                <Input placeholder="State Tax..." value={newTaxName} onChange={e => setNewTaxName(e.target.value)} className="h-8 text-sm w-1/3" />
-                                <select
-                                    className="form-select h-8 rounded-md px-2 text-sm"
-                                    value={newTaxType}
-                                    onChange={e => setNewTaxType(e.target.value as any)}
-                                >
-                                    <option value="percent">%</option>
-                                    <option value="fixed">$</option>
-                                </select>
-                                <Input type="number" step="0.1" placeholder="Rate/Amt" value={newTaxRate} onChange={e => setNewTaxRate(e.target.value)} className="h-8 text-sm flex-1" />
-                                <Button size="sm" onClick={handleAddTax} disabled={isPending} className="h-8 px-2"><Plus className="h-4 w-4" /></Button>
+                            <div className="relative z-10 mt-2 border-t pt-3">
+                                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_100px_minmax(0,1fr)_auto] sm:items-end">
+                                    <div className="min-w-0">
+                                        <label htmlFor="new-tax-name" className="mb-1 block text-xs font-medium text-slate-600">
+                                            Tax Name
+                                        </label>
+                                        <Input
+                                            id="new-tax-name"
+                                            placeholder="State Tax..."
+                                            value={newTaxName}
+                                            onChange={e => setNewTaxName(e.target.value)}
+                                            className="h-11 w-full text-base sm:h-10 sm:text-sm"
+                                        />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <label htmlFor="new-tax-type" className="mb-1 block text-xs font-medium text-slate-600">
+                                            Type
+                                        </label>
+                                        <select
+                                            id="new-tax-type"
+                                            className="form-select h-11 w-full rounded-md px-2 text-base sm:h-10 sm:text-sm"
+                                            value={newTaxType}
+                                            onChange={e => setNewTaxType(e.target.value as any)}
+                                        >
+                                            <option value="percent">%</option>
+                                            <option value="fixed">$</option>
+                                        </select>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <label htmlFor="new-tax-rate" className="mb-1 block text-xs font-medium text-slate-600">
+                                            {newTaxType === 'percent' ? 'Rate (%)' : 'Amount ($)'}
+                                        </label>
+                                        <Input
+                                            id="new-tax-rate"
+                                            type="number"
+                                            inputMode="decimal"
+                                            step="0.01"
+                                            placeholder="Rate / Amount"
+                                            value={newTaxRate}
+                                            onChange={e => setNewTaxRate(e.target.value)}
+                                            className="h-11 w-full text-base sm:h-10 sm:text-sm"
+                                        />
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        onClick={handleAddTax}
+                                        disabled={isPending}
+                                        className="h-11 w-full shrink-0 px-3 sm:h-10 sm:w-11 sm:px-0"
+                                        aria-label="Add tax"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </CardContent>
