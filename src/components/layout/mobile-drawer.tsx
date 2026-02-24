@@ -43,16 +43,17 @@ export function MobileDrawer({ role, links }: MobileDrawerProps) {
 
             {isOpen && (
                 <div
-                    className="fixed inset-0 z-50 bg-slate-950/35 backdrop-blur-sm transition-opacity"
+                    className="fixed inset-0 z-[55] bg-slate-950/35 backdrop-blur-sm transition-opacity"
                     onClick={() => setIsOpen(false)}
                 />
             )}
 
+            {/* Root cause: drawer and bottom nav both used z-50, which let the bottom nav overlap and block Logout taps on small screens. */}
             <div className={cn(
-                "fixed inset-y-0 left-0 z-50 w-[82%] max-w-xs border-r border-white/70 bg-white/85 shadow-2xl backdrop-blur-xl transition-transform duration-300 ease-in-out",
+                "fixed inset-y-0 left-0 z-[60] h-[100dvh] max-h-[100dvh] w-[82%] max-w-xs border-r border-white/70 bg-white/85 shadow-2xl backdrop-blur-xl transition-transform duration-300 ease-in-out",
                 isOpen ? "translate-x-0" : "-translate-x-full"
             )}>
-                <div className="flex h-full flex-col">
+                <div className="flex h-full min-h-0 flex-col">
                     <div className="flex h-16 items-center justify-between border-b border-white/70 px-5">
                         <div>
                             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{role}</p>
@@ -89,15 +90,14 @@ export function MobileDrawer({ role, links }: MobileDrawerProps) {
                                 )
                             })}
                         </nav>
-                    </div>
-
-                    <div className="border-t border-white/70 p-4">
-                        <form action="/logout" method="post">
-                            <button className="focus-ring-brand flex w-full items-center gap-3 rounded-xl border border-white/70 bg-white/75 px-3.5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-700">
-                                <LogOut className="h-4 w-4" />
-                                Logout
-                            </button>
-                        </form>
+                        <div className="sticky bottom-0 z-10 -mx-3 mt-4 border-t border-white/70 bg-white/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur-xl">
+                            <form action="/logout" method="post">
+                                <button className="focus-ring-brand flex min-h-11 w-full items-center gap-3 rounded-xl border border-white/70 bg-white/75 px-3.5 py-2.5 text-sm font-medium text-slate-600 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-700">
+                                    <LogOut className="h-4 w-4" />
+                                    Logout
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
