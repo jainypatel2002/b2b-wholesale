@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { ArchiveButton } from '@/components/archive-button'
 import { ArrowLeft } from 'lucide-react'
+import { ReorderLastOrderButton } from '@/components/vendor/reorder-last-order-button'
 
 const PAGE_SIZE = 50
 
@@ -15,7 +16,7 @@ export default async function VendorOrdersPage({
 }: {
   searchParams: Promise<{ page?: string }>
 }) {
-  const { vendorId } = await getVendorContext()
+  const { vendorId, distributorId } = await getVendorContext()
   const supabase = await createClient()
 
   const { page: pageParam } = await searchParams
@@ -62,9 +63,12 @@ export default async function VendorOrdersPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Order History</h1>
-        <Link href="/vendor">
-          <Button variant="ghost" size="sm" className="pl-0"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard</Button>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {distributorId && <ReorderLastOrderButton distributorId={distributorId} />}
+          <Link href="/vendor">
+            <Button variant="ghost" size="sm" className="pl-0"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard</Button>
+          </Link>
+        </div>
       </div>
 
       <Card className="hidden md:block">

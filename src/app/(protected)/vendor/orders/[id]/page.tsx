@@ -16,7 +16,7 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
   const supabase = await createClient()
 
   const fullSelect = `
-    id, status, created_at, created_by_role, created_source,
+    id, status, created_at, vendor_note, created_by_role, created_source,
     order_items(
       id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
       products(name),
@@ -151,6 +151,17 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {order.vendor_note && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium uppercase text-slate-500">Your Note</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="whitespace-pre-line text-sm text-slate-700">{order.vendor_note}</p>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium uppercase text-slate-500">Info</CardTitle>

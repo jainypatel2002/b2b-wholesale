@@ -6,6 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Trash2, ShoppingCart, AlertTriangle, X } from 'lucide-react'
 import { formatPriceLabel, formatQtyLabel, computeLineTotal, OrderMode } from '@/lib/pricing-engine'
+import { MAX_VENDOR_NOTE_LENGTH } from '@/lib/orders/vendor-note'
 
 type CartItem = {
     product_id: string;
@@ -26,6 +27,7 @@ export function CartClient({ distributorId }: { distributorId: string }) {
     const [items, setItems] = useState<CartItem[]>([])
     const [loading, setLoading] = useState(false)
     const [banner, setBanner] = useState<Banner | null>(null)
+    const [vendorNote, setVendorNote] = useState('')
 
     // Use scoped key
     const CART_KEY = `dv_cart_${distributorId}`
@@ -75,6 +77,7 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
                     distributorId,
+                    vendor_note: vendorNote,
                     items: items.map((i) => ({
                         product_id: i.product_id,
                         qty: i.qty,
@@ -230,23 +233,41 @@ export function CartClient({ distributorId }: { distributorId: string }) {
 
                 {/* Desktop Summary */}
                 <div className="hidden md:block md:col-span-1">
-                    <Card className="sticky top-24">
-                        <CardHeader>
-                            <CardTitle>Order Summary</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
+                        <Card className="sticky top-24">
+                            <CardHeader>
+                                <CardTitle>Order Summary</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
                             <div className="flex justify-between text-sm">
                                 <span className="text-slate-600">Subtotal</span>
                                 <span className="font-medium">${total.toFixed(2)}</span>
                             </div>
-                            <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
-                                <span className="text-base font-bold">Total</span>
-                                <span className="text-xl font-bold">${total.toFixed(2)}</span>
-                            </div>
-                        </CardContent>
-                        <CardFooter className="flex-col gap-3">
-                            <Button className="w-full" size="lg" disabled={items.length === 0 || loading} onClick={placeOrder}>
-                                {loading ? 'Processing...' : 'Place Order'}
+                                <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                                    <span className="text-base font-bold">Total</span>
+                                    <span className="text-xl font-bold">${total.toFixed(2)}</span>
+                                </div>
+                                <div className="space-y-2 border-t border-slate-100 pt-4">
+                                    <label htmlFor="vendor-note-desktop" className="text-sm font-medium text-slate-700">
+                                        Note for distributor (optional)
+                                    </label>
+                                    <textarea
+                                        id="vendor-note-desktop"
+                                        value={vendorNote}
+                                        onChange={(e) => setVendorNote(e.target.value)}
+                                        maxLength={MAX_VENDOR_NOTE_LENGTH}
+                                        rows={4}
+                                        className="w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-primary/20"
+                                        placeholder="Add delivery instructions, special handling, or other context."
+                                    />
+                                    <div className="flex items-center justify-between text-xs text-slate-500">
+                                        <span>Visible to distributor in order details. Not shown on invoice.</span>
+                                        <span>{vendorNote.length}/{MAX_VENDOR_NOTE_LENGTH}</span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                            <CardFooter className="flex-col gap-3">
+                                <Button className="w-full" size="lg" disabled={items.length === 0 || loading} onClick={placeOrder}>
+                                    {loading ? 'Processing...' : 'Place Order'}
                             </Button>
                             <p className="text-xs text-center text-slate-500">
                                 Payment due upon invoice creation.
@@ -257,6 +278,24 @@ export function CartClient({ distributorId }: { distributorId: string }) {
 
                 {/* Mobile Fixed Bottom Bar */}
                 <div className="fixed bottom-16 left-0 right-0 z-40 border-t border-white/70 bg-white/90 p-4 shadow-[0_-10px_24px_-20px_rgba(15,23,42,0.8)] backdrop-blur-xl md:hidden">
+                    <div className="mb-3 space-y-2">
+                        <label htmlFor="vendor-note-mobile" className="block text-xs font-medium text-slate-600">
+                            Note for distributor (optional)
+                        </label>
+                        <textarea
+                            id="vendor-note-mobile"
+                            value={vendorNote}
+                            onChange={(e) => setVendorNote(e.target.value)}
+                            maxLength={MAX_VENDOR_NOTE_LENGTH}
+                            rows={2}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-primary/20"
+                            placeholder="Visible in order details only."
+                        />
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                            <span>Not shown on invoice.</span>
+                            <span>{vendorNote.length}/{MAX_VENDOR_NOTE_LENGTH}</span>
+                        </div>
+                    </div>
                     <div className="flex items-center justify-between mb-3">
                         <span className="text-sm font-medium text-slate-500">Total</span>
                         <span className="text-xl font-bold text-slate-900">${total.toFixed(2)}</span>

@@ -19,7 +19,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
   const supabase = await createClient()
 
   const fullSelect = `
-    id, status, created_at, vendor_id, created_by_role, created_source,
+    id, status, created_at, vendor_id, vendor_note, created_by_role, created_source,
     vendor:profiles!orders_vendor_id_fkey(display_name, email),
     order_items(
       id, qty, unit_price, unit_cost, product_name, order_unit, units_per_case_snapshot,
@@ -137,6 +137,17 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
 
         {/* Sidebar: Info & Actions */}
         <div className="space-y-6">
+          {order.vendor_note && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium uppercase text-slate-500">Vendor Note</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="whitespace-pre-line text-sm text-slate-700">{order.vendor_note}</p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Actions Card */}
           <Card>
             <CardHeader>
