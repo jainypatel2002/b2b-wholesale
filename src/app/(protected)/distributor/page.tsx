@@ -36,8 +36,8 @@ export default async function DistributorHome() {
       color: 'text-green-600 bg-green-50'
     },
     {
-      href: '/distributor/profit',
-      label: 'Profit',
+      href: '/distributor/analytics/profit',
+      label: 'Profit Center',
       description: 'Track revenue and margins.',
       icon: BadgeDollarSign,
       color: 'text-emerald-600 bg-emerald-50'
