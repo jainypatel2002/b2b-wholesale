@@ -3,6 +3,7 @@ import {
   getRequiredEffectivePrice,
   MissingEffectivePriceError
 } from '@/lib/pricing/getEffectivePrice'
+import { validateVendorNote } from '@/lib/orders/vendor-note'
 
 export type OrderUnit = 'piece' | 'case'
 
@@ -17,6 +18,7 @@ export interface CreateOrderParams {
   distributorId: string
   vendorId: string
   items: CreateOrderItemInput[]
+  vendorNote?: string | null
   createdByUserId: string
   createdByRole: 'vendor' | 'distributor'
   createdSource: string
@@ -43,6 +45,7 @@ function isMissingMetadataColumnError(error: any): boolean {
     || combined.includes('created_by_user_id')
     || combined.includes('created_by_role')
     || combined.includes('created_source')
+    || combined.includes('vendor_note')
     || combined.includes('schema cache')
   )
 }
@@ -74,6 +77,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     supabase,
     distributorId,
     vendorId,
+    vendorNote = null,
     createdByUserId,
     createdByRole,
     createdSource,
@@ -98,6 +102,11 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     if (item.order_unit !== 'piece' && item.order_unit !== 'case') {
       return { ok: false, status: 400, error: 'Invalid order unit' }
     }
+  }
+
+  const noteValidation = validateVendorNote(vendorNote)
+  if (!noteValidation.ok) {
+    return { ok: false, status: 400, error: noteValidation.error }
   }
 
   const { data: link, error: linkError } = await supabase
@@ -320,6 +329,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     distributor_id: distributorId,
     vendor_id: vendorId,
     status: 'placed',
+    vendor_note: noteValidation.note,
     created_by_user_id: createdByUserId,
     created_by_role: createdByRole,
     created_source: createdSource

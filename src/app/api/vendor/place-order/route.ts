@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase/route'
 import { createOrder, type CreateOrderItemInput } from '@/lib/orders/create-order'
+import { validateVendorNote } from '@/lib/orders/vendor-note'
 
 export async function POST(request: NextRequest) {
   const { supabase } = createRouteClient(request)
@@ -11,10 +12,16 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const items: CreateOrderItemInput[] = Array.isArray(body?.items) ? body.items : []
   const requestedDistributorId: string | undefined = body?.distributorId
+  const rawVendorNote = body?.vendor_note
 
   if (!items.length) return NextResponse.json({ error: 'Cart is empty' }, { status: 400 })
   if (items.some((i) => !i.product_id || !Number.isFinite(i.qty) || i.qty <= 0 || (i.order_unit !== 'piece' && i.order_unit !== 'case'))) {
     return NextResponse.json({ error: 'Invalid cart' }, { status: 400 })
+  }
+
+  const noteValidation = validateVendorNote(rawVendorNote)
+  if (!noteValidation.ok) {
+    return NextResponse.json({ error: noteValidation.error }, { status: 400 })
   }
 
   // ── Resolve & Validate Distributor Context ──────────────────────────
@@ -46,6 +53,7 @@ export async function POST(request: NextRequest) {
     distributorId,
     vendorId: auth.user.id,
     items,
+    vendorNote: noteValidation.note,
     createdByUserId: auth.user.id,
     createdByRole: 'vendor',
     createdSource: 'vendor_portal',
