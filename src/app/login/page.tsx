@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-import { RoleSelector } from '@/components/auth/role-selector'
+import { AuthCard } from '@/components/auth/AuthCard'
+import { BrandPanel } from '@/components/auth/BrandPanel'
 
 export default function LoginPage() {
   const supabase = createClient()
@@ -37,34 +38,24 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md p-6">
-      <div className="card p-6">
-        <h1 className="text-2xl font-semibold mb-6">Sign in</h1>
+    <main className="min-h-[100dvh] bg-slate-50 px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
+      <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-12 lg:gap-8">
+        <BrandPanel className="lg:col-span-5" />
 
-        <RoleSelector onSelect={setRole} initialRole="vendor" />
-
-        <p className="mt-2 text-sm text-slate-600 mb-4">
-          {role === 'distributor' ? 'Distributor Portal' : 'Vendor Portal'}
-        </p>
-
-        <div className="mt-6 space-y-3">
-          <div>
-            <label className="text-sm">Email</label>
-            <input className="input mt-1" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
-          </div>
-          <div>
-            <label className="text-sm">Password</label>
-            <input className="input mt-1" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
-          </div>
-
-          <button className="btn w-full" disabled={loading} onClick={signIn}>Sign in</button>
-          <button className="btn w-full" disabled={loading} onClick={signUp}>Create account ({role})</button>
-
-          <p className="text-xs text-slate-500">
-            Tip: You can enable/disable email confirmation in Supabase Auth settings.
-          </p>
-        </div>
+        <section className="flex items-center justify-center lg:col-span-7">
+          <AuthCard
+            email={email}
+            password={password}
+            loading={loading}
+            role={role}
+            onEmailChange={setEmail}
+            onPasswordChange={setPassword}
+            onRoleChange={setRole}
+            onSignIn={signIn}
+            onSignUp={signUp}
+          />
+        </section>
       </div>
-    </div>
+    </main>
   )
 }

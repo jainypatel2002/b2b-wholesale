@@ -1,0 +1,1 @@
+select column_name, data_type, is_nullable from information_schema.columns where table_schema='public' and table_name in ('products','vendor_price_overrides','bulk_pricing','orders','order_items','invoices','invoice_items','categories','product_categories');

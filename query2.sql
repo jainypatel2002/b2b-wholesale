@@ -1,0 +1,1 @@
+select conname, pg_get_constraintdef(c.oid) as def from pg_constraint c join pg_class t on c.conrelid=t.oid where t.relname in ('products','vendor_price_overrides','bulk_pricing','order_items','invoice_items');

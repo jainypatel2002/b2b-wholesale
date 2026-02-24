@@ -58,6 +58,90 @@ body {
   @apply text-primary hover:text-primary/90 hover:underline underline-offset-4 decoration-primary/30;
 }
 
+.auth-brand-background-motion {
+  background-size: 130% 130%;
+  animation: auth-gradient-pan 26s ease-in-out infinite;
+}
+
+.auth-grid-overlay {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.18) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.18) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 90%);
+}
+
+.auth-blob-one-motion {
+  animation: auth-blob-one 20s ease-in-out infinite;
+}
+
+.auth-blob-two-motion {
+  animation: auth-blob-two 24s ease-in-out infinite;
+}
+
+.auth-title-shimmer {
+  animation: auth-title-shimmer 4.8s ease-in-out infinite;
+}
+
+@keyframes auth-gradient-pan {
+  0%,
+  100% {
+    background-position: 0% 0%;
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+}
+
+@keyframes auth-blob-one {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate3d(18px, -12px, 0);
+    opacity: 0.78;
+  }
+}
+
+@keyframes auth-blob-two {
+  0%,
+  100% {
+    transform: translate3d(25%, 25%, 0);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate3d(20%, 18%, 0);
+    opacity: 0.72;
+  }
+}
+
+@keyframes auth-title-shimmer {
+  0% {
+    transform: translate3d(-150%, 0, 0) rotate(12deg);
+    opacity: 0;
+  }
+  18%,
+  82% {
+    opacity: 0.32;
+  }
+  100% {
+    transform: translate3d(360%, 0, 0) rotate(12deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-brand-background-motion,
+  .auth-blob-one-motion,
+  .auth-blob-two-motion,
+  .auth-title-shimmer {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
 @media print {
   body {
     background: white !important;

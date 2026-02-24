@@ -1,0 +1,1736 @@
+{
+  "revalidatePath": [
+    {
+      "file": "src/app/(protected)/distributor/actions.ts",
+      "line": 4,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/actions.ts",
+      "line": 15,
+      "content": "revalidatePath('/distributor', 'layout')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/actions.ts",
+      "line": 53,
+      "content": "revalidatePath('/distributor/inventory')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/actions.ts",
+      "line": 54,
+      "content": "revalidatePath('/distributor/bulk-pricing')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/actions.ts",
+      "line": 55,
+      "content": "revalidatePath('/distributor/vendor-pricing')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 23,
+      "content": "revalidatePath('/distributor/categories')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 49,
+      "content": "revalidatePath('/distributor/categories')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 105,
+      "content": "revalidatePath('/distributor/categories')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 106,
+      "content": "revalidatePath('/distributor/inventory')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 137,
+      "content": "revalidatePath('/distributor/categories')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 162,
+      "content": "revalidatePath('/distributor/categories')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 189,
+      "content": "revalidatePath('/distributor/categories')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 190,
+      "content": "revalidatePath('/distributor/inventory')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 26,
+      "content": "revalidatePath('/distributor/inventory')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 107,
+      "content": "revalidatePath('/distributor/inventory')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 219,
+      "content": "revalidatePath('/distributor/inventory')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/settings/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/settings/actions.ts",
+      "line": 28,
+      "content": "revalidatePath('/distributor')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/settings/actions.ts",
+      "line": 29,
+      "content": "revalidatePath('/distributor/settings')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 46,
+      "content": "revalidatePath('/distributor/vendor-pricing')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 70,
+      "content": "revalidatePath('/distributor/vendor-pricing')"
+    },
+    {
+      "file": "src/app/(protected)/vendor/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/vendor/actions.ts",
+      "line": 69,
+      "content": "revalidatePath('/vendor')"
+    },
+    {
+      "file": "src/app/(protected)/vendor/actions.ts",
+      "line": 100,
+      "content": "revalidatePath('/vendor')"
+    },
+    {
+      "file": "src/app/(protected)/vendor/actions.ts",
+      "line": 101,
+      "content": "revalidatePath('/vendor/catalog')"
+    },
+    {
+      "file": "src/app/actions/archive.ts",
+      "line": 6,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/actions/archive.ts",
+      "line": 42,
+      "content": "revalidatePath('/distributor/inventory')"
+    },
+    {
+      "file": "src/app/actions/archive.ts",
+      "line": 43,
+      "content": "revalidatePath('/vendor/catalog')"
+    },
+    {
+      "file": "src/app/actions/archive.ts",
+      "line": 116,
+      "content": "if (role === 'distributor') revalidatePath('/distributor/orders')"
+    },
+    {
+      "file": "src/app/actions/archive.ts",
+      "line": 117,
+      "content": "else revalidatePath('/vendor/orders')"
+    },
+    {
+      "file": "src/app/actions/archive.ts",
+      "line": 181,
+      "content": "if (role === 'distributor') revalidatePath('/distributor/invoices')"
+    },
+    {
+      "file": "src/app/actions/archive.ts",
+      "line": 182,
+      "content": "else revalidatePath('/vendor/invoices')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 26,
+      "content": "revalidatePath('/distributor/orders')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 27,
+      "content": "revalidatePath(`/distributor/orders/${orderId}`)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 142,
+      "content": "revalidatePath(`/distributor/orders/${orderId}`)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 143,
+      "content": "revalidatePath('/distributor/orders')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 172,
+      "content": "revalidatePath('/distributor/orders')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 173,
+      "content": "revalidatePath(`/distributor/orders/${orderId}`)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 174,
+      "content": "revalidatePath('/distributor/invoices')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 175,
+      "content": "revalidatePath(`/distributor/invoices/${invoiceId}`)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 176,
+      "content": "revalidatePath('/', 'layout')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 193,
+      "content": "revalidatePath('/distributor/invoices')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 194,
+      "content": "revalidatePath(`/distributor/invoices/${invoiceId}`)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 196,
+      "content": "revalidatePath('/distributor/orders')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 244,
+      "content": "revalidatePath('/distributor/inventory')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 257,
+      "content": "revalidatePath('/distributor/orders')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 258,
+      "content": "revalidatePath(`/distributor/orders/${orderId}`)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 259,
+      "content": "revalidatePath('/distributor/inventory') // Inventory changes, so refresh this too"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 278,
+      "content": "revalidatePath(`/distributor/orders/${orderId}`)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 292,
+      "content": "revalidatePath(`/distributor/orders/${orderId}`)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 309,
+      "content": "revalidatePath(`/distributor/orders/${orderId}`)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 323,
+      "content": "revalidatePath(`/distributor/orders/${orderId}`)"
+    }
+  ],
+  "cache": [
+    {
+      "file": "src/app/(protected)/distributor/actions.ts",
+      "line": 4,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/analytics/profit/page.tsx",
+      "line": 14,
+      "content": "// Force dynamic so we don't cache stale analytics"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 160,
+      "content": "// Bust Next.js client-side router cache so inventory page shows fresh prices"
+    },
+    {
+      "file": "src/app/(protected)/distributor/categories/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 101,
+      "content": "if (error.message?.includes('schema cache') || error.message?.includes('Could not find')) {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 102,
+      "content": "return { error: 'Database schema is updating. Please apply the latest migration in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 213,
+      "content": "if (error.message?.includes('schema cache') || error.message?.includes('Could not find')) {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 214,
+      "content": "return { error: 'Database schema is updating. Please apply the latest migration in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/page.tsx",
+      "line": 30,
+      "content": "if (error && (error.message?.includes('schema cache') || error.message?.includes('Could not find'))) {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/page.tsx",
+      "line": 61,
+      "content": "<span>The &quot;Lock Stock&quot; feature requires a migration. Please apply <code className=\"font-mono text-xs bg-amber-100 px-1 rounded\">20260225150007_lock_stock_quantity.sql</code> in Supabase SQL Editor, then reload the schema cache (Settings → API → Reload).</span>"
+    },
+    {
+      "file": "src/app/(protected)/distributor/settings/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/page.tsx",
+      "line": 15,
+      "content": "// 2. Fetch All Products and Categories explicitly to avoid schema cache FK errors"
+    },
+    {
+      "file": "src/app/(protected)/vendor/actions.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/actions/archive.ts",
+      "line": 6,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 5,
+      "content": "import { revalidatePath } from 'next/cache'"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 203,
+      "content": "if (JSON.stringify(itemErr).includes('schema cache') || itemErr.message?.includes('schema cache') || itemErr.message?.includes('Could not find the')) {"
+    }
+  ],
+  "override": [
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/actions.ts",
+      "line": 10,
+      "content": "applyMode: 'base_only' | 'base_and_overrides' | 'overrides_only'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 16,
+      "content": "type ApplyMode = 'base_only' | 'base_and_overrides' | 'overrides_only'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 23,
+      "content": "desc: 'Updates base product prices. Existing vendor overrides remain unchanged.',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 26,
+      "content": "base_and_overrides: {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 27,
+      "content": "label: 'Base + Sync Overrides',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 28,
+      "content": "desc: 'Updates base prices AND synchronizes vendor overrides to match the new price.',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 31,
+      "content": "overrides_only: {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 32,
+      "content": "label: 'Override Vendors Only',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 33,
+      "content": "desc: 'Base prices stay the same. Only creates/updates override prices for targeted vendors.',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 374,
+      "content": "{/* Step 4: Vendor Targeting (only when mode includes overrides) */}"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 434,
+      "content": "Overrides upserted: <strong>{result.overrides_upserted}</strong>"
+    },
+    {
+      "file": "src/app/(protected)/distributor/page.tsx",
+      "line": 48,
+      "content": "description: 'Manage client-specific price overrides and bulk changes.',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 7,
+      "content": "export async function fetchOverrides(vendorId: string) {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 11,
+      "content": "const { data: overrides, error } = await supabase"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 12,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 18,
+      "content": "return overrides || []"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 21,
+      "content": "export async function saveOverride(vendorId: string, productId: string, priceDollars: number) {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 34,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 49,
+      "content": "console.error(\"Save override error:\", e)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 54,
+      "content": "export async function removeOverride(vendorId: string, productId: string) {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 60,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 73,
+      "content": "console.error(\"Remove override error:\", e)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 9,
+      "content": "import { fetchOverrides, saveOverride, removeOverride } from './actions'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 28,
+      "content": "// Overrides state: map of productId -> price_cents"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 29,
+      "content": "const [overrides, setOverrides] = useState<Map<string, number>>(new Map())"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 30,
+      "content": "const [isLoadingOverrides, setIsLoadingOverrides] = useState(false)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 34,
+      "content": "setOverrides(new Map())"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 38,
+      "content": "const loadOverrides = async () => {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 39,
+      "content": "setIsLoadingOverrides(true)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 41,
+      "content": "const data = await fetchOverrides(selectedVendorId)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 44,
+      "content": "setOverrides(newMap)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 46,
+      "content": "toast.error(\"Failed to load vendor overrides\")"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 48,
+      "content": "setIsLoadingOverrides(false)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 51,
+      "content": "loadOverrides()"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 108,
+      "content": "{isLoadingOverrides ? ("
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 121,
+      "content": "<th className=\"px-4 py-3\">Vendor Override ($)</th>"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 131,
+      "content": "initialOverrideCents={overrides.get(p.id)}"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 132,
+      "content": "onOverrideRemoved={() => {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 133,
+      "content": "const newMap = new Map(overrides)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 135,
+      "content": "setOverrides(newMap)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 137,
+      "content": "onOverrideSaved={(cents: number) => {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 138,
+      "content": "const newMap = new Map(overrides)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 140,
+      "content": "setOverrides(newMap)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 157,
+      "content": "<p className=\"text-slate-500 mb-4\">Please select a vendor to manage their specific pricing overrides.</p>"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 171,
+      "content": "function ProductRow({ product, vendorId, initialOverrideCents, onOverrideRemoved, onOverrideSaved }: any) {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 172,
+      "content": "// Override is stored in UI state as Dollars for easy editing"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 174,
+      "content": "initialOverrideCents !== undefined ? (initialOverrideCents / 100).toFixed(2) : ''"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 177,
+      "content": "const isOverridden = initialOverrideCents !== undefined"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 181,
+      "content": "setInputValue(initialOverrideCents !== undefined ? (initialOverrideCents / 100).toFixed(2) : '')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 182,
+      "content": "}, [initialOverrideCents])"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 196,
+      "content": "const res = await saveOverride(vendorId, product.id, priceDollars)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 198,
+      "content": "toast.success(\"Saved override\")"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 199,
+      "content": "onOverrideSaved(Math.round(priceDollars * 100))"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 208,
+      "content": "const res = await removeOverride(vendorId, product.id)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 210,
+      "content": "toast.success(\"Removed override\")"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 212,
+      "content": "onOverrideRemoved()"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 219,
+      "content": "const savedDollarValue = initialOverrideCents !== undefined ? (initialOverrideCents / 100).toFixed(2) : ''"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/page.tsx",
+      "line": 61,
+      "content": "<p className=\"text-sm text-slate-500\">Configure client-specific overrides and bulk price adjustments.</p>"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 84,
+      "content": "// Get the current vendor's user ID for override scoping"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 88,
+      "content": "const [{ data: fallbackData, error: fallbackError }, { data: overridesData }] = await Promise.all(["
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 98,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 107,
+      "content": "const overrideMap = new Map((overridesData || []).map((o: any) => [o.product_id, o]))"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 110,
+      "content": "const override = overrideMap.get(p.id)"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 117,
+      "content": "override_unit_price: override?.price_per_unit || null,"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 118,
+      "content": "override_case_price: override?.price_per_case || null,"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 142,
+      "content": "override_unit_price: p.override_unit_price,"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 143,
+      "content": "override_case_price: p.override_case_price,"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 151,
+      "content": "is_overridden: !!(p.override_unit_price || p.override_case_price),"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 94,
+      "content": "// ── Load Vendor Pricing Overrides ──────────────────────────────────"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 95,
+      "content": "const { data: overrides } = await supabase"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 96,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 102,
+      "content": "const overrideMap = new Map((overrides || []).map((o: any) => [o.product_id, o]))"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 129,
+      "content": "const override = overrideMap.get(p.id)"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 139,
+      "content": "// Canonical overrides"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 140,
+      "content": "override_unit_price: override?.price_per_unit || null,"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 141,
+      "content": "override_case_price: override?.price_per_case || null,"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 146,
+      "content": "vendor_price_override: override?.price_cents ? override.price_cents / 100 : null"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 21,
+      "content": "vendor_price_override?: number | null; // legacy or unit override (dollars)"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 22,
+      "content": "override_unit_price?: number | null; // canonical unit override (dollars)"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 23,
+      "content": "override_case_price?: number | null; // canonical case override (dollars)"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 34,
+      "content": "const unitOverride = product.override_unit_price ?? product.vendor_price_override ?? null;"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 35,
+      "content": "const baseUnitPrice = unitOverride ?? product.sell_per_unit ?? product.sell_price ?? 0;"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 43,
+      "content": "// A. Explicit Case Override"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 44,
+      "content": "if (product.override_case_price && product.override_case_price > 0) {"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 45,
+      "content": "return product.override_case_price;"
+    }
+  ],
+  "bulk price": [
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/actions.ts",
+      "line": 36,
+      "content": "console.error('Bulk price adjustment RPC error:', error)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/actions.ts",
+      "line": 49,
+      "content": "console.error('Execute bulk price adjustment error:', e)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/page.tsx",
+      "line": 71,
+      "content": "<h1 className=\"text-2xl font-bold tracking-tight\">Bulk Price Adjustment</h1>"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 103,
+      "content": "<TrendingUp className=\"mr-2 h-4 w-4\" /> Bulk Price Tool"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 160,
+      "content": "<TrendingUp className=\"mr-2 h-4 w-4\" /> Open Bulk Price Tool Instead"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/page.tsx",
+      "line": 61,
+      "content": "<p className=\"text-sm text-slate-500\">Configure client-specific overrides and bulk price adjustments.</p>"
+    }
+  ],
+  "per case": [
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 40,
+      "content": "price_case: 'Sell Price (per case)',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 64,
+      "content": "if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 162,
+      "content": "if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 736,
+      "content": "* - [ ] Toggle Mode: Set price \"10\", click \"Per Case\". Value must become \"10 * units\". Switch back: \"10\"."
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 754,
+      "content": "// Units per Case (Central to calculations) - String state to allow smooth typing"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 966,
+      "content": "<label className=\"text-sm font-medium\">Units Per Case</label>"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 1014,
+      "content": "Per Case"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 1032,
+      "content": "? `~ $${getCostPerCase().toFixed(2)} per case`"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 1055,
+      "content": "Per Case"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 1073,
+      "content": "? `~ $${getSellPerCase().toFixed(2)} per case`"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 221,
+      "content": "if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }"
+    }
+  ],
+  "per unit": [
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 39,
+      "content": "sell_price: 'Sell Price (per unit)',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 1007,
+      "content": "Per Unit"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 1033,
+      "content": ": `~ $${getCostPerUnit().toFixed(2)} per unit`"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 1048,
+      "content": "Per Unit"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 1074,
+      "content": ": `~ $${getSellPerUnit().toFixed(2)} per unit`"
+    }
+  ],
+  "vendor override": [
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 23,
+      "content": "desc: 'Updates base product prices. Existing vendor overrides remain unchanged.',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/bulk-pricing/client.tsx",
+      "line": 28,
+      "content": "desc: 'Updates base prices AND synchronizes vendor overrides to match the new price.',"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 46,
+      "content": "toast.error(\"Failed to load vendor overrides\")"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 121,
+      "content": "<th className=\"px-4 py-3\">Vendor Override ($)</th>"
+    }
+  ],
+  "units_per_case": [
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 60,
+      "content": "const units_per_case = Number(formData.get('units_per_case') || 1)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 64,
+      "content": "if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 86,
+      "content": "units_per_case: allow_case ? units_per_case : null,"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 157,
+      "content": "const units_per_case = Number(formData.get('units_per_case') || 1)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 162,
+      "content": "if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 183,
+      "content": "units_per_case: allow_case ? units_per_case : null,"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 43,
+      "content": "units_per_case?: number"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 192,
+      "content": ".select('id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 642,
+      "content": "{p.allow_case && <span className=\"block\">Cases ({p.units_per_case}/case)</span>}"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 735,
+      "content": "* - [ ] Price Input: Clear field, type \"1.23\", change units_per_case. Value must stay \"1.23\"."
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 755,
+      "content": "const [unitsPerCaseInput, setUnitsPerCaseInput] = useState<string>(String(defaultValues?.units_per_case || 1))"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 789,
+      "content": "if (defaultValues?.stock_mode === 'cases' && defaultValues.units_per_case > 1) {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 790,
+      "content": "return String(initialCanonicalStock / defaultValues.units_per_case)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 970,
+      "content": "name=\"units_per_case\""
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/page.tsx",
+      "line": 19,
+      "content": "const fullSelect = 'id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/page.tsx",
+      "line": 20,
+      "content": "const fallbackSelect = 'id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,categories(name),category_nodes(name)'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/invoices/[id]/page.tsx",
+      "line": 28,
+      "content": "unit_price_snapshot, case_price_snapshot, units_per_case_snapshot"
+    },
+    {
+      "file": "src/app/(protected)/distributor/invoices/[id]/page.tsx",
+      "line": 70,
+      "content": "const totalPieces = Number(it.total_pieces ?? (isCase ? (it.cases_qty * it.units_per_case_snapshot) : it.pieces_qty) ?? it.qty ?? 0)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/invoices/[id]/print/page.tsx",
+      "line": 23,
+      "content": "unit_price_snapshot, case_price_snapshot, units_per_case_snapshot"
+    },
+    {
+      "file": "src/app/(protected)/distributor/orders/[id]/page.tsx",
+      "line": 27,
+      "content": "id, qty, unit_price, unit_cost, product_name, order_unit, units_per_case_snapshot,"
+    },
+    {
+      "file": "src/app/(protected)/vendor/cart/cart-client.tsx",
+      "line": 16,
+      "content": "units_per_case?: number;"
+    },
+    {
+      "file": "src/app/(protected)/vendor/cart/cart-client.tsx",
+      "line": 40,
+      "content": "units_per_case: i.units_per_case || 1"
+    },
+    {
+      "file": "src/app/(protected)/vendor/cart/cart-client.tsx",
+      "line": 195,
+      "content": "{isCase && (i.units_per_case ?? 0) > 0 && ("
+    },
+    {
+      "file": "src/app/(protected)/vendor/cart/cart-client.tsx",
+      "line": 196,
+      "content": "<span className=\"ml-2 text-xs opacity-70\">({i.units_per_case} units/case)</span>"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 91,
+      "content": ".select('id, name, sell_per_unit, sell_per_case, allow_case, allow_piece, units_per_case, category_id, category_node_id, stock_qty, stock_pieces, sku')"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 121,
+      "content": "units_per_case: p.units_per_case,"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 146,
+      "content": "units_per_case: p.units_per_case,"
+    },
+    {
+      "file": "src/app/(protected)/vendor/invoices/[id]/page.tsx",
+      "line": 26,
+      "content": "order_unit, units_per_case_snapshot,"
+    },
+    {
+      "file": "src/app/(protected)/vendor/invoices/[id]/print/page.tsx",
+      "line": 22,
+      "content": "unit_price_snapshot, case_price_snapshot, units_per_case_snapshot"
+    },
+    {
+      "file": "src/app/(protected)/vendor/orders/[id]/page.tsx",
+      "line": 23,
+      "content": "id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 216,
+      "content": "const units_per_case = Number(formData.get('units_per_case') || 1)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 221,
+      "content": "if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 236,
+      "content": "units_per_case: allow_case ? units_per_case : null,"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 56,
+      "content": ".select('id, distributor_id, name, cost_price, sell_price, price_case, stock_pieces, allow_case, allow_piece, units_per_case, cost_per_unit, sell_per_unit, cost_per_case, sell_per_case')"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 119,
+      "content": "const unitsPerCase = p.units_per_case || 1"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 135,
+      "content": "units_per_case: unitsPerCase,"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 163,
+      "content": "units_per_case_snapshot: unitsPerCase,"
+    },
+    {
+      "file": "src/components/order-items-editor.tsx",
+      "line": 33,
+      "content": "units_per_case_snapshot: number | null"
+    },
+    {
+      "file": "src/components/order-items-editor.tsx",
+      "line": 361,
+      "content": "<div className=\"text-[10px] text-slate-400\">@ {item.units_per_case_snapshot}/case</div>"
+    },
+    {
+      "file": "src/components/vendor/product-card.tsx",
+      "line": 50,
+      "content": "units_per_case: p.units_per_case,"
+    },
+    {
+      "file": "src/components/vendor/product-card.tsx",
+      "line": 88,
+      "content": "{unit === 'case' ? `Pack of ${p.units_per_case ?? 1}` : 'Single unit'}"
+    },
+    {
+      "file": "src/components/vendor/product-card.tsx",
+      "line": 89,
+      "content": "{unit === 'case' && casePrice !== null && casePrice > 0 && (p.units_per_case ?? 0) > 0 && ("
+    },
+    {
+      "file": "src/components/vendor/product-card.tsx",
+      "line": 91,
+      "content": "(${(casePrice / (p.units_per_case ?? 1)).toFixed(2)} / item eq.)"
+    },
+    {
+      "file": "src/components/vendor/product-card.tsx",
+      "line": 123,
+      "content": "{unit === 'case' ? `Case Only (${p.units_per_case} count)` : 'Piece Only'}"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 15,
+      "content": "units_per_case?: number | null;"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 54,
+      "content": "// C. Derived from Unit Price (with units_per_case)"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 55,
+      "content": "const upc = product.units_per_case ?? 1;"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 124,
+      "content": "const unitsPerCase = Number(item.units_per_case_snapshot ?? item.units_per_case ?? 0);"
+    },
+    {
+      "file": "src/lib/pricing.ts",
+      "line": 12,
+      "content": "units_per_case: number | null;"
+    },
+    {
+      "file": "src/types/inventory.ts",
+      "line": 13,
+      "content": "units_per_case: number | null"
+    },
+    {
+      "file": "src/types/inventory.ts",
+      "line": 30,
+      "content": "units_per_case?: number | null"
+    }
+  ],
+  "allow_piece": [
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 59,
+      "content": "const allow_piece = formData.get('allow_piece') === 'on'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 65,
+      "content": "if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 85,
+      "content": "allow_piece,"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 156,
+      "content": "const allow_piece = formData.get('allow_piece') === 'on'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 163,
+      "content": "if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 182,
+      "content": "allow_piece,"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 42,
+      "content": "allow_piece?: boolean"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 192,
+      "content": ".select('id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 641,
+      "content": "{p.allow_piece && <span className=\"block\">Pieces</span>}"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 748,
+      "content": "const [allowPiece, setAllowPiece] = useState(defaultValues?.allow_piece ?? true)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/client.tsx",
+      "line": 983,
+      "content": "<input type=\"checkbox\" name=\"allow_piece\" checked={allowPiece} onChange={e => setAllowPiece(e.target.checked)} className=\"rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50\" />"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/page.tsx",
+      "line": 19,
+      "content": "const fullSelect = 'id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/inventory/page.tsx",
+      "line": 20,
+      "content": "const fallbackSelect = 'id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,categories(name),category_nodes(name)'"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 91,
+      "content": ".select('id, name, sell_per_unit, sell_per_case, allow_case, allow_piece, units_per_case, category_id, category_node_id, stock_qty, stock_pieces, sku')"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 120,
+      "content": "allow_piece: p.allow_piece,"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 145,
+      "content": "allow_piece: p.allow_piece,"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 215,
+      "content": "const allow_piece = formData.get('allow_piece') === 'on'"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 222,
+      "content": "if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 235,
+      "content": "allow_piece,"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 56,
+      "content": ".select('id, distributor_id, name, cost_price, sell_price, price_case, stock_pieces, allow_case, allow_piece, units_per_case, cost_per_unit, sell_per_unit, cost_per_case, sell_per_case')"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 116,
+      "content": "if (isPiece && !p.allow_piece) return NextResponse.json({ error: `Product ${p.name} cannot be ordered by piece` }, { status: 400 })"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 136,
+      "content": "allow_piece: p.allow_piece,"
+    },
+    {
+      "file": "src/components/vendor/product-card.tsx",
+      "line": 12,
+      "content": "const [unit, setUnit] = useState<'piece' | 'case'>(p.allow_piece ? 'piece' : 'case')"
+    },
+    {
+      "file": "src/components/vendor/product-card.tsx",
+      "line": 15,
+      "content": "const showToggle = p.allow_piece && p.allow_case"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 16,
+      "content": "allow_piece?: boolean;"
+    },
+    {
+      "file": "src/types/inventory.ts",
+      "line": 12,
+      "content": "allow_piece: boolean"
+    }
+  ],
+  "bulk pricing": [
+    {
+      "file": "src/app/(protected)/distributor/inventory/actions.ts",
+      "line": 166,
+      "content": "// This prevents bulk pricing (which only updates sell_price) from zeroing cost"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/client.tsx",
+      "line": 65,
+      "content": "// Bulk pricing is now handled by the dedicated /distributor/bulk-pricing page"
+    },
+    {
+      "file": "src/config/nav.ts",
+      "line": 8,
+      "content": "{ href: '/distributor/bulk-pricing', label: 'Bulk Pricing', icon: 'TrendingUp' },"
+    }
+  ],
+  "invoice_items": [
+    {
+      "file": "src/app/(protected)/distributor/invoices/[id]/page.tsx",
+      "line": 23,
+      "content": "invoice_items("
+    },
+    {
+      "file": "src/app/(protected)/distributor/invoices/[id]/page.tsx",
+      "line": 62,
+      "content": "const profit = (invoice.invoice_items ?? []).reduce((sum: number, it: any) => {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/invoices/[id]/print/page.tsx",
+      "line": 18,
+      "content": "invoice_items("
+    },
+    {
+      "file": "src/app/(protected)/distributor/profit/page.tsx",
+      "line": 15,
+      "content": ".select('id,total,payment_status,created_at,invoice_items(qty,unit_price,unit_cost)')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/profit/page.tsx",
+      "line": 22,
+      "content": "const c = (inv.invoice_items ?? []).reduce((s: number, it: any) => s + Number(it.unit_cost) * Number(it.qty), 0)"
+    },
+    {
+      "file": "src/app/(protected)/vendor/invoices/[id]/page.tsx",
+      "line": 23,
+      "content": "invoice_items("
+    },
+    {
+      "file": "src/app/(protected)/vendor/invoices/[id]/print/page.tsx",
+      "line": 17,
+      "content": "invoice_items("
+    },
+    {
+      "file": "src/components/invoice-print.tsx",
+      "line": 22,
+      "content": "const items = invoice.invoice_items || []"
+    }
+  ],
+  "order_items": [
+    {
+      "file": "src/app/(protected)/distributor/orders/[id]/page.tsx",
+      "line": 26,
+      "content": "order_items("
+    },
+    {
+      "file": "src/app/(protected)/distributor/orders/[id]/page.tsx",
+      "line": 63,
+      "content": "const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)"
+    },
+    {
+      "file": "src/app/(protected)/distributor/orders/[id]/page.tsx",
+      "line": 99,
+      "content": "items={(order.order_items ?? []) as any}"
+    },
+    {
+      "file": "src/app/(protected)/distributor/orders/page.tsx",
+      "line": 32,
+      "content": ".select('id,status,created_at,deleted_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)', { count: 'exact' })"
+    },
+    {
+      "file": "src/app/(protected)/distributor/orders/page.tsx",
+      "line": 61,
+      "content": ".select('id,status,created_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)', { count: 'exact' })"
+    },
+    {
+      "file": "src/app/(protected)/distributor/orders/page.tsx",
+      "line": 81,
+      "content": "const total = (o.order_items ?? []).reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.qty), 0)"
+    },
+    {
+      "file": "src/app/(protected)/vendor/orders/[id]/page.tsx",
+      "line": 22,
+      "content": "order_items("
+    },
+    {
+      "file": "src/app/(protected)/vendor/orders/[id]/page.tsx",
+      "line": 54,
+      "content": "const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)"
+    },
+    {
+      "file": "src/app/(protected)/vendor/orders/page.tsx",
+      "line": 28,
+      "content": ".select('id,status,created_at,order_items(qty,unit_price)', { count: 'exact' })"
+    },
+    {
+      "file": "src/app/(protected)/vendor/orders/page.tsx",
+      "line": 38,
+      "content": ".select('id,status,created_at,order_items(qty,unit_price)', { count: 'exact' })"
+    },
+    {
+      "file": "src/app/(protected)/vendor/orders/page.tsx",
+      "line": 52,
+      "content": "const total = (o.order_items ?? []).reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.qty), 0)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 91,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 122,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 136,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 194,
+      "content": "const { error: itemErr } = await supabase.from('order_items').insert(itemsToInsert)"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 80,
+      "content": "order_items ("
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 105,
+      "content": "order_items ("
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 125,
+      "content": "order_items: o.order_items.map((i: any) => ({"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 139,
+      "content": "const allItems = data?.flatMap(o => o.order_items) || []"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 182,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 210,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 314,
+      "content": "order_items ("
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 337,
+      "content": "order_items ("
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 355,
+      "content": "order_items: o.order_items.map((i: any) => ({"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 386,
+      "content": "const items = o.order_items.map((i: any) => {"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 442,
+      "content": "order_items ("
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 465,
+      "content": "order_items ("
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 483,
+      "content": "order_items: o.order_items.map((i: any) => ({"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 501,
+      "content": "const items = o.order_items.map((i: any) => {"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 576,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 578,
+      "content": ".gt('created_at', thirtyDaysAgo.toISOString()) // This assumes order_items has created_at, if not join orders"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 579,
+      "content": "// Actually safe to assume order_items usually doesn't have created_at unless inherited?"
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 581,
+      "content": "// NOTE: order_items might not have created_at if not added in migration."
+    },
+    {
+      "file": "src/lib/analytics/profit.ts",
+      "line": 605,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/lib/analytics/salesMix.ts",
+      "line": 49,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/lib/analytics/salesMix.ts",
+      "line": 77,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/lib/analytics/salesMix.ts",
+      "line": 166,
+      "content": ".from('order_items')"
+    },
+    {
+      "file": "src/lib/analytics/salesMix.ts",
+      "line": 195,
+      "content": ".from('order_items')"
+    }
+  ],
+  "createInvoice": [
+    {
+      "file": "src/app/(protected)/distributor/orders/[id]/page.tsx",
+      "line": 7,
+      "content": "import { updateOrderStatus, createInvoiceAction, markInvoicePaid } from '@/app/actions/distributor'"
+    },
+    {
+      "file": "src/app/(protected)/distributor/orders/[id]/page.tsx",
+      "line": 72,
+      "content": "async function createInvoice() {"
+    },
+    {
+      "file": "src/app/(protected)/distributor/orders/[id]/page.tsx",
+      "line": 74,
+      "content": "const res = await createInvoiceAction(id)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 147,
+      "content": "export async function createInvoiceAction(orderId: string) {"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 151,
+      "content": "console.log('[createInvoiceAction] ATOMIC-V2 starting for order:', orderId)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 152,
+      "content": "console.log('[createInvoiceAction] __filename:', typeof __filename !== 'undefined' ? __filename : 'unknown')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 160,
+      "content": "console.error('[createInvoiceAction] RPC Error:', error)"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 165,
+      "content": "console.error('[createInvoiceAction] RPC returned no ID')"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 169,
+      "content": "console.log('[createInvoiceAction] Success! Created/Found Invoice:', invoiceId)"
+    },
+    {
+      "file": "src/components/generate-invoice-button.tsx",
+      "line": 6,
+      "content": "import { createInvoiceAction } from '@/app/actions/distributor'"
+    },
+    {
+      "file": "src/components/generate-invoice-button.tsx",
+      "line": 24,
+      "content": "const res = await createInvoiceAction(orderId)"
+    }
+  ],
+  "generate invoice": [
+    {
+      "file": "src/app/(protected)/distributor/orders/[id]/page.tsx",
+      "line": 173,
+      "content": "<p className=\"text-xs text-amber-600\">⚠ All items removed — cannot generate invoice</p>"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 161,
+      "content": "return { error: `Failed to generate invoice: ${error.message}` }"
+    },
+    {
+      "file": "src/app/actions/distributor.ts",
+      "line": 166,
+      "content": "return { error: 'Failed to generate invoice: No ID returned' }"
+    },
+    {
+      "file": "src/components/generate-invoice-button.tsx",
+      "line": 28,
+      "content": "alert(`Failed to generate invoice: ${res.error}`)"
+    },
+    {
+      "file": "src/components/generate-invoice-button.tsx",
+      "line": 54,
+      "content": "Preview & Generate Invoice"
+    },
+    {
+      "file": "src/components/generate-invoice-button.tsx",
+      "line": 105,
+      "content": "{isPending ? 'Generating...' : 'Yes, Generate Invoice'}"
+    }
+  ],
+  "vendor_price": [
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 12,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 34,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/(protected)/distributor/vendor-pricing/actions.ts",
+      "line": 60,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/(protected)/vendor/catalog/[categoryId]/page.tsx",
+      "line": 98,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 96,
+      "content": ".from('vendor_price_overrides')"
+    },
+    {
+      "file": "src/app/api/vendor/place-order/route.ts",
+      "line": 146,
+      "content": "vendor_price_override: override?.price_cents ? override.price_cents / 100 : null"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 21,
+      "content": "vendor_price_override?: number | null; // legacy or unit override (dollars)"
+    },
+    {
+      "file": "src/lib/pricing-engine.ts",
+      "line": 34,
+      "content": "const unitOverride = product.override_unit_price ?? product.vendor_price_override ?? null;"
+    }
+  ],
+  "invoice generation": [
+    {
+      "file": "src/components/generate-invoice-button.tsx",
+      "line": 64,
+      "content": "Confirm Invoice Generation"
+    }
+  ],
+  "Price Not Available": [
+    {
+      "file": "src/components/vendor/product-card.tsx",
+      "line": 83,
+      "content": "Price Not Available"
+    }
+  ]
+}
