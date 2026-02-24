@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { getVendorContext } from '@/lib/data'
+import { getMyBusinessProfile } from '@/lib/business-profiles'
 import { InvoicePrint } from '@/components/invoice-print'
 import { notFound } from 'next/navigation'
 
@@ -7,13 +8,14 @@ export const dynamic = 'force-dynamic'
 
 export default async function VendorInvoicePrintPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
-    const { vendorId, profile } = await getVendorContext()
+    const { vendorId } = await getVendorContext()
     const supabase = await createClient()
 
     const { data: invoice, error: invoiceErr } = (await supabase
         .from('invoices')
         .select(`
             id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+            seller_profile, buyer_profile,
             invoice_items(
                 qty, unit_price, unit_cost, item_code, upc,
                 effective_units, ext_amount, is_manual, product_name,
@@ -22,7 +24,7 @@ export default async function VendorInvoicePrintPage({ params }: { params: Promi
                 unit_price_snapshot, case_price_snapshot, units_per_case_snapshot
             ),
             invoice_taxes(*),
-            distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone)
+            distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone, location_address)
         `)
         .eq('id', id)
         .eq('vendor_id', vendorId)
@@ -34,18 +36,14 @@ export default async function VendorInvoicePrintPage({ params }: { params: Promi
 
     if (!invoice) return notFound()
 
-    const p = profile as any
-    const vendorInfo = {
-        business_name: p.display_name || p.email || 'Vendor',
-        email: p.email,
-        phone: p.phone,
-    }
+    const vendorInfo = await getMyBusinessProfile()
 
     const dist = Array.isArray(invoice.distributor) ? invoice.distributor[0] : invoice.distributor
     const distributorInfo = dist ? {
-        business_name: dist.display_name || dist.email,
+        business_name: dist.display_name || dist.email || 'Distributor',
         email: dist.email,
-        phone: dist.phone
+        phone: dist.phone,
+        address_line1: dist.location_address
     } : undefined
 
     return <InvoicePrint invoice={invoice} distributor={distributorInfo} vendor={vendorInfo} />

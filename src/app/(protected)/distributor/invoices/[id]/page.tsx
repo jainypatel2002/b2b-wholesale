@@ -1,15 +1,15 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
+import { getMyBusinessProfile, getVendorBusinessProfileForInvoice } from '@/lib/business-profiles'
 
 export const dynamic = 'force-dynamic'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { InvoicePrint } from '@/components/invoice-print'
-import { normalizeInvoiceItem, formatMoney } from '@/lib/pricing-engine'
+import { formatMoney } from '@/lib/pricing-engine'
 
 export default async function DistributorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -19,7 +19,8 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
   const { data: invoice, error: invoiceErr } = await supabase
     .from('invoices')
     .select(`
-            id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+            id, vendor_id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+            seller_profile, buyer_profile,
             invoice_items(
                 qty, unit_price, unit_cost, item_code, upc,
                 effective_units, ext_amount, is_manual, product_name,
@@ -27,8 +28,7 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
                 quantity_snapshot, line_total_snapshot,
                 unit_price_snapshot, case_price_snapshot, units_per_case_snapshot
             ),
-            invoice_taxes(*),
-            vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address)
+            invoice_taxes(*)
         `)
     .eq('id', id)
     .eq('distributor_id', distributorId)
@@ -58,6 +58,11 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
       </div>
     )
   }
+
+  const [distributorBusinessProfile, vendorBusinessProfile] = await Promise.all([
+    getMyBusinessProfile(),
+    getVendorBusinessProfileForInvoice(invoice.vendor_id, { distributorId, invoiceId: id })
+  ])
 
   const profit = (invoice.invoice_items ?? []).reduce((sum: number, it: any) => {
     // We still use unit_price and unit_cost for profit estimation
@@ -94,8 +99,8 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
               <div className="pointer-events-none">
                 <InvoicePrint
                   invoice={invoice}
-                  vendor={invoice.vendor}
-                  distributor={null} // Don't need distributor block on inner view 
+                  vendor={vendorBusinessProfile ?? undefined}
+                  distributor={distributorBusinessProfile}
                   isEmbedded={true}
                 />
               </div>

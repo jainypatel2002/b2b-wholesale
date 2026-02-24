@@ -24,7 +24,8 @@ export function MobileBottomNav({ role }: MobileBottomNavProps) {
     // Drawer handles full list. Bottom nav can be quick access.
 
     const visibleDistributorLinks = distributorLinks.filter(l => l.label !== 'Categories')
-    const links = role === 'distributor' ? visibleDistributorLinks : vendorLinks
+    const visibleVendorLinks = vendorLinks.filter(l => l.label !== 'Settings')
+    const links = role === 'distributor' ? visibleDistributorLinks : visibleVendorLinks
 
     if (pathname.includes('/print')) return null
 

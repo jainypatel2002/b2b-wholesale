@@ -15,4 +15,5 @@ export const vendorLinks = [
     { href: '/vendor/cart', label: 'Cart', icon: 'ShoppingCart' },
     { href: '/vendor/orders', label: 'Orders', icon: 'Package' },
     { href: '/vendor/invoices', label: 'Invoices', icon: 'FileText' },
+    { href: '/vendor/settings', label: 'Settings', icon: 'Settings' },
 ]

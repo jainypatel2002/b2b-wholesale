@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getVendorContext } from '@/lib/data'
+import { getMyBusinessProfile } from '@/lib/business-profiles'
 
 export const dynamic = 'force-dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Printer } from 'lucide-react'
@@ -19,7 +19,8 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
   const { data: invoice, error: invoiceErr } = await supabase
     .from('invoices')
     .select(`
-        id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+        id, distributor_id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+        seller_profile, buyer_profile,
         invoice_items(
             qty, unit_price, unit_cost, item_code, upc,
             effective_units, ext_amount, is_manual, product_name, 
@@ -29,8 +30,7 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
             unit_price_snapshot, case_price_snapshot
         ),
         invoice_taxes(*),
-        vendor:profiles!invoices_vendor_id_fkey(display_name, email, phone, location_address),
-        distributor:profiles!invoices_distributor_id_fkey(display_name, email)
+        distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone, location_address)
     `)
     .eq('id', id)
     .eq('vendor_id', vendorId)
@@ -61,6 +61,15 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
     )
   }
 
+  const vendorBusinessProfile = await getMyBusinessProfile()
+  const dist = Array.isArray(invoice.distributor) ? invoice.distributor[0] : invoice.distributor
+  const distributorFallback = dist ? {
+    business_name: dist.display_name || dist.email || 'Distributor',
+    email: dist.email,
+    phone: dist.phone,
+    address_line1: dist.location_address
+  } : undefined
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -83,8 +92,8 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
               <div className="pointer-events-none">
                 <InvoicePrint
                   invoice={invoice}
-                  vendor={invoice.vendor}
-                  distributor={invoice.distributor}
+                  vendor={vendorBusinessProfile}
+                  distributor={distributorFallback}
                   isEmbedded={true}
                 />
               </div>

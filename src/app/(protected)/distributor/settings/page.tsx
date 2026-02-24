@@ -1,26 +1,28 @@
 import { requireRole } from '@/lib/auth'
 import { ShareCodeCard } from '@/components/distributor/share-code-card'
-import { DisplayNameForm } from '@/components/distributor/display-name-form'
 import { NotificationEmailForm } from '@/components/distributor/notification-email-form'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { CopyButton } from '@/components/ui/copy-button'
+import { BusinessProfileForm } from '@/components/settings/business-profile-form'
+import { getMyBusinessProfile } from '@/lib/business-profiles'
 
 export default async function DistributorSettingsPage() {
     const profile = await requireRole('distributor')
+    const businessProfile = await getMyBusinessProfile()
 
     return (
         <div className="space-y-6">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">Account Settings</h1>
 
             <div className="grid gap-6 max-w-3xl">
-                {/* Profile Settings */}
+                {/* Business Profile */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-xl">Profile Details</CardTitle>
-                        <CardDescription>Update how your business appears to vendors.</CardDescription>
+                        <CardTitle className="text-xl">Business Profile</CardTitle>
+                        <CardDescription>This information appears on generated invoices as your business header.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <DisplayNameForm initialName={profile.display_name || ''} />
+                        <BusinessProfileForm initialProfile={businessProfile} />
                     </CardContent>
                 </Card>
 
@@ -65,4 +67,3 @@ export default async function DistributorSettingsPage() {
         </div>
     )
 }
-
