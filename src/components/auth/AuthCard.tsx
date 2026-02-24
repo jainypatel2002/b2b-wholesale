@@ -63,12 +63,12 @@ export function AuthCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: canAnimate ? 0.35 : 0, ease: [0.22, 1, 0.36, 1] }}
     >
-      <Card className="rounded-2xl border-slate-200 bg-white shadow-[0_18px_48px_-34px_rgba(15,23,42,0.45)] hover:translate-y-0 hover:shadow-[0_18px_48px_-34px_rgba(15,23,42,0.45)]">
+      <Card className="rounded-[24px] border-white/18 bg-white/[0.12] text-white shadow-[0_26px_64px_-40px_rgba(2,6,23,0.95)] backdrop-blur-[18px] hover:translate-y-0 hover:shadow-[0_26px_64px_-40px_rgba(2,6,23,0.95)]">
         <CardHeader className="space-y-4 pb-5">
           <div
             role="tablist"
             aria-label="Authentication"
-            className="grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-100/90 p-1"
+            className="grid grid-cols-2 rounded-xl border border-white/12 bg-white/[0.06] p-1"
           >
             {TABS.map((tab) => {
               const isActive = activeTab === tab.id
@@ -82,14 +82,14 @@ export function AuthCard({
                   id={`${tab.id}-tab`}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    'relative h-10 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2',
-                    isActive ? 'text-slate-900' : 'text-slate-500 hover:text-slate-800'
+                    'relative h-10 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-0',
+                    isActive ? 'text-white' : 'text-white/70 hover:text-white/90'
                   )}
                 >
                   {isActive ? (
                     <motion.span
                       layoutId="auth-tab-indicator"
-                      className="absolute inset-0 rounded-lg border border-slate-200 bg-white shadow-sm"
+                      className="absolute inset-0 rounded-lg border border-white/20 bg-white/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]"
                       transition={{ duration: canAnimate ? 0.22 : 0, ease: [0.22, 1, 0.36, 1] }}
                     />
                   ) : null}
@@ -100,8 +100,10 @@ export function AuthCard({
           </div>
 
           <div>
-            <CardTitle>{activeTab === 'sign-in' ? 'Welcome back' : 'Create your account'}</CardTitle>
-            <CardDescription className="mt-1">
+            <CardTitle className="text-white">
+              {activeTab === 'sign-in' ? 'Welcome back' : 'Create your account'}
+            </CardTitle>
+            <CardDescription className="mt-1 text-white/72">
               {activeTab === 'sign-in'
                 ? 'Sign in to manage your distributor and vendor workflows.'
                 : 'Set up access for your role in the portal.'}
@@ -112,14 +114,14 @@ export function AuthCard({
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <label htmlFor="auth-email" className="text-sm font-medium text-slate-700">
+              <label htmlFor="auth-email" className="text-sm font-medium text-white/85">
                 Email
               </label>
               <Input
                 id="auth-email"
                 type="email"
                 autoComplete="email"
-                className="h-11"
+                className="h-11 border-white/22 bg-white/[0.11] text-white placeholder:text-white/45 focus-visible:border-white/45 focus-visible:ring-white/35 focus-visible:ring-offset-0"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(event) => onEmailChange(event.target.value)}
@@ -127,14 +129,14 @@ export function AuthCard({
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="auth-password" className="text-sm font-medium text-slate-700">
+              <label htmlFor="auth-password" className="text-sm font-medium text-white/85">
                 Password
               </label>
               <Input
                 id="auth-password"
                 type="password"
                 autoComplete={activeTab === 'sign-in' ? 'current-password' : 'new-password'}
-                className="h-11"
+                className="h-11 border-white/22 bg-white/[0.11] text-white placeholder:text-white/45 focus-visible:border-white/45 focus-visible:ring-white/35 focus-visible:ring-offset-0"
                 placeholder="••••••••"
                 value={password}
                 onChange={(event) => onPasswordChange(event.target.value)}
@@ -149,7 +151,7 @@ export function AuthCard({
               className="space-y-3"
             >
               <RoleSelector onSelect={onRoleChange} initialRole={role} />
-              <p className="-mt-3 text-xs text-slate-600">
+              <p className="-mt-3 text-xs text-white/72">
                 {role === 'distributor' ? 'Distributor Portal' : 'Vendor Portal'}
               </p>
             </div>

@@ -33,21 +33,21 @@ export function RoleSelector({ onSelect, initialRole = 'vendor' }: RoleSelectorP
 
     // Prevent hydration mismatch
     if (!mounted) return (
-        <div className="flex w-full rounded-md bg-slate-100 p-1">
+        <div className="mb-6 flex w-full rounded-xl border border-white/12 bg-white/[0.06] p-1">
             <div className="w-1/2 h-8" />
         </div>
     )
 
     return (
-        <div className="flex w-full rounded-md bg-slate-100 p-1 mb-6">
+        <div className="mb-6 flex w-full rounded-xl border border-white/12 bg-white/[0.06] p-1">
             <button
                 type="button"
                 onClick={() => handleSelect('distributor')}
                 className={cn(
-                    'w-1/2 rounded-sm py-1.5 text-sm font-medium transition-all',
+                    'w-1/2 rounded-lg py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-0',
                     role === 'distributor'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-900'
+                        ? 'border border-white/20 bg-white/[0.14] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
+                        : 'text-white/72 hover:text-white'
                 )}
             >
                 Distributor
@@ -56,10 +56,10 @@ export function RoleSelector({ onSelect, initialRole = 'vendor' }: RoleSelectorP
                 type="button"
                 onClick={() => handleSelect('vendor')}
                 className={cn(
-                    'w-1/2 rounded-sm py-1.5 text-sm font-medium transition-all',
+                    'w-1/2 rounded-lg py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-0',
                     role === 'vendor'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-900'
+                        ? 'border border-white/20 bg-white/[0.14] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
+                        : 'text-white/72 hover:text-white'
                 )}
             >
                 Vendor

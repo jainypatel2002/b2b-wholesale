@@ -13,8 +13,12 @@ export function AuthShell({ children }: AuthShellProps) {
     <main className="relative min-h-[100dvh] overflow-hidden bg-slate-950">
       <AuthBackground />
 
-      <section className="relative z-10 flex min-h-[100dvh] items-end justify-center px-4 pb-5 pt-28 sm:px-6 sm:pb-10 sm:pt-24 lg:items-center lg:px-10 lg:py-10">
-        <div className="w-full max-w-[560px] rounded-[28px] border border-white/20 bg-white/10 p-2 shadow-[0_24px_55px_-34px_rgba(2,6,23,0.85)] backdrop-blur-sm sm:p-3">
+      <section className="relative z-10 flex min-h-[100dvh] items-end justify-center px-4 pb-6 pt-36 sm:px-6 sm:pb-10 sm:pt-32 lg:items-center lg:justify-end lg:px-10 lg:py-10">
+        <div className="relative w-full max-w-[560px] lg:mr-2">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-6 inset-y-8 -z-10 rounded-[30px] bg-gradient-to-b from-black/30 to-black/12 blur-3xl"
+          />
           {children}
         </div>
       </section>
