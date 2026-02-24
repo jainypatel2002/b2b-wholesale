@@ -394,7 +394,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
                         <Input
                             placeholder="Search products, SKUs..."
-                            className="pl-9 bg-white"
+                            className="pl-9"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -418,7 +418,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
 
                 <div className="flex gap-2 items-center flex-wrap">
                     <select
-                        className="h-10 rounded-md border border-slate-200 px-3 py-1 text-sm bg-white"
+                        className="form-select min-w-[190px]"
                         value={filterCategory}
                         onChange={(e) => setFilterCategory(e.target.value)}
                     >
@@ -457,7 +457,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             )}
 
             {filteredProducts.length === 0 && (
-                <div className="text-center py-12 bg-white rounded-xl border border-slate-200 border-dashed">
+                <div className="rounded-2xl border border-dashed border-[hsl(var(--surface-border))] bg-white/70 py-12 text-center">
                     <p className="text-slate-500">No products found matching your search.</p>
                 </div>
             )}
@@ -465,10 +465,10 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             {/* Edit Modal */}
             <dialog ref={modalRef} className="modal bg-transparent">
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-center justify-between border-b p-4">
+                    <div className="w-full max-w-lg overflow-y-auto rounded-2xl border border-white/70 bg-white/90 shadow-2xl backdrop-blur-xl max-h-[90vh]">
+                        <div className="flex items-center justify-between border-b border-slate-200/70 p-4">
                             <h3 className="font-semibold text-lg">Edit Product</h3>
-                            <button onClick={() => modalRef.current?.close()} className="text-slate-500 hover:text-slate-700">✕</button>
+                            <button onClick={() => modalRef.current?.close()} className="focus-ring-brand rounded-md p-1 text-slate-500 hover:text-slate-700">✕</button>
                         </div>
                         {editingProduct && (
                             <ProductForm
@@ -490,10 +490,10 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             {/* Add Product Modal */}
             <dialog ref={addModalRef} className="modal bg-transparent">
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-center justify-between border-b p-4">
+                    <div className="w-full max-w-lg overflow-y-auto rounded-2xl border border-white/70 bg-white/90 shadow-2xl backdrop-blur-xl max-h-[90vh]">
+                        <div className="flex items-center justify-between border-b border-slate-200/70 p-4">
                             <h3 className="font-semibold text-lg">Add New Product</h3>
-                            <button onClick={() => addModalRef.current?.close()} className="text-slate-500 hover:text-slate-700">✕</button>
+                            <button onClick={() => addModalRef.current?.close()} className="focus-ring-brand rounded-md p-1 text-slate-500 hover:text-slate-700">✕</button>
                         </div>
                         <ProductForm
                             categories={categories}
@@ -509,7 +509,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             {/* Delete Confirmation Modal */}
             <dialog ref={deleteModalRef} className="modal bg-transparent">
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-6">
+                    <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-white/70 bg-white/90 p-6 shadow-2xl backdrop-blur-xl">
                         <h3 className="font-semibold text-lg text-red-600 flex items-center gap-2">
                             <Trash2 className="h-5 w-5" />
                             Confirm Deletion
@@ -531,7 +531,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                 <button
                     type="button"
                     onClick={openCamera}
-                    className="w-full py-3 px-4 rounded-lg bg-violet-50 border border-violet-200 text-violet-800 text-sm font-medium text-center hover:bg-violet-100 transition-colors animate-pulse"
+                    className="w-full rounded-xl border border-primary/25 bg-sky-50 px-4 py-3 text-center text-sm font-medium text-primary transition-colors hover:bg-sky-100 animate-pulse"
                 >
                     📸 No scanner detected — tap to open camera
                 </button>
@@ -555,13 +555,13 @@ function ProductGroup({ title, products, onEdit, onDelete }: { title: string, pr
     const [isOpen, setIsOpen] = useState(true)
 
     return (
-        <Card>
-            <CardHeader className="py-4 cursor-pointer select-none hover:bg-slate-50 transition-colors" onClick={() => setIsOpen(!isOpen)}>
+        <Card className="border-white/75 bg-white/80">
+            <CardHeader className="cursor-pointer select-none py-4 transition-colors hover:bg-slate-50/80" onClick={() => setIsOpen(!isOpen)}>
                 <div className="flex items-center justify-between">
                     <CardTitle className="text-lg flex items-center gap-2">
                         <Package className="h-5 w-5 text-slate-500" />
-                        {title}
-                        <Badge variant="secondary" className="ml-2">{products.length}</Badge>
+                        <span>{title}</span>
+                        <Badge variant="secondary" className="ml-1">{products.length}</Badge>
                     </CardTitle>
                     {isOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
                 </div>
@@ -583,7 +583,7 @@ function ProductGroup({ title, products, onEdit, onDelete }: { title: string, pr
 }
 
 function ProductList({ products, onEdit, onDelete }: { products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
-    if (!products.length) return <p className="text-sm text-slate-500 italic py-4 text-center">No products in this category.</p>
+    if (!products.length) return <p className="py-4 text-center text-sm italic text-slate-500">No products in this category.</p>
 
     return (
         <Table>
@@ -648,7 +648,7 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
                                     <Button size="sm" variant="ghost" onClick={() => onEdit(p)}>
                                         <Edit className="h-4 w-4" />
                                     </Button>
-                                    <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => onDelete(p)}>
+                                    <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-50 hover:text-red-700" onClick={() => onDelete(p)}>
                                         <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </div>
@@ -662,21 +662,21 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
 }
 
 function ProductMobileList({ products, onEdit, onDelete }: { products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
-    if (!products.length) return <p className="text-sm text-slate-500 italic py-4 text-center">No products in this category.</p>
+    if (!products.length) return <p className="py-4 text-center text-sm italic text-slate-500">No products in this category.</p>
 
     return (
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-slate-100/80">
             {products.map((p) => {
                 const isLow = (p.stock_pieces ?? 0) <= (p.low_stock_threshold ?? 5)
                 return (
-                    <div key={p.id} className="p-4 flex flex-col gap-2">
+                    <div key={p.id} className="flex flex-col gap-2 p-4">
                         <div className="flex justify-between items-start">
                             <div>
                                 <h4 className="font-medium text-slate-900">{p.name}</h4>
                                 {p.category_nodes && <span className="text-xs text-slate-500 mr-2">{p.category_nodes.name}</span>}
                                 {isLow && <Badge variant="destructive" className="text-[10px] h-5 px-1">Low Stock</Badge>}
                             </div>
-                            <div className="flex bg-slate-50 rounded-lg">
+                            <div className="flex rounded-lg bg-slate-100/70">
                                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onEdit(p)}>
                                     <Edit className="h-4 w-4 text-slate-600" />
                                 </Button>
@@ -902,9 +902,9 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
     }, [state.success, onCancel])
 
     return (
-        <form action={formAction} className="p-4 space-y-4">
+        <form action={formAction} className="space-y-4 p-5">
             {state.error && (
-                <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm flex items-center gap-2">
+                <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
                     <AlertCircle className="h-4 w-4" />
                     {state.error}
                 </div>
@@ -959,7 +959,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                             name="category_id"
                             value={selectedCategory}
                             onChange={handleCategoryChange}
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="form-select"
                         >
                             <option value="">Uncategorized</option>
                             {categories.map((c: any) => (
@@ -978,7 +978,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                     value={selectedSubcategory}
                     onChange={(e) => setSelectedSubcategory(e.target.value)}
                     disabled={!selectedCategory || availableSubcategories.length === 0}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-slate-100"
+                    className="form-select disabled:bg-slate-100/80"
                 >
                     <option value="">{availableSubcategories.length === 0 ? 'No subcategories available' : 'Select Subcategory (Optional)'}</option>
                     {availableSubcategories.map((s: any) => (
@@ -988,7 +988,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
             </div>
 
             {/* Ordering Configuration */}
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-3">
+            <div className="space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
                 <p className="text-sm font-medium text-slate-700">Ordering Configuration</p>
                 <div className="grid gap-2">
                     <label className="text-sm font-medium">Units Per Case</label>
@@ -1008,11 +1008,11 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                 </div>
                 <div className="flex gap-6 pt-2">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="checkbox" name="allow_piece" checked={allowPiece} onChange={e => setAllowPiece(e.target.checked)} className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50" />
+                        <input type="checkbox" name="allow_piece" checked={allowPiece} onChange={e => setAllowPiece(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40" />
                         Allow Pieces
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
-                        <input type="checkbox" name="allow_case" checked={allowCase} onChange={e => setAllowCase(e.target.checked)} className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50" />
+                        <input type="checkbox" name="allow_case" checked={allowCase} onChange={e => setAllowCase(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40" />
                         Allow Cases
                     </label>
                 </div>
@@ -1023,21 +1023,21 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                 <h4 className="text-sm font-semibold text-slate-900">Pricing</h4>
 
                 {/* Cost Price */}
-                <div className="grid gap-2 p-3 border rounded-lg">
+                <div className="grid gap-2 rounded-xl border border-slate-200/80 bg-white/75 p-3">
                     <div className="flex items-center justify-between">
                         <label className="text-sm font-medium">Cost Price</label>
-                        <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                        <div className="flex rounded-lg bg-slate-100 p-0.5">
                             <button
                                 type="button"
                                 onClick={() => handlePriceModeToggle('cost', 'unit')}
-                                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${costMode === 'unit' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`rounded-md px-2 py-0.5 text-xs transition-colors ${costMode === 'unit' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Per Unit
                             </button>
                             <button
                                 type="button"
                                 onClick={() => handlePriceModeToggle('cost', 'case')}
-                                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${costMode === 'case' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`rounded-md px-2 py-0.5 text-xs transition-colors ${costMode === 'case' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Per Case
                             </button>
@@ -1064,21 +1064,21 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                 </div>
 
                 {/* Sell Price */}
-                <div className="grid gap-2 p-3 border rounded-lg">
+                <div className="grid gap-2 rounded-xl border border-slate-200/80 bg-white/75 p-3">
                     <div className="flex items-center justify-between">
                         <label className="text-sm font-medium">Sell Price</label>
-                        <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                        <div className="flex rounded-lg bg-slate-100 p-0.5">
                             <button
                                 type="button"
                                 onClick={() => handlePriceModeToggle('price', 'unit')}
-                                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${priceMode === 'unit' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`rounded-md px-2 py-0.5 text-xs transition-colors ${priceMode === 'unit' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Per Unit
                             </button>
                             <button
                                 type="button"
                                 onClick={() => handlePriceModeToggle('price', 'case')}
-                                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${priceMode === 'case' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`rounded-md px-2 py-0.5 text-xs transition-colors ${priceMode === 'case' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
                                 Per Case
                             </button>
@@ -1106,7 +1106,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
             </div>
 
             {/* Stock Section with Mode Toggle */}
-            <div className="grid gap-2 p-3 border rounded-lg bg-slate-50 relative">
+            <div className="relative grid gap-2 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
 
                 {/* Lock Setting Header */}
                 <div className="flex items-center justify-between mb-2">
@@ -1121,7 +1121,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                                     setLockedStockQty(stockMode === 'cases' ? String(Number(stockInput || 0) * unitsPerCase) : stockInput)
                                 }
                             }}
-                            className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 shadow-sm"
+                            className="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
                             value="true"
                         />
                         Lock Stock Quantity
@@ -1130,7 +1130,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                 </div>
 
                 {stockLocked && (
-                    <div className="grid gap-1 mb-2 p-3 bg-white border border-amber-100 rounded-md shadow-sm">
+                    <div className="mb-2 grid gap-1 rounded-lg border border-amber-100 bg-white p-3 shadow-sm">
                         <label className="text-xs font-medium text-amber-800">Forced Stock Level (Total Units)</label>
                         <div className="relative">
                             <Input
@@ -1152,18 +1152,18 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
 
                 <div className={`flex items-center justify-between transition-opacity ${stockLocked ? 'opacity-40 pointer-events-none' : ''}`}>
                     <label className="text-sm font-medium">Current Stock</label>
-                    <div className="flex bg-slate-200 p-0.5 rounded-lg">
+                    <div className="flex rounded-lg bg-slate-200 p-0.5">
                         <button
                             type="button"
                             onClick={() => handleStockModeToggle('pieces')}
-                            className={`px-2 py-0.5 text-xs rounded-md transition-colors ${stockMode === 'pieces' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`rounded-md px-2 py-0.5 text-xs transition-colors ${stockMode === 'pieces' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             Pieces (Units)
                         </button>
                         <button
                             type="button"
                             onClick={() => handleStockModeToggle('cases')}
-                            className={`px-2 py-0.5 text-xs rounded-md transition-colors ${stockMode === 'cases' ? 'bg-white shadow-sm font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                            className={`rounded-md px-2 py-0.5 text-xs transition-colors ${stockMode === 'cases' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             Cases
                         </button>

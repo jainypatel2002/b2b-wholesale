@@ -152,7 +152,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
                 {order.status === 'placed' && (
                   <>
                     <form action={transitionStatus.bind(null, 'accepted')} className="w-full">
-                      <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                      <Button className="w-full">
                         <Check className="mr-2 h-4 w-4" /> Accept Order
                       </Button>
                     </form>
@@ -186,14 +186,14 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
                 {invoice ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Link className="text-sm font-mono text-blue-600 hover:underline" href={`/distributor/invoices/${invoice.id}`}>
+                      <Link className="text-sm font-mono text-primary hover:underline" href={`/distributor/invoices/${invoice.id}`}>
                         {invoice.invoice_number}
                       </Link>
                       <StatusBadge status={invoice.payment_status} type="payment" />
                     </div>
                     {invoice.payment_status !== 'paid' && (
                       <form action={markPaid.bind(null, invoice.id)}>
-                        <Button size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">Mark Paid (Cash)</Button>
+                        <Button size="sm" className="w-full">Mark Paid (Cash)</Button>
                       </form>
                     )}
                   </div>

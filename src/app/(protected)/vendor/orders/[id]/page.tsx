@@ -184,7 +184,7 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
               {invoice?.id ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Link className="text-sm font-mono text-blue-600 hover:underline flex items-center gap-2" href={`/vendor/invoices/${invoice.id}`}>
+                    <Link className="flex items-center gap-2 text-sm font-mono text-primary hover:underline" href={`/vendor/invoices/${invoice.id}`}>
                       <FileText className="h-4 w-4" />
                       {invoice.invoice_number}
                     </Link>

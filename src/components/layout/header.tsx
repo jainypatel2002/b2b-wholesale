@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button"
 import { MobileDrawer } from "@/components/layout/mobile-drawer"
 import { distributorLinks, vendorLinks } from "@/config/nav"
 import { DistributorSwitcher } from "@/components/layout/distributor-switcher"
@@ -38,13 +37,12 @@ export async function Header({ email, role }: HeaderProps) {
     }
 
     return (
-        <header className="flex h-14 items-center gap-4 border-b border-slate-200 bg-white px-4 md:px-6 sticky top-0 z-50">
-            {/* Hamburger - Mobile Only */}
+        <div className="flex min-h-14 items-center gap-3 px-4 py-2 md:px-5">
             <div className="md:hidden">
                 <MobileDrawer role={safeRole} links={links} />
             </div>
 
-            <div className="ml-auto flex items-center gap-4">
+            <div className="ml-auto flex items-center gap-2 sm:gap-3">
                 {role === 'vendor' && (
                     <DistributorSwitcher
                         currentDistributorId={currentDistributorId}
@@ -54,14 +52,14 @@ export async function Header({ email, role }: HeaderProps) {
 
                 <NotificationsBell userId={profile.id} />
 
-                <div className="text-right hidden sm:block">
+                <div className="hidden text-right sm:block">
                     <div className="text-sm font-medium text-slate-900">{email}</div>
-                    <div className="text-xs text-slate-500 capitalize">{role}</div>
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{role}</div>
                 </div>
-                <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium text-slate-600">
-                    {email[0].toUpperCase()}
+                <div className="brand-gradient flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold text-white shadow-sm">
+                    {(email?.[0] || '?').toUpperCase()}
                 </div>
             </div>
-        </header>
+        </div>
     )
 }

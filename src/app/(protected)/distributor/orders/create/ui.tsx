@@ -561,7 +561,7 @@ export function DistributorCreateOrderClient({
               </div>
 
               <Button
-                className="w-full bg-blue-600 hover:bg-blue-700"
+                className="w-full"
                 disabled={!canSubmit || isSubmitting}
                 onClick={submitOrder}
               >

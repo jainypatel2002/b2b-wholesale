@@ -86,7 +86,7 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
       <div className="grid gap-6 md:grid-cols-3">
         {/* Main Content: Invoice Document View */}
         <div className="md:col-span-2">
-          <div className="bg-slate-100 rounded-xl overflow-hidden shadow-inner border border-slate-200">
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-100/75 shadow-inner">
             <div className="scale-[0.85] origin-top transform-gpu -mb-[15%]">
               {/* Reuse the print layout but inject it inline as a "document view" */}
               <div className="pointer-events-none">

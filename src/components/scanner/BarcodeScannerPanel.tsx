@@ -69,11 +69,11 @@ export function BarcodeScannerPanel({
     const statusConfig: Record<ScanStatus, { color: string; bg: string; border: string; icon: string; defaultMsg: string }> = {
         idle: { color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200', icon: '📷', defaultMsg: 'Scanner off' },
         ready: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: '✅', defaultMsg: 'Ready to scan' },
-        searching: { color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', icon: '🔍', defaultMsg: 'Searching…' },
+        searching: { color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200', icon: '🔍', defaultMsg: 'Searching…' },
         found: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: '✅', defaultMsg: 'Product found!' },
         not_found: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', icon: '➕', defaultMsg: 'New barcode — add product' },
         error: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', icon: '⚠️', defaultMsg: 'Lookup failed. Try again.' },
-        camera_active: { color: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-200', icon: '📸', defaultMsg: 'Camera active' },
+        camera_active: { color: 'text-cyan-700', bg: 'bg-cyan-50', border: 'border-cyan-200', icon: '📸', defaultMsg: 'Camera active' },
     }
 
     const cfg = statusConfig[status]
@@ -87,11 +87,11 @@ export function BarcodeScannerPanel({
                     type="button"
                     onClick={onToggleScanMode}
                     className={`
-                        inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium
+                        inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-semibold
                         border transition-all duration-200 select-none
                         ${scanMode
-                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm hover:bg-emerald-700'
-                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                            ? 'brand-gradient border-transparent text-white shadow-sm hover:opacity-95'
+                            : 'border-[hsl(var(--surface-border))] bg-white/80 text-slate-700 hover:bg-white'
                         }
                     `}
                 >
@@ -103,8 +103,8 @@ export function BarcodeScannerPanel({
                 <button
                     type="button"
                     onClick={onOpenCamera}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium
-                        border border-violet-300 bg-white text-violet-700 hover:bg-violet-50
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-semibold
+                        border border-[hsl(var(--surface-border))] bg-white/80 text-slate-700 hover:bg-white
                         transition-all duration-200 select-none"
                 >
                     <span className="text-base">📸</span>
@@ -127,7 +127,7 @@ export function BarcodeScannerPanel({
                         type="checkbox"
                         checked={autoFallback}
                         onChange={onToggleAutoFallback}
-                        className="rounded border-slate-300 text-violet-600 shadow-sm focus:border-violet-300 focus:ring focus:ring-violet-200 focus:ring-opacity-50 h-3.5 w-3.5"
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-primary shadow-sm focus:ring-primary/40"
                     />
                     Auto-open camera if no scan in 5 seconds
                 </label>

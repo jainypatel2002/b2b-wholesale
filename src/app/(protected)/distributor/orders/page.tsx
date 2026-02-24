@@ -102,7 +102,7 @@ export default async function DistributorOrdersPage({
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Orders</h1>
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/distributor/orders/create">
-            <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Button size="sm">
               Create Order
             </Button>
           </Link>
@@ -206,7 +206,7 @@ export default async function DistributorOrdersPage({
             const canArchive = isFulfilled && isPaid && !isArchived
 
             return (
-              <Card key={o.id} className={isArchived ? "bg-slate-50 opacity-70" : ""}>
+                <Card key={o.id} className={isArchived ? "bg-slate-50 opacity-70" : ""}>
                 <CardHeader className="p-4 pb-2 flex flex-row items-center justify-between space-y-0">
                   <div className="flex items-center gap-2">
                     <StatusBadge status={o.status} />
@@ -237,7 +237,7 @@ export default async function DistributorOrdersPage({
                     )}
                   </div>
                 </CardContent>
-                <CardFooter className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2">
+                <CardFooter className="flex gap-2 border-t border-slate-100 bg-slate-50/70 p-3">
                   <Link href={`/distributor/orders/${o.id}`} className="flex-1">
                     <Button variant="outline" className="w-full h-9">Manage</Button>
                   </Link>
@@ -251,7 +251,7 @@ export default async function DistributorOrdersPage({
             )
           })
         ) : (
-          <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-12 text-center text-slate-500">
             No orders found.
           </div>
         )}

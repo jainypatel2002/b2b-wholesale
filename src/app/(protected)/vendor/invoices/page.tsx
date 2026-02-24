@@ -45,7 +45,7 @@ export default async function VendorInvoicesPage() {
                 invoices.map((inv: any) => (
                   <TableRow key={inv.id}>
                     <TableCell className="font-mono text-xs font-medium">
-                      <Link href={`/vendor/invoices/${inv.id}`} className="hover:underline text-blue-600">
+                      <Link href={`/vendor/invoices/${inv.id}`} className="text-primary hover:underline">
                         {inv.invoice_number}
                       </Link>
                     </TableCell>
@@ -73,7 +73,7 @@ export default async function VendorInvoicesPage() {
               <CardContent className="p-4 space-y-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <Link href={`/vendor/invoices/${inv.id}`} className="font-mono font-bold text-blue-600 hover:underline mb-1 block">
+                    <Link href={`/vendor/invoices/${inv.id}`} className="mb-1 block font-mono font-bold text-primary hover:underline">
                       {inv.invoice_number}
                     </Link>
                     <StatusBadge status={inv.payment_status} type="payment" />
@@ -95,7 +95,7 @@ export default async function VendorInvoicesPage() {
             </Card>
           ))
         ) : (
-          <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-12 text-center text-slate-500">
             No invoices yet.
           </div>
         )}

@@ -51,13 +51,13 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
             </div>
 
             {filteredCategories.length === 0 ? (
-                <div className="text-center py-12 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-12 text-center">
                     <Search className="h-8 w-8 text-slate-300 mx-auto mb-3" />
                     <p className="text-slate-500 font-medium">No categories match your search.</p>
                     <Button
                         variant="link"
                         onClick={() => setSearchTerm('')}
-                        className="mt-2 text-blue-600"
+                        className="mt-2"
                     >
                         Clear search
                     </Button>

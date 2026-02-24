@@ -32,8 +32,8 @@ export function MobileBottomNav({ role }: MobileBottomNavProps) {
     if (pathname.includes('/print')) return null
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 block border-t border-slate-200 bg-white pb-safe md:hidden print:hidden">
-            <div className="flex h-16 items-center justify-around px-2">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 block border-t border-white/70 bg-white/85 pb-safe shadow-[0_-8px_30px_-24px_rgba(15,23,42,0.7)] backdrop-blur-xl md:hidden print:hidden">
+            <div className="mx-2 my-2 flex h-16 items-center justify-around gap-1 rounded-2xl border border-white/70 bg-white/70 px-1">
                 {links.map((link) => {
                     // @ts-ignore - exact property is optional but TS might not infer it correctly from the config array union
                     const isExact = (link as any).exact
@@ -49,11 +49,13 @@ export function MobileBottomNav({ role }: MobileBottomNavProps) {
                             href={link.href}
                             aria-current={isActive ? 'page' : undefined}
                             className={cn(
-                                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-medium transition-colors",
-                                isActive ? "text-blue-600" : "text-slate-500 hover:text-slate-900"
+                                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl py-1 text-[10px] font-semibold transition-all",
+                                isActive
+                                    ? "bg-sky-50 text-primary shadow-[0_8px_20px_-16px_rgba(15,23,42,0.8)]"
+                                    : "text-slate-500 hover:text-slate-900"
                             )}
                         >
-                            <Icon className={cn("h-5 w-5", isActive && "fill-current/20")} />
+                            <Icon className="h-5 w-5" />
                             <span className="truncate">{link.label}</span>
                         </Link>
                     )

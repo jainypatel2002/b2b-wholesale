@@ -51,14 +51,14 @@ export default async function InventoryPage() {
   }))
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Inventory</h1>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Inventory</h1>
         <Link className="link" href="/distributor">← Back</Link>
       </div>
 
       {schemaPending && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm flex items-center gap-2">
+        <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-sm text-amber-800 flex items-center gap-2">
           <span className="font-medium">⚠ Database schema updating:</span>
           <span>The &quot;Lock Stock&quot; feature requires a migration. Please apply <code className="font-mono text-xs bg-amber-100 px-1 rounded">20260225150007_lock_stock_quantity.sql</code> in Supabase SQL Editor, then reload the schema cache (Settings → API → Reload).</span>
         </div>

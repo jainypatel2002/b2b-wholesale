@@ -12,42 +12,42 @@ export default async function DistributorHome() {
       label: 'Categories',
       description: 'Manage product categories.',
       icon: Layers,
-      color: 'text-blue-600 bg-blue-50'
+      color: 'text-sky-700 bg-sky-100'
     },
     {
       href: '/distributor/inventory',
       label: 'Inventory',
       description: 'Manage products and stock.',
       icon: Package,
-      color: 'text-purple-600 bg-purple-50'
+      color: 'text-indigo-700 bg-indigo-100'
     },
     {
       href: '/distributor/orders',
       label: 'Orders',
       description: 'View and fulfill orders.',
       icon: ShoppingCart,
-      color: 'text-orange-600 bg-orange-50'
+      color: 'text-amber-700 bg-amber-100'
     },
     {
       href: '/distributor/invoices',
       label: 'Invoices',
       description: 'Manage payments and billing.',
       icon: FileText,
-      color: 'text-green-600 bg-green-50'
+      color: 'text-emerald-700 bg-emerald-100'
     },
     {
       href: '/distributor/analytics/profit',
       label: 'Profit Center',
       description: 'Track revenue and margins.',
       icon: BadgeDollarSign,
-      color: 'text-emerald-600 bg-emerald-50'
+      color: 'text-teal-700 bg-teal-100'
     },
     {
       href: '/distributor/vendor-pricing',
       label: 'Vendor Pricing',
       description: 'Manage client-specific price overrides and bulk changes.',
       icon: Tag,
-      color: 'text-indigo-600 bg-indigo-50'
+      color: 'text-cyan-700 bg-cyan-100'
     },
   ]
 
@@ -62,9 +62,9 @@ export default async function DistributorHome() {
           const Icon = card.icon
           return (
             <Link key={card.href} href={card.href}>
-              <Card className="h-full transition-all hover:shadow-md hover:border-slate-300">
+              <Card className="group h-full border-white/75 bg-white/80">
                 <CardHeader className="flex flex-row items-center gap-4 pb-2">
-                  <div className={`p-2 rounded-lg ${card.color}`}>
+                  <div className={`rounded-xl p-2.5 transition-transform duration-200 group-hover:scale-105 ${card.color}`}>
                     <Icon className="h-6 w-6" />
                   </div>
                   <CardTitle className="text-xl">{card.label}</CardTitle>

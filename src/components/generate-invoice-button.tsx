@@ -46,7 +46,7 @@ export function GenerateInvoiceButton({ orderId }: { orderId: string }) {
         <>
             <Button
                 size="sm"
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white"
+                className="w-full"
                 onClick={() => setShowConfirm(true)}
                 disabled={isPending}
             >
@@ -56,9 +56,9 @@ export function GenerateInvoiceButton({ orderId }: { orderId: string }) {
 
             {showConfirm && mounted && createPortal(
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/70 bg-white/90 shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-200 flex max-h-[90vh] flex-col">
                         {/* Header */}
-                        <div className="flex justify-between items-center p-4 border-b shrink-0 bg-white">
+                        <div className="flex items-center justify-between border-b border-slate-200/70 bg-white/85 p-4 shrink-0">
                             <h3 className="font-semibold text-lg flex items-center text-slate-900">
                                 <FileText className="h-5 w-5 mr-2 text-slate-500" />
                                 Confirm Invoice Generation
@@ -88,19 +88,18 @@ export function GenerateInvoiceButton({ orderId }: { orderId: string }) {
                         </div>
 
                         {/* Sticky Footer */}
-                        <div className="p-4 bg-slate-50 border-t flex justify-end gap-3 shrink-0">
+                        <div className="flex justify-end gap-3 border-t border-slate-200/70 bg-slate-50/70 p-4 shrink-0">
                             <Button
                                 variant="outline"
                                 onClick={() => setShowConfirm(false)}
                                 disabled={isPending}
-                                className="border-slate-300 text-slate-700 hover:bg-slate-100"
                             >
                                 Cancel
                             </Button>
                             <Button
                                 onClick={handleGenerate}
                                 disabled={isPending}
-                                className="bg-blue-600 hover:bg-blue-700 text-white min-w-[160px]"
+                                className="min-w-[160px]"
                             >
                                 {isPending ? 'Generating...' : 'Yes, Generate Invoice'}
                             </Button>

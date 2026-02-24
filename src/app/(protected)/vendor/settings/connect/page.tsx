@@ -87,7 +87,7 @@ export default function ConnectDistributorPage() {
                                         setResolvedDistributor(null)
                                         setCode('')
                                     }}
-                                    className="text-xs text-blue-600 hover:underline"
+                                    className="text-xs text-primary hover:underline"
                                 >
                                     {useUuid ? "Use Unique Code instead" : "Use UUID instead (advanced)"}
                                 </button>

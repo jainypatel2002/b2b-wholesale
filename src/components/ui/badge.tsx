@@ -9,14 +9,14 @@ function Badge({ className, variant = "default", ...props }: BadgeProps) {
     return (
         <div
             className={cn(
-                "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-primary/35 focus:ring-offset-2",
                 {
-                    "border-transparent bg-slate-900 text-slate-50 hover:bg-slate-900/80": variant === "default",
-                    "border-transparent bg-slate-100 text-slate-900 hover:bg-slate-100/80": variant === "secondary",
-                    "border-transparent bg-red-500 text-slate-50 hover:bg-red-500/80": variant === "destructive",
-                    "text-slate-950": variant === "outline",
-                    "border-transparent bg-green-500 text-white hover:bg-green-500/80": variant === "success",
-                    "border-transparent bg-yellow-500 text-white hover:bg-yellow-500/80": variant === "warning",
+                    "border-transparent bg-gradient-to-r from-[hsl(var(--brand))] to-[hsl(var(--brand-2))] text-white": variant === "default",
+                    "border-transparent bg-[hsl(var(--surface-muted))] text-slate-700": variant === "secondary",
+                    "border-red-200 bg-red-50 text-red-700": variant === "destructive",
+                    "border-[hsl(var(--surface-border))] bg-white/85 text-slate-700": variant === "outline",
+                    "border-emerald-200 bg-emerald-50 text-emerald-700": variant === "success",
+                    "border-amber-200 bg-amber-50 text-amber-700": variant === "warning",
                 },
                 className
             )}

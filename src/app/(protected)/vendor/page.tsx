@@ -38,40 +38,40 @@ export default async function VendorHome() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Link href="/vendor/catalog">
-          <Card className="h-full hover:bg-slate-50 transition-colors cursor-pointer border-slate-200 hover:border-blue-200">
+          <Card className="h-full cursor-pointer border-white/70 bg-white/80 transition-colors hover:bg-white">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <LayoutGrid className="h-5 w-5 text-blue-500" /> Catalog
+                <LayoutGrid className="h-5 w-5 text-primary" /> Catalog
               </CardTitle>
               <CardDescription>Browse products</CardDescription>
             </CardHeader>
           </Card>
         </Link>
         <Link href="/vendor/cart">
-          <Card className="h-full hover:bg-slate-50 transition-colors cursor-pointer border-slate-200 hover:border-blue-200">
+          <Card className="h-full cursor-pointer border-white/70 bg-white/80 transition-colors hover:bg-white">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <ShoppingCart className="h-5 w-5 text-blue-500" /> Cart
+                <ShoppingCart className="h-5 w-5 text-primary" /> Cart
               </CardTitle>
               <CardDescription>View your cart</CardDescription>
             </CardHeader>
           </Card>
         </Link>
         <Link href="/vendor/orders">
-          <Card className="h-full hover:bg-slate-50 transition-colors cursor-pointer border-slate-200 hover:border-blue-200">
+          <Card className="h-full cursor-pointer border-white/70 bg-white/80 transition-colors hover:bg-white">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <Package className="h-5 w-5 text-blue-500" /> Orders
+                <Package className="h-5 w-5 text-primary" /> Orders
               </CardTitle>
               <CardDescription>Order history</CardDescription>
             </CardHeader>
           </Card>
         </Link>
         <Link href="/vendor/invoices">
-          <Card className="h-full hover:bg-slate-50 transition-colors cursor-pointer border-slate-200 hover:border-blue-200">
+          <Card className="h-full cursor-pointer border-white/70 bg-white/80 transition-colors hover:bg-white">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                <FileText className="h-5 w-5 text-blue-500" /> Invoices
+                <FileText className="h-5 w-5 text-primary" /> Invoices
               </CardTitle>
               <CardDescription>View invoices</CardDescription>
             </CardHeader>

@@ -66,7 +66,7 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
     }
 
     return (
-        <Card className="flex flex-col h-full hover:shadow-md transition-shadow">
+        <Card className="flex h-full flex-col border-white/75 bg-white/80 transition-shadow">
             <CardHeader className="p-4 pb-2">
                 <div className="flex justify-between items-start gap-2">
                     <Badge variant="secondary" className="mb-2">
@@ -123,8 +123,8 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
                             type="button"
                             onClick={() => setUnit('piece')}
                             className={`px-3 py-1 text-xs font-medium border rounded-l-lg ${unit === 'piece'
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                ? 'brand-gradient border-transparent text-white'
+                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                                 }`}
                         >
                             Piece
@@ -133,8 +133,8 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
                             type="button"
                             onClick={() => setUnit('case')}
                             className={`px-3 py-1 text-xs font-medium border-t border-b border-r rounded-r-lg ${unit === 'case'
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                ? 'brand-gradient border-transparent text-white'
+                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                                 }`}
                         >
                             Case
@@ -150,7 +150,7 @@ export function ProductCard({ product: p, distributorId }: { product: any, distr
             </CardContent>
             <CardFooter className="p-4 pt-0">
                 <Button
-                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    className="w-full"
                     onClick={addToCart}
                     disabled={currentPrice === null || currentPrice <= 0}
                 >

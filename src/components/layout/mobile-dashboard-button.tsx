@@ -27,7 +27,7 @@ export function MobileDashboardButton({ role }: MobileDashboardButtonProps) {
             <Link href={`/${role}`}>
                 <Button
                     size="icon"
-                    className="h-12 w-12 rounded-full shadow-lg bg-slate-900 text-white hover:bg-slate-800"
+                    className="brand-gradient h-12 w-12 rounded-full text-white shadow-[0_16px_25px_-18px_rgba(15,23,42,0.9)] hover:opacity-95"
                 >
                     <LayoutDashboard className="h-5 w-5" />
                     <span className="sr-only">Back to Dashboard</span>

@@ -16,14 +16,14 @@ interface CategoryCardProps {
 export function CategoryCard({ category }: CategoryCardProps) {
     return (
         <Link href={`/vendor/catalog/${category.id}`}>
-            <Card className="h-full hover:shadow-md transition-all hover:border-blue-200 cursor-pointer group">
+            <Card className="group h-full cursor-pointer border-white/75 bg-white/80 transition-all">
                 <CardContent className="p-6 flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-100 transition-colors">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-50 text-primary transition-colors group-hover:bg-sky-100">
                             <Box className="h-6 w-6" />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-lg text-slate-900 group-hover:text-blue-700 transition-colors">
+                            <h3 className="text-lg font-semibold text-slate-900 transition-colors group-hover:text-primary">
                                 {category.name}
                             </h3>
                             {category.product_count !== undefined && (
@@ -33,7 +33,7 @@ export function CategoryCard({ category }: CategoryCardProps) {
                             )}
                         </div>
                     </div>
-                    <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                    <ChevronRight className="h-5 w-5 text-slate-300 transition-colors group-hover:text-primary" />
                 </CardContent>
             </Card>
         </Link>

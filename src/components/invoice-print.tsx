@@ -282,7 +282,7 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
                 <div className="mt-12 text-center print:hidden">
                     <button
                         onClick={() => window.print()}
-                        className="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium shadow hover:bg-blue-700 transition"
+                        className="brand-gradient rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
                     >
                         Print or Save as PDF
                     </button>

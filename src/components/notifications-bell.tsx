@@ -84,18 +84,18 @@ export function NotificationsBell({ userId }: { userId: string }) {
     return (
         <Popover open={isOpen} onOpenChange={setIsOpen}>
             <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-full">
-                    <Bell className="h-5 w-5 text-slate-600" />
+                <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-xl border border-white/70 bg-white/70 hover:bg-white">
+                    <Bell className="h-5 w-5 text-slate-700" />
                     {unreadCount > 0 && (
                         <span className="absolute top-0 right-0 h-3 w-3 rounded-full bg-red-500 ring-2 ring-white" />
                     )}
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-0" align="end">
-                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <PopoverContent className="w-80 overflow-hidden rounded-2xl border-white/70 bg-white/90 p-0 backdrop-blur-xl" align="end">
+                <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3">
                     <h4 className="font-semibold text-sm">Notifications</h4>
                     {unreadCount > 0 && (
-                        <button onClick={markAllAsRead} className="text-xs text-blue-600 hover:text-blue-800">
+                        <button onClick={markAllAsRead} className="text-xs font-medium text-primary hover:text-primary/80">
                             Mark all as read
                         </button>
                     )}
@@ -110,13 +110,13 @@ export function NotificationsBell({ userId }: { userId: string }) {
                             <div
                                 key={n.id}
                                 onClick={() => markAsRead(n.id, n.ref_type, n.ref_id)}
-                                className={`flex flex-col gap-1 cursor-pointer border-b border-slate-50 p-4 hover:bg-slate-50 transition-colors ${!n.is_read ? 'bg-blue-50/50' : ''}`}
+                                className={`cursor-pointer border-b border-slate-100/80 p-4 transition-colors hover:bg-slate-50 ${!n.is_read ? 'bg-sky-50/80' : ''}`}
                             >
                                 <div className="flex justify-between items-start gap-2">
                                     <h5 className={`text-sm ${!n.is_read ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>
                                         {n.title}
                                     </h5>
-                                    {!n.is_read && <span className="h-2 w-2 mt-1.5 rounded-full bg-blue-600 flex-shrink-0" />}
+                                    {!n.is_read && <span className="h-2 w-2 mt-1.5 rounded-full bg-primary flex-shrink-0" />}
                                 </div>
                                 {n.body && <p className="text-xs text-slate-500 line-clamp-2">{n.body}</p>}
                                 <span className="text-[10px] text-slate-400 mt-1">

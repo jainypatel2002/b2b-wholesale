@@ -31,7 +31,7 @@ export function FulfillButton({ orderId }: { orderId: string }) {
         <Button
             onClick={handleFulfill}
             disabled={loading}
-            className="bg-green-600 hover:bg-green-700 text-white"
+            className="w-full"
         >
             {loading ? 'Processing...' : 'Fulfill Order'}
         </Button>

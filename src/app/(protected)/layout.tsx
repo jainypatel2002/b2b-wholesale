@@ -9,29 +9,26 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   const role = profile.role as 'distributor' | 'vendor'
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-transparent">
-      {/* Sidebar - glass effect or blended */}
-      <aside className="hidden w-64 flex-col border-r border-slate-200/60 bg-white/80 backdrop-blur-xl md:flex print:hidden z-20">
+    <div className="dashboard-shell flex h-dvh w-full overflow-hidden text-slate-900">
+      <aside className="hidden w-72 shrink-0 border-r border-white/60 bg-white/60 backdrop-blur-xl md:flex print:hidden">
         <Sidebar role={role} />
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex flex-1 flex-col overflow-hidden relative">
-        {/* Sticky Header with Glass Effect */}
-        <header className="sticky top-0 z-10 w-full border-b border-slate-200/60 bg-white/70 backdrop-blur-xl print:hidden">
-          <div className="px-4 md:px-6 py-3">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="px-3 pt-3 md:px-6 md:pt-5 print:hidden">
+          <div className="glass rounded-2xl">
             <Header email={profile.email || ''} role={profile.role} />
           </div>
-        </header>
+        </div>
 
-        {/* Scrollable content */}
-        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-6 print:max-w-none print:p-0 scroll-smooth">
-          <div className="mx-auto max-w-7xl space-y-6">
-            {children}
+        <main className="flex-1 overflow-y-auto px-3 pb-24 pt-3 md:px-6 md:pb-6 md:pt-4 print:p-0">
+          <div className="mx-auto w-full max-w-7xl">
+            <section className="dashboard-surface min-h-[calc(100vh-11.5rem)] p-4 md:p-6 lg:p-8 print:min-h-0 print:rounded-none print:border-0 print:bg-transparent print:p-0 print:shadow-none">
+              <div className="space-y-6">{children}</div>
+            </section>
           </div>
         </main>
 
-        {/* Mobile Navigation Elements */}
         <MobileBottomNav role={role} />
         <MobileDashboardButton role={role} />
       </div>

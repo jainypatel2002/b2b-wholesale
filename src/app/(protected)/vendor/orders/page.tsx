@@ -87,7 +87,7 @@ export default async function VendorOrdersPage({
                   return (
                     <TableRow key={o.id}>
                       <TableCell className="font-mono text-xs font-medium">
-                        <Link href={`/vendor/orders/${o.id}`} className="hover:underline text-blue-600">
+                        <Link href={`/vendor/orders/${o.id}`} className="text-primary hover:underline">
                           {o.id.slice(0, 8)}...
                         </Link>
                       </TableCell>
@@ -125,7 +125,7 @@ export default async function VendorOrdersPage({
                 <CardContent className="p-4 space-y-3">
                   <div className="flex justify-between items-start">
                     <div>
-                      <h3 className="font-mono font-bold text-blue-600">{o.id.slice(0, 8)}...</h3>
+                      <h3 className="font-mono font-bold text-primary">{o.id.slice(0, 8)}...</h3>
                       <div className="mt-1">
                         <StatusBadge status={o.status} />
                       </div>
@@ -150,7 +150,7 @@ export default async function VendorOrdersPage({
             )
           })
         ) : (
-          <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-12 text-center text-slate-500">
             No orders yet.
           </div>
         )}

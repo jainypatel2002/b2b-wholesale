@@ -244,7 +244,7 @@ function CategoryItem({ category }: { category: Category }) {
                         <Button
                             variant="ghost"
                             size="sm"
-                            className="text-xs text-slate-500 hover:text-blue-600 pl-6 mt-1"
+                            className="mt-1 pl-6 text-xs text-slate-500 hover:text-primary"
                             onClick={() => setIsAddingNode(true)}
                         >
                             <Plus className="mr-1 h-3 w-3" /> Add Subcategory

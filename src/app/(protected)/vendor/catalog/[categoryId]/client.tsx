@@ -101,7 +101,7 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
                         <div className="flex flex-col gap-1.5 w-full sm:w-auto min-w-[150px]">
                             <label className="text-xs font-medium text-slate-500">Subcategory</label>
                             <select
-                                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="form-select h-9 w-full"
                                 value={selectedSubcategory}
                                 onChange={(e) => setSelectedSubcategory(e.target.value)}
                             >
@@ -117,7 +117,7 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
                     <div className="flex flex-col gap-1.5 w-full sm:w-auto min-w-[150px]">
                         <label className="text-xs font-medium text-slate-500">Sort By</label>
                         <select
-                            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="form-select h-9 w-full"
                             value={sortOrder}
                             onChange={(e) => setSortOrder(e.target.value)}
                         >
@@ -132,7 +132,7 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
                         <input
                             type="checkbox"
                             id="stock-toggle"
-                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                            className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
                             checked={inStockOnly}
                             onChange={(e) => setInStockOnly(e.target.checked)}
                         />
@@ -166,7 +166,7 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
             </div>
 
             {filteredProducts.length === 0 ? (
-                <div className="text-center py-12 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-12 text-center">
                     <Search className="h-8 w-8 text-slate-300 mx-auto mb-3" />
                     <p className="text-slate-500 font-medium">No products match your filters.</p>
                     <Button
@@ -176,7 +176,7 @@ export function CategoryProductsClient({ products, categoryName, subcategories, 
                             setSelectedSubcategory('all')
                             setInStockOnly(false)
                         }}
-                        className="mt-2 text-blue-600"
+                        className="mt-2"
                     >
                         Clear all filters
                     </Button>

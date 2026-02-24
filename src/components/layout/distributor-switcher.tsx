@@ -45,12 +45,12 @@ export function DistributorSwitcher({ currentDistributorId, linkedDistributors }
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="outline" role="combobox" className="w-[200px] justify-between">
+                <Button variant="outline" role="combobox" className="w-[210px] justify-between rounded-xl bg-white/80">
                     {currentDistributor?.name || "Select Distributor"}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[200px]">
+            <DropdownMenuContent className="w-[210px] rounded-xl border-white/70 bg-white/90 p-1.5 backdrop-blur-xl">
                 <DropdownMenuLabel>My Distributors</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {linkedDistributors.map((distributor) => (

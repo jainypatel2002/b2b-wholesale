@@ -145,7 +145,7 @@ export default async function DistributorInvoicesPage({
                   return (
                     <TableRow key={inv.id} className={isArchived ? "bg-slate-50 opacity-70" : ""}>
                       <TableCell className="font-mono text-xs font-medium">
-                        <Link href={`/distributor/invoices/${inv.id}`} className="hover:underline text-blue-600">
+                        <Link href={`/distributor/invoices/${inv.id}`} className="text-primary hover:underline">
                           {inv.invoice_number}
                         </Link>
                       </TableCell>
@@ -166,14 +166,14 @@ export default async function DistributorInvoicesPage({
                         {inv.payment_status === 'paid' ? (
                           <form action={markUnpaid} className="inline-block">
                             <input type="hidden" name="invoice_id" value={inv.id} />
-                            <Button variant="ghost" size="sm" type="submit" className="text-orange-600 hover:text-orange-700 hover:bg-orange-50">
+                            <Button variant="secondary" size="sm" type="submit">
                               Mark Unpaid
                             </Button>
                           </form>
                         ) : (
                           <form action={markPaid} className="inline-block">
                             <input type="hidden" name="invoice_id" value={inv.id} />
-                            <Button variant="ghost" size="sm" type="submit" className="text-green-600 hover:text-green-700 hover:bg-green-50">
+                            <Button size="sm" type="submit">
                               Mark Paid
                             </Button>
                           </form>
@@ -213,7 +213,7 @@ export default async function DistributorInvoicesPage({
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-mono font-bold text-blue-600">{inv.invoice_number}</span>
+                        <span className="font-mono font-bold text-primary">{inv.invoice_number}</span>
                         <StatusBadge status={inv.payment_status} type="payment" />
                       </div>
                       <div className="text-sm font-medium text-slate-900">{inv.vendor?.display_name || 'Unknown'}</div>
@@ -231,14 +231,14 @@ export default async function DistributorInvoicesPage({
                     {inv.payment_status === 'paid' ? (
                       <form action={markUnpaid} className="flex-1">
                         <input type="hidden" name="invoice_id" value={inv.id} />
-                        <Button variant="ghost" type="submit" className="w-full text-orange-600 bg-orange-50 border border-orange-100">
+                        <Button variant="secondary" type="submit" className="w-full">
                           Mark Unpaid
                         </Button>
                       </form>
                     ) : (
                       <form action={markPaid} className="flex-1">
                         <input type="hidden" name="invoice_id" value={inv.id} />
-                        <Button variant="ghost" type="submit" className="w-full text-green-600 bg-green-50 border border-green-100">
+                        <Button type="submit" className="w-full">
                           Mark Paid
                         </Button>
                       </form>
@@ -249,7 +249,7 @@ export default async function DistributorInvoicesPage({
             )
           })
         ) : (
-          <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-12 text-center text-slate-500">
             No invoices found.
           </div>
         )}

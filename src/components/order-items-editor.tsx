@@ -277,7 +277,7 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                         <Button variant="outline" size="sm" onClick={cancelEdit} disabled={isPending}>
                             <X className="mr-1 h-3.5 w-3.5" /> Cancel
                         </Button>
-                        <Button size="sm" onClick={handleSave} disabled={isPending} className="bg-blue-600 hover:bg-blue-700">
+                        <Button size="sm" onClick={handleSave} disabled={isPending} className="min-w-[120px]">
                             <Save className="mr-1 h-3.5 w-3.5" /> {isPending ? 'Saving...' : 'Save Changes'}
                         </Button>
                     </div>
@@ -390,7 +390,7 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                                         variant="ghost"
                                                         size="sm"
                                                         onClick={() => updateField(item.id, 'removed', false)}
-                                                        className="h-7 px-2 text-blue-600 hover:text-blue-700"
+                                                        className="h-7 px-2 text-primary hover:text-primary/80"
                                                     >
                                                         <Undo2 className="h-3.5 w-3.5" />
                                                     </Button>
@@ -487,7 +487,7 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                                             variant="ghost"
                                             size="sm"
                                             onClick={() => updateField(item.id, 'removed', false)}
-                                            className="text-blue-600 h-8"
+                                            className="h-8 text-primary hover:text-primary/80"
                                         >
                                             <Undo2 className="mr-1 h-3.5 w-3.5" /> Undo
                                         </Button>
@@ -574,7 +574,7 @@ export function OrderItemsEditor({ orderId, items, adjustments, taxes, invoiceEx
                             <div className="flex gap-2 pt-2 border-t mt-2">
                                 <Input placeholder="State Tax..." value={newTaxName} onChange={e => setNewTaxName(e.target.value)} className="h-8 text-sm w-1/3" />
                                 <select
-                                    className="h-8 text-sm border rounded-md px-2 text-slate-700 bg-white"
+                                    className="form-select h-8 rounded-md px-2 text-sm"
                                     value={newTaxType}
                                     onChange={e => setNewTaxType(e.target.value as any)}
                                 >

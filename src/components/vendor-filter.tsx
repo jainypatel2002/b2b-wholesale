@@ -39,7 +39,7 @@ export function VendorFilter({ vendors }: VendorFilterProps) {
             <select
                 value={currentVendor}
                 onChange={handleValueChange}
-                className="h-9 w-full min-w-[180px] rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                className="form-select min-w-[180px]"
             >
                 <option value="all">All Vendors</option>
                 {vendors.map((vendor) => (

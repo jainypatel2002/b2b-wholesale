@@ -135,7 +135,7 @@ export function CartClient({ distributorId }: { distributorId: string }) {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold tracking-tight">Shopping Cart</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-slate-900">Shopping Cart</h1>
                 <Link href="/vendor/catalog">
                     <Button variant="ghost" size="sm" className="pl-0"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard</Button>
                 </Link>
@@ -245,7 +245,7 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                             </div>
                         </CardContent>
                         <CardFooter className="flex-col gap-3">
-                            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" size="lg" disabled={items.length === 0 || loading} onClick={placeOrder}>
+                            <Button className="w-full" size="lg" disabled={items.length === 0 || loading} onClick={placeOrder}>
                                 {loading ? 'Processing...' : 'Place Order'}
                             </Button>
                             <p className="text-xs text-center text-slate-500">
@@ -256,12 +256,12 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                 </div>
 
                 {/* Mobile Fixed Bottom Bar */}
-                <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-slate-200 p-4 md:hidden z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+                <div className="fixed bottom-16 left-0 right-0 z-40 border-t border-white/70 bg-white/90 p-4 shadow-[0_-10px_24px_-20px_rgba(15,23,42,0.8)] backdrop-blur-xl md:hidden">
                     <div className="flex items-center justify-between mb-3">
                         <span className="text-sm font-medium text-slate-500">Total</span>
                         <span className="text-xl font-bold text-slate-900">${total.toFixed(2)}</span>
                     </div>
-                    <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white h-12 text-lg" disabled={items.length === 0 || loading} onClick={placeOrder}>
+                    <Button className="h-12 w-full text-lg" disabled={items.length === 0 || loading} onClick={placeOrder}>
                         {loading ? 'Processing...' : 'Place Order'}
                     </Button>
                 </div>

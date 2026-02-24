@@ -94,14 +94,14 @@ export default async function VendorCatalogPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Catalog</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Catalog</h1>
         <Link href="/vendor">
           <Button variant="ghost" size="sm" className="pl-0"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard</Button>
         </Link>
       </div>
 
       {errorMsg && (
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-red-200 bg-red-50/90">
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-red-700">
               <AlertTriangle className="h-4 w-4" />
@@ -116,4 +116,3 @@ export default async function VendorCatalogPage() {
     </div>
   )
 }
-
