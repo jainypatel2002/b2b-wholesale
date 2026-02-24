@@ -101,44 +101,36 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
     const buyerAddressLines = getAddressLines(buyerProfile)
 
     return (
-        <div className="bg-white text-black min-h-screen p-8 max-w-[800px] mx-auto print:max-w-none print:p-0 print:m-0 font-sans">
+        <div className="mx-auto min-h-screen max-w-[800px] bg-white p-6 font-sans text-black print:m-0 print:max-w-none print:p-0">
             {/* Header Section */}
-            <div className="mb-10">
-                <div className="flex justify-between items-start">
+            <div className="mb-4 space-y-3 print:mb-3 print:space-y-2 print:[break-inside:avoid] print:[page-break-inside:avoid]">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3 print:pb-2">
                     <div className="space-y-1 text-sm text-slate-700">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Invoice</p>
-                        <h1 className="text-2xl font-bold text-slate-900 tracking-tight uppercase">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Invoice</p>
+                        <h1 className="text-xl font-bold uppercase tracking-tight text-slate-900 sm:text-2xl">
                             {invoice.invoice_number}
                         </h1>
                     </div>
-
-                    <div className="text-right">
-                        <h2 className="text-4xl font-light text-slate-300 uppercase tracking-widest mb-4">Invoice</h2>
-                        <table className="ml-auto text-sm mr-2">
-                            <tbody>
-                                <tr>
-                                    <td className="py-1 pr-6 font-semibold text-slate-600">Invoice Date:</td>
-                                    <td className="py-1 text-slate-900">{new Date(invoice.created_at).toLocaleDateString()}</td>
-                                </tr>
-                                {invoice.terms && (
-                                    <tr>
-                                        <td className="py-1 pr-6 font-semibold text-slate-600">Terms:</td>
-                                        <td className="py-1 text-slate-900">{invoice.terms}</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                    <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-1 text-xs text-slate-700 sm:text-sm">
+                        <dt className="font-semibold text-slate-600">Invoice Date:</dt>
+                        <dd className="text-slate-900">{new Date(invoice.created_at).toLocaleDateString()}</dd>
+                        {invoice.terms && (
+                            <>
+                                <dt className="font-semibold text-slate-600">Terms:</dt>
+                                <dd className="text-slate-900">{invoice.terms}</dd>
+                            </>
+                        )}
+                    </dl>
                 </div>
 
-                <div className="grid gap-6 md:grid-cols-2 mt-4">
-                    <div className="rounded-lg border border-slate-200 p-4">
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">From (Distributor)</h3>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 print:grid print:grid-cols-2 print:gap-4">
+                    <div className="rounded-lg border border-slate-200 p-3 print:[break-inside:avoid] print:[page-break-inside:avoid]">
+                        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">From (Distributor)</h3>
                         {hasBusinessProfileDetails(sellerProfile) ? (
-                            <div className="text-sm text-slate-800 space-y-1">
-                                <p className="font-semibold text-base">{sellerProfile.business_name || 'Distributor'}</p>
+                            <div className="space-y-0.5 break-words text-sm leading-snug text-slate-800">
+                                <p className="font-semibold">{sellerProfile.business_name || 'Distributor'}</p>
                                 {sellerProfile.contact_name && <p>{sellerProfile.contact_name}</p>}
-                                {sellerAddressLines.map((line) => <p key={`seller-${line}`}>{line}</p>)}
+                                {sellerAddressLines.map((line, idx) => <p key={`seller-${idx}`}>{line}</p>)}
                                 {sellerProfile.phone && <p>{sellerProfile.phone}</p>}
                                 {sellerProfile.email && <p>{sellerProfile.email}</p>}
                                 {sellerProfile.tax_id && <p>Tax ID: {sellerProfile.tax_id}</p>}
@@ -148,13 +140,13 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
                         )}
                     </div>
 
-                    <div className="rounded-lg border border-slate-200 p-4">
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Bill To (Vendor)</h3>
+                    <div className="rounded-lg border border-slate-200 p-3 print:[break-inside:avoid] print:[page-break-inside:avoid]">
+                        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Bill To (Vendor)</h3>
                         {hasBusinessProfileDetails(buyerProfile) ? (
-                            <div className="text-sm text-slate-800 space-y-1">
-                                <p className="font-semibold text-base">{buyerProfile.business_name || 'Vendor'}</p>
+                            <div className="space-y-0.5 break-words text-sm leading-snug text-slate-800">
+                                <p className="font-semibold">{buyerProfile.business_name || 'Vendor'}</p>
                                 {buyerProfile.contact_name && <p>{buyerProfile.contact_name}</p>}
-                                {buyerAddressLines.map((line) => <p key={`buyer-${line}`}>{line}</p>)}
+                                {buyerAddressLines.map((line, idx) => <p key={`buyer-${idx}`}>{line}</p>)}
                                 {buyerProfile.phone && <p>{buyerProfile.phone}</p>}
                                 {buyerProfile.email && <p>{buyerProfile.email}</p>}
                             </div>
@@ -166,7 +158,7 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
             </div>
 
             {/* Main Item Grid */}
-            <table className="w-full text-sm mb-10 border-collapse">
+            <table className="mb-8 w-full border-collapse text-sm print:mb-6">
                 <thead>
                     <tr className="bg-slate-50 border-y border-slate-200 uppercase text-[10px] tracking-wider">
                         <th className="py-3 px-2 text-left font-bold text-slate-500">Category</th>

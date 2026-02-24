@@ -10,10 +10,10 @@ export default async function VendorSettingsPage() {
   const businessProfile = await getMyBusinessProfile()
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight text-slate-900">Account Settings</h1>
+    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 sm:px-6 md:px-0">
+      <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Account Settings</h1>
 
-      <div className="grid gap-6 max-w-3xl">
+      <div className="grid grid-cols-1 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Business Profile</CardTitle>
@@ -35,7 +35,7 @@ export default async function VendorSettingsPage() {
           </CardHeader>
           <CardContent>
             <Link href="/vendor/settings/connect">
-              <Button variant="outline">Manage Distributor Connections</Button>
+              <Button variant="outline" className="w-full sm:w-auto">Manage Distributor Connections</Button>
             </Link>
           </CardContent>
         </Card>

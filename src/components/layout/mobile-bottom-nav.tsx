@@ -24,7 +24,9 @@ export function MobileBottomNav({ role }: MobileBottomNavProps) {
     // Drawer handles full list. Bottom nav can be quick access.
 
     const visibleDistributorLinks = distributorLinks.filter(l => l.label !== 'Categories')
-    const visibleVendorLinks = vendorLinks.filter(l => l.label !== 'Settings')
+    // Root cause: vendor Settings was intentionally filtered out from mobile quick nav.
+    // Keep full vendor parity with desktop/drawer by rendering all vendor links here.
+    const visibleVendorLinks = vendorLinks
     const links = role === 'distributor' ? visibleDistributorLinks : visibleVendorLinks
 
     if (pathname.includes('/print')) return null
@@ -45,13 +47,14 @@ export function MobileBottomNav({ role }: MobileBottomNavProps) {
                         <Link
                             key={link.href}
                             href={link.href}
+                            aria-current={isActive ? 'page' : undefined}
                             className={cn(
-                                "flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-medium transition-colors",
+                                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-1 text-[10px] font-medium transition-colors",
                                 isActive ? "text-blue-600" : "text-slate-500 hover:text-slate-900"
                             )}
                         >
                             <Icon className={cn("h-5 w-5", isActive && "fill-current/20")} />
-                            <span>{link.label}</span>
+                            <span className="truncate">{link.label}</span>
                         </Link>
                     )
                 })}
