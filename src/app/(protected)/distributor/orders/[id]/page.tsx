@@ -18,22 +18,54 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
   const { distributorId } = await getDistributorContext()
   const supabase = await createClient()
 
-  const { data: order, error } = await supabase
+  const fullSelect = `
+    id, status, created_at, vendor_id, created_by_role, created_source,
+    vendor:profiles!orders_vendor_id_fkey(display_name, email),
+    order_items(
+      id, qty, unit_price, unit_cost, product_name, order_unit, units_per_case_snapshot,
+      products(name),
+      edited_name, edited_unit_price, edited_qty, removed, edited_at, edited_by
+    ),
+    order_adjustments(id, name, amount),
+    order_taxes(id, name, type, rate_percent)
+  `
+
+  const fallbackSelect = `
+    id, status, created_at, vendor_id,
+    vendor:profiles!orders_vendor_id_fkey(display_name, email),
+    order_items(
+      id, qty, unit_price, unit_cost, product_name, order_unit, units_per_case_snapshot,
+      products(name),
+      edited_name, edited_unit_price, edited_qty, removed, edited_at, edited_by
+    ),
+    order_adjustments(id, name, amount),
+    order_taxes(id, name, type, rate_percent)
+  `
+
+  let order: any = null
+  let error: any = null
+
+  const fullResult = await supabase
     .from('orders')
-    .select(`
-      id, status, created_at, vendor_id,
-      vendor:profiles!orders_vendor_id_fkey(display_name, email),
-      order_items(
-        id, qty, unit_price, unit_cost, product_name, order_unit, units_per_case_snapshot,
-        products(name),
-        edited_name, edited_unit_price, edited_qty, removed, edited_at, edited_by
-      ),
-      order_adjustments(id, name, amount),
-      order_taxes(id, name, type, rate_percent)
-    `)
+    .select(fullSelect)
     .eq('id', id)
     .eq('distributor_id', distributorId)
     .single()
+
+  order = fullResult.data
+  error = fullResult.error
+
+  if (error && error.code === '42703') {
+    const fallback = await supabase
+      .from('orders')
+      .select(fallbackSelect)
+      .eq('id', id)
+      .eq('distributor_id', distributorId)
+      .single()
+
+    order = fallback.data
+    error = fallback.error
+  }
 
   if (error) {
     console.error('Error fetching order (distributor):', error)
@@ -189,6 +221,10 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
             <CardContent>
               <div className="font-medium text-lg">{vendor?.display_name || 'Unknown'}</div>
               <div className="text-sm text-slate-500">{vendor?.email}</div>
+              <div className="mt-2 text-xs text-slate-500">
+                Created by: {order.created_by_role === 'distributor' ? 'Distributor' : 'Vendor'}
+                {order.created_source ? ` (${order.created_source})` : ''}
+              </div>
               <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400 font-mono break-all">
                 Order ID: {order.id}
               </div>

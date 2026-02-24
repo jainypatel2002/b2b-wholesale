@@ -29,7 +29,7 @@ export default async function DistributorOrdersPage({
   // ── Build orders query ──
   let ordersQuery = supabase
     .from('orders')
-    .select('id,status,created_at,deleted_at,vendor_id,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)', { count: 'exact' })
+    .select('id,status,created_at,deleted_at,vendor_id,created_by_role,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)', { count: 'exact' })
     .eq('distributor_id', distributorId)
     .order('created_at', { ascending: false })
     .range(from, to)
@@ -101,6 +101,11 @@ export default async function DistributorOrdersPage({
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Orders</h1>
         <div className="flex flex-wrap items-center gap-2">
+          <Link href="/distributor/orders/create">
+            <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+              Create Order
+            </Button>
+          </Link>
           <VendorFilter vendors={vendors} />
           <form>
             <ToggleArchivedButton showArchived={showArchived} />
@@ -116,6 +121,7 @@ export default async function DistributorOrdersPage({
               <TableRow>
                 <TableHead>Order</TableHead>
                 <TableHead>Vendor</TableHead>
+                <TableHead>Created By</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Payment</TableHead>
                 <TableHead>Total</TableHead>
@@ -140,6 +146,13 @@ export default async function DistributorOrdersPage({
                       <TableCell>
                         <div className="font-medium">{o.vendor?.display_name || 'Unknown'}</div>
                         <div className="text-xs text-slate-500">{o.vendor?.email}</div>
+                      </TableCell>
+                      <TableCell>
+                        {o.created_by_role === 'distributor' ? (
+                          <Badge variant="secondary" className="text-xs">Distributor</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">Vendor</Badge>
+                        )}
                       </TableCell>
                       <TableCell><StatusBadge status={o.status} /></TableCell>
                       <TableCell>
@@ -173,7 +186,7 @@ export default async function DistributorOrdersPage({
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-slate-500">
+                  <TableCell colSpan={9} className="h-24 text-center text-slate-500">
                     No orders found.
                   </TableCell>
                 </TableRow>
@@ -205,6 +218,9 @@ export default async function DistributorOrdersPage({
                     <div>
                       <p className="font-semibold text-slate-900">{o.vendor?.display_name || 'Unknown'}</p>
                       <p className="text-xs text-slate-500">{o.vendor?.email}</p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Created by: {o.created_by_role === 'distributor' ? 'Distributor' : 'Vendor'}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="font-bold text-lg">${o.total.toFixed(2)}</p>

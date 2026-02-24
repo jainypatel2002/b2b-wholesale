@@ -15,19 +15,46 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
   const { vendorId } = await getVendorContext()
   const supabase = await createClient()
 
-  const { data: order, error } = await supabase
+  const fullSelect = `
+    id, status, created_at, created_by_role, created_source,
+    order_items(
+      id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
+      products(name),
+      edited_name, edited_unit_price, edited_qty, removed
+    )
+  `
+  const fallbackSelect = `
+    id, status, created_at,
+    order_items(
+      id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
+      products(name),
+      edited_name, edited_unit_price, edited_qty, removed
+    )
+  `
+
+  let order: any = null
+  let error: any = null
+
+  const fullResult = await supabase
     .from('orders')
-    .select(`
-      id, status, created_at,
-      order_items(
-        id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
-        products(name),
-        edited_name, edited_unit_price, edited_qty, removed
-      )
-    `)
+    .select(fullSelect)
     .eq('id', id)
     .eq('vendor_id', vendorId)
     .single()
+
+  order = fullResult.data
+  error = fullResult.error
+
+  if (error && error.code === '42703') {
+    const fallback = await supabase
+      .from('orders')
+      .select(fallbackSelect)
+      .eq('id', id)
+      .eq('vendor_id', vendorId)
+      .single()
+    order = fallback.data
+    error = fallback.error
+  }
 
   if (error) {
     console.error('Error fetching order (vendor):', error)
@@ -137,6 +164,12 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
                 <span className="text-xs text-slate-500 block mb-1">Order Date</span>
                 <div className="text-sm">{new Date(order.created_at).toLocaleString()}</div>
               </div>
+              {order.created_by_role === 'distributor' && (
+                <div>
+                  <span className="text-xs text-slate-500 block mb-1">Created By</span>
+                  <div className="text-sm">Distributor {order.created_source ? `(${order.created_source})` : ''}</div>
+                </div>
+              )}
               <div className="text-xs text-slate-400 font-mono break-all pt-2">
                 ID: {order.id}
               </div>
