@@ -1,6 +1,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { calcRevenue, calcCost, calcProfit, calcMargin } from './calc'
+import { getEffectiveAnalyticsRange, getLatestProfitResetWithClient, type AnalyticsRange } from './profitReset'
 
 export type ProfitOverview = {
     revenue: number
@@ -46,17 +47,33 @@ export type LossSignal = {
 
 const FIVE_PERCENT_MARGIN = 5
 
+type ProfitQueryOptions = {
+    resetAt?: Date | null
+}
+
 /**
  * Helper to build date range filter
  */
-function applyDateRange(query: any, range: { from: Date; to: Date }) {
-    // Ensure we cover the entire 'to' day by setting it to end of day if it's not already
-    const endOfDay = new Date(range.to)
-    endOfDay.setHours(23, 59, 59, 999)
-
+function applyDateRange(query: any, range: AnalyticsRange, createdAtField = 'created_at') {
     return query
-        .gte('created_at', range.from.toISOString())
-        .lte('created_at', endOfDay.toISOString())
+        .gte(createdAtField, range.from.toISOString())
+        .lte(createdAtField, range.to.toISOString())
+}
+
+async function resolveResetAt(
+    supabase: any,
+    distributorId: string,
+    options?: ProfitQueryOptions
+): Promise<Date | null> {
+    if (options && Object.prototype.hasOwnProperty.call(options, 'resetAt')) {
+        return options.resetAt ?? null
+    }
+
+    const checkpoint = await getLatestProfitResetWithClient(supabase, distributorId)
+    if (!checkpoint?.reset_at) return null
+
+    const resetAt = new Date(checkpoint.reset_at)
+    return Number.isNaN(resetAt.getTime()) ? null : resetAt
 }
 
 /**
@@ -64,12 +81,24 @@ function applyDateRange(query: any, range: { from: Date; to: Date }) {
  */
 export async function getProfitOverview(
     distributorId: string,
-    range: { from: Date; to: Date }
+    range: AnalyticsRange,
+    options?: ProfitQueryOptions
 ): Promise<ProfitOverview> {
     const supabase = await createClient()
+    const resetAt = await resolveResetAt(supabase, distributorId, options)
+    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+
+    if (!effectiveRange.hasData) {
+        return {
+            revenue: 0,
+            cost: 0,
+            profit: 0,
+            margin: 0,
+            orderCount: 0
+        }
+    }
 
     let data: any[] = [];
-    let error: any = null;
 
     // Try fetching with new columns
     const { data: newData, error: newError } = await applyDateRange(
@@ -91,7 +120,7 @@ export async function getProfitOverview(
             `)
             .eq('distributor_id', distributorId)
             .neq('status', 'cancelled'),
-        range
+        effectiveRange
     );
 
     if (newError && newError.code === '42703') {
@@ -114,7 +143,7 @@ export async function getProfitOverview(
                 `)
                 .eq('distributor_id', distributorId)
                 .neq('status', 'cancelled'),
-            range
+            effectiveRange
         );
 
         if (oldError) throw new Error(oldError.message);
@@ -169,12 +198,16 @@ export async function getProfitOverview(
  */
 export async function getProductProfitability(
     distributorId: string,
-    range: { from: Date; to: Date }
+    range: AnalyticsRange,
+    options?: ProfitQueryOptions
 ): Promise<ProductProfitability[]> {
     const supabase = await createClient()
+    const resetAt = await resolveResetAt(supabase, distributorId, options)
+    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+
+    if (!effectiveRange.hasData) return []
 
     let data: any[] = [];
-    let error: any = null;
 
     // Try new schema
     const { data: newData, error: newError } = await applyDateRange(
@@ -201,7 +234,8 @@ export async function getProductProfitability(
             `)
             .eq('orders.distributor_id', distributorId)
             .neq('orders.status', 'cancelled'),
-        range
+        effectiveRange,
+        'orders.created_at'
     );
 
     if (newError && newError.code === '42703') {
@@ -227,7 +261,8 @@ export async function getProductProfitability(
                 `)
                 .eq('orders.distributor_id', distributorId)
                 .neq('orders.status', 'cancelled'),
-            range
+            effectiveRange,
+            'orders.created_at'
         );
         if (oldError) throw new Error(oldError.message);
 
@@ -298,12 +333,16 @@ export async function getProductProfitability(
  */
 export async function getVendorProfitability(
     distributorId: string,
-    range: { from: Date; to: Date }
+    range: AnalyticsRange,
+    options?: ProfitQueryOptions
 ): Promise<VendorProfitability[]> {
     const supabase = await createClient()
+    const resetAt = await resolveResetAt(supabase, distributorId, options)
+    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+
+    if (!effectiveRange.hasData) return []
 
     let data: any[] = [];
-    let error: any = null;
 
     // Try new schema
     const { data: newData, error: newError } = await applyDateRange(
@@ -325,7 +364,7 @@ export async function getVendorProfitability(
             `)
             .eq('distributor_id', distributorId)
             .neq('status', 'cancelled'),
-        range
+        effectiveRange
     );
 
     if (newError && newError.code === '42703') {
@@ -346,7 +385,7 @@ export async function getVendorProfitability(
                 `)
                 .eq('distributor_id', distributorId)
                 .neq('status', 'cancelled'),
-            range
+            effectiveRange
         );
         if (oldError) throw new Error(oldError.message);
 
@@ -367,14 +406,30 @@ export async function getVendorProfitability(
 
     const vendorIds = Array.from(new Set(data.map(o => o.vendor_id)))
 
-    // Attempt to fetch profiles
-    const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, email') // Guessing schema
-        .in('id', vendorIds)
-    // .catch not available on builder, we just handle null data naturally
+    let profileRows: any[] = []
+    if (vendorIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, display_name, email')
+            .in('id', vendorIds)
 
-    const profileMap = new Map<string, string>(profiles?.map((p: any) => [p.id, String(p.full_name || p.email || '')]) || [])
+        if (profilesError && profilesError.code === '42703') {
+            const { data: legacyProfiles } = await supabase
+                .from('profiles')
+                .select('id, full_name, email')
+                .in('id', vendorIds)
+            profileRows = legacyProfiles || []
+        } else {
+            profileRows = profiles || []
+        }
+    }
+
+    const profileMap = new Map<string, string>(
+        profileRows.map((profile: any) => [
+            profile.id,
+            String(profile.display_name || profile.full_name || profile.email || '')
+        ])
+    )
 
     const map = new Map<string, VendorProfitability>()
 
@@ -426,12 +481,16 @@ export async function getVendorProfitability(
  */
 export async function getTimeSeries(
     distributorId: string,
-    range: { from: Date; to: Date }
+    range: AnalyticsRange,
+    options?: ProfitQueryOptions
 ): Promise<TimeSeriesPoint[]> {
     const supabase = await createClient()
+    const resetAt = await resolveResetAt(supabase, distributorId, options)
+    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+
+    if (!effectiveRange.hasData) return []
 
     let data: any[] = [];
-    let error: any = null;
 
     // Try new schema
     const { data: newData, error: newError } = await applyDateRange(
@@ -453,7 +512,7 @@ export async function getTimeSeries(
             `)
             .eq('distributor_id', distributorId)
             .neq('status', 'cancelled'),
-        range
+        effectiveRange
     );
 
     if (newError && newError.code === '42703') {
@@ -474,7 +533,7 @@ export async function getTimeSeries(
                 `)
                 .eq('distributor_id', distributorId)
                 .neq('status', 'cancelled'),
-            range
+            effectiveRange
         );
         if (oldError) throw new Error(oldError.message);
 
@@ -529,9 +588,11 @@ export async function getTimeSeries(
  * 5. Hidden Loss Signals
  */
 export async function getHiddenLossSignals(
-    distributorId: string
+    distributorId: string,
+    options?: ProfitQueryOptions
 ): Promise<LossSignal[]> {
     const supabase = await createClient()
+    const resetAt = await resolveResetAt(supabase, distributorId, options)
     const signals: LossSignal[] = []
 
     // 1. Low Margin Products (using current prices for forward looking, or past sales?)
@@ -572,17 +633,15 @@ export async function getHiddenLossSignals(
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
+    const recentSalesFrom = resetAt && resetAt.getTime() > thirtyDaysAgo.getTime()
+        ? resetAt
+        : thirtyDaysAgo
+
     const { data: recentSales } = await supabase
         .from('order_items')
-        .select('product_id')
-        .gt('created_at', thirtyDaysAgo.toISOString()) // This assumes order_items has created_at, if not join orders
-        // Actually safe to assume order_items usually doesn't have created_at unless inherited? 
-        // Usually it does in fresh supabase schemas, but let's join orders to be safe.
-        // NOTE: order_items might not have created_at if not added in migration. 
-        // Let's rely on Orders created_at as original plan.
         .select('product_id, orders!inner(created_at, distributor_id)')
         .eq('orders.distributor_id', distributorId)
-        .gt('orders.created_at', thirtyDaysAgo.toISOString())
+        .gt('orders.created_at', recentSalesFrom.toISOString())
 
     const activeProductIds = new Set(recentSales?.map((r: any) => r.product_id))
 
@@ -611,11 +670,14 @@ export async function getHiddenLossSignals(
         orders!inner(distributor_id, created_at)
     `)
         .eq('orders.distributor_id', distributorId)
-        // .limit(200) // Removed Limit to ensure we find current mistakes
         .order('created_at', { ascending: false, foreignTable: 'orders' })
         .limit(200)
 
-    badOrders?.forEach((item: any) => {
+    const scopedBadOrders = resetAt
+        ? badOrders?.filter((item: any) => new Date(item.orders?.created_at).getTime() >= resetAt.getTime())
+        : badOrders
+
+    scopedBadOrders?.forEach((item: any) => {
         const sell = Number(item.selling_price_at_time) || 0
         const cost = Number(item.cost_price_at_time) || 0
         // Flag if Sell < Cost, but only if Cost is known (>0).

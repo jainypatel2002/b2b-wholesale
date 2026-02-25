@@ -171,6 +171,18 @@ body {
   .no-print {
     display: none !important;
   }
+
+  #profit-center-report {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  #profit-center-report .rounded-2xl,
+  #profit-center-report table,
+  #profit-center-report svg {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }
 
 

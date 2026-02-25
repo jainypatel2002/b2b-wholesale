@@ -1,6 +1,6 @@
 
 import { createClient } from '@/lib/supabase/server'
-import { calcRevenue } from './calc'
+import { getEffectiveAnalyticsRange, getLatestProfitResetWithClient, type AnalyticsRange } from './profitReset'
 
 export type CategorySalesMix = {
     categoryId: string | null
@@ -18,16 +18,33 @@ export type ItemSalesMix = {
     percentage: number
 }
 
-/**
- * Helper to build date range filter (Duplicated from profit.ts to avoid shared dep risks)
- */
-function applyDateRange(query: any, range: { from: Date; to: Date }) {
-    const endOfDay = new Date(range.to)
-    endOfDay.setHours(23, 59, 59, 999)
+type SalesMixQueryOptions = {
+    resetAt?: Date | null
+}
 
+/**
+ * Helper to build date range filter
+ */
+function applyDateRange(query: any, range: AnalyticsRange, createdAtField = 'created_at') {
     return query
-        .gte('created_at', range.from.toISOString())
-        .lte('created_at', endOfDay.toISOString())
+        .gte(createdAtField, range.from.toISOString())
+        .lte(createdAtField, range.to.toISOString())
+}
+
+async function resolveResetAt(
+    supabase: any,
+    distributorId: string,
+    options?: SalesMixQueryOptions
+): Promise<Date | null> {
+    if (options && Object.prototype.hasOwnProperty.call(options, 'resetAt')) {
+        return options.resetAt ?? null
+    }
+
+    const checkpoint = await getLatestProfitResetWithClient(supabase, distributorId)
+    if (!checkpoint?.reset_at) return null
+
+    const resetAt = new Date(checkpoint.reset_at)
+    return Number.isNaN(resetAt.getTime()) ? null : resetAt
 }
 
 /**
@@ -35,9 +52,14 @@ function applyDateRange(query: any, range: { from: Date; to: Date }) {
  */
 export async function getCategorySalesMix(
     distributorId: string,
-    range: { from: Date; to: Date }
+    range: AnalyticsRange,
+    options?: SalesMixQueryOptions
 ): Promise<CategorySalesMix[]> {
     const supabase = await createClient()
+    const resetAt = await resolveResetAt(supabase, distributorId, options)
+    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+
+    if (!effectiveRange.hasData) return []
 
     // Fetch order items with product and category details
     // using the robust fallback logic for prices
@@ -68,7 +90,8 @@ export async function getCategorySalesMix(
             `)
             .eq('orders.distributor_id', distributorId)
             .neq('orders.status', 'cancelled'),
-        range
+        effectiveRange,
+        'orders.created_at'
     )
 
     if (newError && newError.code === '42703') {
@@ -94,7 +117,8 @@ export async function getCategorySalesMix(
                 `)
                 .eq('orders.distributor_id', distributorId)
                 .neq('orders.status', 'cancelled'),
-            range
+            effectiveRange,
+            'orders.created_at'
         )
         if (oldError) throw new Error(oldError.message)
 
@@ -155,9 +179,14 @@ export async function getCategorySalesMix(
  */
 export async function getItemSalesMix(
     distributorId: string,
-    range: { from: Date; to: Date }
+    range: AnalyticsRange,
+    options?: SalesMixQueryOptions
 ): Promise<(ItemSalesMix & { categoryId: string | null })[]> {
     const supabase = await createClient()
+    const resetAt = await resolveResetAt(supabase, distributorId, options)
+    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+
+    if (!effectiveRange.hasData) return []
 
     // Try new schema
     let data: any[] = []
@@ -186,7 +215,8 @@ export async function getItemSalesMix(
             `)
             .eq('orders.distributor_id', distributorId)
             .neq('orders.status', 'cancelled'),
-        range
+        effectiveRange,
+        'orders.created_at'
     )
 
     if (newError && newError.code === '42703') {
@@ -213,7 +243,8 @@ export async function getItemSalesMix(
                 `)
                 .eq('orders.distributor_id', distributorId)
                 .neq('orders.status', 'cancelled'),
-            range
+            effectiveRange,
+            'orders.created_at'
         )
         if (oldError) throw new Error(oldError.message)
 

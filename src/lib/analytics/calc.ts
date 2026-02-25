@@ -11,6 +11,29 @@ export function formatMoney(amount: number | null | undefined): string {
 }
 
 /**
+ * KPI-friendly compact currency formatter.
+ * Examples: $33,879.34, $33.9K, $33.9M
+ */
+export function formatCurrencyCompact(amount: number | null | undefined): string {
+    if (amount === null || amount === undefined || isNaN(amount)) return '$0.00'
+
+    const absAmount = Math.abs(amount)
+    const sign = amount < 0 ? '-' : ''
+
+    if (absAmount >= 1_000_000) {
+        const compact = (absAmount / 1_000_000).toFixed(1).replace(/\.0$/, '')
+        return `${sign}$${compact}M`
+    }
+
+    if (absAmount >= 1_000) {
+        const compact = (absAmount / 1_000).toFixed(1).replace(/\.0$/, '')
+        return `${sign}$${compact}K`
+    }
+
+    return formatMoney(amount)
+}
+
+/**
  * Safe percentage formatter
  */
 export function formatPercent(value: number | null | undefined): string {
@@ -66,6 +89,9 @@ export function calcMargin(profit: number, revenue: number): number {
 // Minimal in-file tests (runtime check)
 if (process.env.NODE_ENV === 'test') {
     console.assert(formatMoney(10.5) === '$10.50', 'formatMoney failed')
+    console.assert(formatCurrencyCompact(10.5) === '$10.50', 'formatCurrencyCompact plain failed')
+    console.assert(formatCurrencyCompact(33879.34) === '$33.9K', 'formatCurrencyCompact K failed')
+    console.assert(formatCurrencyCompact(33879340) === '$33.9M', 'formatCurrencyCompact M failed')
     console.assert(formatPercent(12.5) === '12.5%', 'formatPercent failed')
     console.assert(calcRevenue([{ selling_price_at_time: 10, quantity: 2 }]) === 20, 'calcRevenue failed')
     console.assert(calcCost([{ cost_price_at_time: 5, quantity: 2 }]) === 10, 'calcCost failed')

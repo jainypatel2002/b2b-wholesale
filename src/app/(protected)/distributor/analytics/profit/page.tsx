@@ -1,6 +1,4 @@
 
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { ProfitDashboard } from '@/components/analytics/ProfitDashboard'
 import {
     getProfitOverview,
@@ -10,6 +8,8 @@ import {
     getHiddenLossSignals
 } from '@/lib/analytics/profit'
 import { getCategorySalesMix, getItemSalesMix } from '@/lib/analytics/salesMix'
+import { requireRole } from '@/lib/auth'
+import { getEffectiveAnalyticsRange, getLatestProfitReset } from '@/lib/analytics/profitReset'
 
 // Force dynamic so we don't cache stale analytics
 export const dynamic = 'force-dynamic'
@@ -18,51 +18,16 @@ type PageProps = {
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
+function parseDateParam(value: string | null) {
+    if (!value) return null
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 export default async function ProfitPage(props: PageProps) {
     const searchParams = await props.searchParams
-    const supabase = await createClient()
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-        redirect('/login')
-    }
-
-    // Verify Distributor Role
-    // Assuming a 'distributors' table or 'profiles' with role check.
-    // Best practice: check if user is in 'distributors' table or has metadata.
-    // Let's check using a quick query to `distributors` table if it exists, or `profiles`.
-    // Based on `route.ts`, `distributor_vendors` links vendor to distributor.
-    // If user is a distributor, their ID should be in `distributors` table? 
-    // Let's assume standard role check. If not, we might need to adjust.
-    // For now, let's assume if they can access data using getProfitOverview (which uses RLS), they are good.
-    // BUT the prompt said: "Validate distributor role server-side"
-    // Common pattern: check `profiles.role` or `user_metadata`.
-    // I will check user metadata first as it's cheapest.
-
-    const metadata = user.user_metadata
-    // Fallback: Check if they have a distributor record
-    const { data: distributorRec } = await supabase
-        .from('distributors')
-        .select('id')
-        .eq('id', user.id)
-        .maybeSingle()
-
-    // If not in distributor table, redirects.
-    // Note: If you are using a different auth schema, this might need tweak.
-    // Given I don't have full auth schema, I'll rely on the RLS-scoped queries to return empty/error if not allowed, 
-    // but explicitly checking 'distributors' pk match is safe if that table exists. 
-    // If `distributors` doesn't exist, I might break it. 
-    // Let's use a safe check: try to fetch overview. if it fails or returns 0 items, maybe they aren't a distributor. 
-    // Actually, better to check metadata if available. 
-    // Let's assume user.id IS the distributor_id for now as is common in 1:1 auth for businesses, 
-    // or `user.id` maps to a distributor.
-
-    // Wait, `route.ts` says: 
-    // `const { data: link } = await supabase.from('distributor_vendors')...eq('vendor_id', auth.user.id)`
-    // This implies Vendors are users. Distributors are also likely users.
-    // I will use `user.id` as `distributorId`.
-
-    const distributorId = user.id
+    const profile = await requireRole('distributor')
+    const distributorId = profile.id
 
     // Date Range Parsing
     const now = new Date()
@@ -72,21 +37,34 @@ export default async function ProfitPage(props: PageProps) {
     const fromParam = typeof searchParams.from === 'string' ? searchParams.from : null
     const toParam = typeof searchParams.to === 'string' ? searchParams.to : null
 
-    const from = fromParam ? new Date(fromParam) : defaultFrom
-    const to = toParam ? new Date(toParam) : defaultTo
+    const parsedFrom = parseDateParam(fromParam)
+    const parsedTo = parseDateParam(toParam)
+
+    let from = parsedFrom || defaultFrom
+    let to = parsedTo || defaultTo
+    if (from.getTime() > to.getTime()) {
+        const swap = from
+        from = to
+        to = swap
+    }
 
     const range = { from, to }
 
     try {
+        const latestReset = await getLatestProfitReset(distributorId)
+        const resetAt = latestReset?.reset_at ? new Date(latestReset.reset_at) : null
+        const selectedRangeBeforeReset = getEffectiveAnalyticsRange(range, resetAt).selectedRangeBeforeReset
+        const options = { resetAt }
+
         // Parallel Fetching
         const [overview, products, vendors, timeSeries, signals, catMix, itemMix] = await Promise.all([
-            getProfitOverview(distributorId, range),
-            getProductProfitability(distributorId, range),
-            getVendorProfitability(distributorId, range),
-            getTimeSeries(distributorId, range),
-            getHiddenLossSignals(distributorId),
-            getCategorySalesMix(distributorId, range),
-            getItemSalesMix(distributorId, range)
+            getProfitOverview(distributorId, range, options),
+            getProductProfitability(distributorId, range, options),
+            getVendorProfitability(distributorId, range, options),
+            getTimeSeries(distributorId, range, options),
+            getHiddenLossSignals(distributorId, options),
+            getCategorySalesMix(distributorId, range, options),
+            getItemSalesMix(distributorId, range, options)
         ])
 
         return (
@@ -100,6 +78,10 @@ export default async function ProfitPage(props: PageProps) {
                     dateRangeArg={range}
                     salesMixCategoriesArg={catMix}
                     salesMixItemsArg={itemMix}
+                    distributorNameArg={profile.display_name || profile.email || 'Distributor'}
+                    distributorEmailArg={profile.email || ''}
+                    lastResetAtArg={latestReset?.reset_at ?? null}
+                    selectedRangeBeforeResetArg={selectedRangeBeforeReset}
                 />
             </div>
         )
