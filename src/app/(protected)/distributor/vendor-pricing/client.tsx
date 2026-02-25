@@ -13,7 +13,11 @@ type Product = {
     id: string
     name: string
     sku: string | null
-    base_price: number
+    base_unit_price: number | null
+    base_case_price: number | null
+    allow_case: boolean
+    allow_piece: boolean
+    units_per_case: number | null
     stock_pieces: number
     category_id: string | null
     category_node_id: string | null
@@ -21,12 +25,17 @@ type Product = {
     node?: string
 }
 
+type OverrideRow = {
+    price_per_unit: number | null
+    price_per_case: number | null
+}
+
 export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], products: Product[] }) {
     const [selectedVendorId, setSelectedVendorId] = useState<string>('')
     const [searchTerm, setSearchTerm] = useState('')
 
-    // Overrides state: map of productId -> override unit price in cents
-    const [overrides, setOverrides] = useState<Map<string, number>>(new Map())
+    // Overrides state: map of productId -> canonical unit/case override pair
+    const [overrides, setOverrides] = useState<Map<string, OverrideRow>>(new Map())
     const [isLoadingOverrides, setIsLoadingOverrides] = useState(false)
 
     useEffect(() => {
@@ -39,12 +48,20 @@ export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], 
             setIsLoadingOverrides(true)
             try {
                 const data = await fetchOverrides(selectedVendorId)
-                const newMap = new Map<string, number>()
+                const newMap = new Map<string, OverrideRow>()
                 data.forEach((o: any) => {
-                    const cents = Number.isFinite(Number(o.price_per_unit))
-                        ? Math.round(Number(o.price_per_unit) * 100)
-                        : NaN
-                    if (Number.isFinite(cents)) newMap.set(o.product_id, cents)
+                    const unit = Number.isFinite(Number(o.price_per_unit))
+                        ? Number(o.price_per_unit)
+                        : null
+                    const casePrice = Number.isFinite(Number(o.price_per_case))
+                        ? Number(o.price_per_case)
+                        : null
+                    if (unit !== null || casePrice !== null) {
+                        newMap.set(o.product_id, {
+                            price_per_unit: unit,
+                            price_per_case: casePrice
+                        })
+                    }
                 })
                 setOverrides(newMap)
             } catch (e) {
@@ -133,15 +150,14 @@ export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], 
                                                 key={p.id}
                                                 product={p}
                                                 vendorId={selectedVendorId}
-                                                initialOverrideCents={overrides.get(p.id)}
-                                                onOverrideRemoved={() => {
+                                                override={overrides.get(p.id)}
+                                                onOverrideChange={(next: OverrideRow | null) => {
                                                     const newMap = new Map(overrides)
-                                                    newMap.delete(p.id)
-                                                    setOverrides(newMap)
-                                                }}
-                                                onOverrideSaved={(cents: number) => {
-                                                    const newMap = new Map(overrides)
-                                                    newMap.set(p.id, cents)
+                                                    if (next) {
+                                                        newMap.set(p.id, next)
+                                                    } else {
+                                                        newMap.delete(p.id)
+                                                    }
                                                     setOverrides(newMap)
                                                 }}
                                             />
@@ -173,18 +189,35 @@ export function VendorPricingClient({ vendors, products }: { vendors: Vendor[], 
     )
 }
 
-function ProductRow({ product, vendorId, initialOverrideCents, onOverrideRemoved, onOverrideSaved }: any) {
-    // Override is stored in UI state as Dollars for easy editing
+function ProductRow({
+    product,
+    vendorId,
+    override,
+    onOverrideChange
+}: {
+    product: Product
+    vendorId: string
+    override?: OverrideRow
+    onOverrideChange: (next: OverrideRow | null) => void
+}) {
+    const targetUnit: 'unit' | 'case' = product.allow_case ? 'case' : 'unit'
+    const unitsPerCase = Math.max(1, Math.floor(Number(product.units_per_case || 1)))
+    const baseUnitPrice = product.base_unit_price
+    const baseCasePrice = product.base_case_price ?? (baseUnitPrice == null ? null : baseUnitPrice * unitsPerCase)
+
+    const savedValue = targetUnit === 'case'
+        ? (override?.price_per_case ?? override?.price_per_unit ?? null)
+        : (override?.price_per_unit ?? null)
+
     const [inputValue, setInputValue] = useState<string>(
-        initialOverrideCents !== undefined ? (initialOverrideCents / 100).toFixed(2) : ''
+        savedValue == null ? '' : Number(savedValue).toFixed(2)
     )
     const [isSaving, setIsSaving] = useState(false)
-    const isOverridden = initialOverrideCents !== undefined
+    const isOverridden = savedValue != null
 
-    // Sync state if vendor changes
     useEffect(() => {
-        setInputValue(initialOverrideCents !== undefined ? (initialOverrideCents / 100).toFixed(2) : '')
-    }, [initialOverrideCents])
+        setInputValue(savedValue == null ? '' : Number(savedValue).toFixed(2))
+    }, [savedValue])
 
     const handleSave = async () => {
         if (!inputValue.trim()) {
@@ -198,10 +231,13 @@ function ProductRow({ product, vendorId, initialOverrideCents, onOverrideRemoved
         }
 
         setIsSaving(true)
-        const res = await saveOverride(vendorId, product.id, priceDollars)
+        const res = await saveOverride(vendorId, product.id, priceDollars, targetUnit)
         if (res.ok) {
             toast.success("Saved override")
-            onOverrideSaved(Math.round(priceDollars * 100))
+            onOverrideChange({
+                price_per_unit: targetUnit === 'unit' ? priceDollars : null,
+                price_per_case: targetUnit === 'case' ? priceDollars : (override?.price_per_case ?? null)
+            })
         } else {
             toast.error(res.error)
         }
@@ -214,15 +250,16 @@ function ProductRow({ product, vendorId, initialOverrideCents, onOverrideRemoved
         if (res.ok) {
             toast.success("Removed override")
             setInputValue('')
-            onOverrideRemoved()
+            onOverrideChange(null)
         } else {
             toast.error(res.error)
         }
         setIsSaving(false)
     }
 
-    const savedDollarValue = initialOverrideCents !== undefined ? (initialOverrideCents / 100).toFixed(2) : ''
+    const savedDollarValue = savedValue == null ? '' : Number(savedValue).toFixed(2)
     const isDirty = inputValue !== savedDollarValue
+    const basePrice = targetUnit === 'case' ? baseCasePrice : baseUnitPrice
 
     return (
         <tr className={`hover:bg-slate-50 transition-colors ${isOverridden ? 'bg-blue-50/30' : ''}`}>
@@ -235,7 +272,12 @@ function ProductRow({ product, vendorId, initialOverrideCents, onOverrideRemoved
                 </div>
             </td>
             <td className="px-4 py-3 font-mono text-xs text-slate-500">{product.sku || '-'}</td>
-            <td className="px-4 py-3 text-slate-600">${Number(product.base_price).toFixed(2)}</td>
+            <td className="px-4 py-3 text-slate-600">
+                ${Number(basePrice ?? 0).toFixed(2)}
+                <span className="ml-2 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] uppercase text-slate-500">
+                    {targetUnit}
+                </span>
+            </td>
             <td className="px-4 py-3">
                 <div className="relative max-w-[120px]">
                     <span className="absolute left-3 top-2 text-slate-500">$</span>
@@ -243,7 +285,7 @@ function ProductRow({ product, vendorId, initialOverrideCents, onOverrideRemoved
                         type="number"
                         step="0.01"
                         className={`h-9 pl-7 pr-2 ${isOverridden ? 'border-blue-300 bg-blue-50/50 outline-blue-500' : ''}`}
-                        placeholder={Number(product.base_price).toFixed(2)}
+                        placeholder={Number(basePrice ?? 0).toFixed(2)}
                         value={inputValue}
                         onChange={e => setInputValue(e.target.value)}
                         onKeyDown={e => {

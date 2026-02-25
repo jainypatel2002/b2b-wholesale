@@ -1,4 +1,4 @@
-import { getEffectivePrice, type UnitType } from '@/lib/pricing/getEffectivePrice'
+import { getEffectivePrices, type UnitType } from '@/lib/pricing/getEffectivePrice'
 import type { CartStorageItem, ReorderSkippedItem } from '@/lib/vendor/reorder'
 
 type CatalogRow = {
@@ -344,8 +344,7 @@ export async function getLastOrderWithItems(params: {
     }
 
     const bulk = bulkMap.get(product.id)
-    const priceResult = getEffectivePrice({
-      unitType: orderUnit,
+    const priceResult = getEffectivePrices({
       product: {
         sell_per_unit: product.base_unit_price,
         sell_per_case: product.base_case_price,
@@ -361,7 +360,11 @@ export async function getLastOrderWithItems(params: {
       }
     })
 
-    if (!priceResult.price || priceResult.price <= 0) {
+    const selectedPrice = orderUnit === 'case'
+      ? priceResult.effective_case_price
+      : priceResult.effective_unit_price
+
+    if (!selectedPrice || selectedPrice <= 0) {
       skipped.push({
         product_id: product.id,
         name: product.name,
@@ -382,7 +385,9 @@ export async function getLastOrderWithItems(params: {
       name: product.name,
       qty,
       order_unit: orderUnit,
-      unit_price: priceResult.price,
+      unit_price: selectedPrice,
+      unit_price_snapshot: priceResult.effective_unit_price ?? selectedPrice,
+      case_price_snapshot: priceResult.effective_case_price ?? selectedPrice,
       units_per_case: unitsPerCase
     })
   }

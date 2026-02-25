@@ -12,6 +12,8 @@ type CartItem = {
     product_id: string;
     name: string;
     unit_price: number;
+    unit_price_snapshot?: number | null;
+    case_price_snapshot?: number | null;
     qty: number;
     order_unit: OrderMode;
     units_per_case?: number;
@@ -32,20 +34,57 @@ export function CartClient({ distributorId }: { distributorId: string }) {
     // Use scoped key
     const CART_KEY = `dv_cart_${distributorId}`
 
+    function parsePrice(value: unknown): number | null {
+        const n = typeof value === 'number' ? value : Number(value)
+        if (!Number.isFinite(n) || n <= 0) return null
+        return n
+    }
+
+    function normalizeCartItem(raw: any): CartItem {
+        const orderUnit: OrderMode = raw?.order_unit === 'case' ? 'case' : 'piece'
+        const unitsPerCase = Math.max(1, Math.floor(Number(raw?.units_per_case || 1)))
+
+        const legacySelectedPrice = parsePrice(raw?.unit_price)
+        let unitSnapshot = parsePrice(raw?.unit_price_snapshot)
+        let caseSnapshot = parsePrice(raw?.case_price_snapshot)
+
+        if (orderUnit === 'case') {
+            caseSnapshot = caseSnapshot ?? legacySelectedPrice
+            unitSnapshot = unitSnapshot ?? (caseSnapshot ? caseSnapshot / unitsPerCase : null)
+        } else {
+            unitSnapshot = unitSnapshot ?? legacySelectedPrice
+            caseSnapshot = caseSnapshot ?? (unitSnapshot ? unitSnapshot * unitsPerCase : null)
+        }
+
+        const selectedPrice = orderUnit === 'case' ? caseSnapshot : unitSnapshot
+
+        return {
+            ...raw,
+            order_unit: orderUnit,
+            units_per_case: unitsPerCase,
+            unit_price_snapshot: unitSnapshot,
+            case_price_snapshot: caseSnapshot,
+            unit_price: selectedPrice ?? legacySelectedPrice ?? 0
+        }
+    }
+
+    function getSelectedPrice(item: CartItem): number {
+        const isCase = item.order_unit === 'case'
+        if (isCase && item.case_price_snapshot && item.case_price_snapshot > 0) return item.case_price_snapshot
+        if (!isCase && item.unit_price_snapshot && item.unit_price_snapshot > 0) return item.unit_price_snapshot
+        return Number(item.unit_price || 0)
+    }
+
     useEffect(() => {
         if (!distributorId) return
         const raw = localStorage.getItem(CART_KEY)
         const cart = raw ? JSON.parse(raw) : { items: [] }
-        const cleanItems = (cart.items || []).map((i: any) => ({
-            ...i,
-            order_unit: i.order_unit || 'piece',
-            units_per_case: i.units_per_case || 1
-        }))
+        const cleanItems = (cart.items || []).map((i: any) => normalizeCartItem(i))
         setItems(cleanItems)
     }, [distributorId, CART_KEY])
 
     const total = useMemo(() => items.reduce((s, i) => {
-        return s + computeLineTotal(Number(i.qty), Number(i.unit_price))
+        return s + computeLineTotal(Number(i.qty), getSelectedPrice(i))
     }, 0), [items])
 
     function save(next: CartItem[]) {
@@ -181,8 +220,11 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                             {items.length ? (
                                 items.map((i, idx) => {
                                     const isCase = i.order_unit === 'case'
-                                    // unit_price is now the EXACT price for the selected order_unit
-                                    const lineTotal = computeLineTotal(i.qty, Number(i.unit_price))
+                                    const selectedPrice = getSelectedPrice(i)
+                                    const lineTotal = computeLineTotal(i.qty, selectedPrice)
+                                    const perUnitReference = isCase && i.case_price_snapshot && (i.units_per_case ?? 0) > 0
+                                        ? (i.case_price_snapshot / Number(i.units_per_case || 1))
+                                        : null
 
                                     return (
                                         <Card key={`${i.product_id}-${i.order_unit}-${idx}`}>
@@ -195,9 +237,12 @@ export function CartClient({ distributorId }: { distributorId: string }) {
                                                         </span>
                                                     </div>
                                                     <div className="text-sm text-slate-500">
-                                                        {formatPriceLabel(Number(i.unit_price), i.order_unit)}
+                                                        {formatPriceLabel(selectedPrice, i.order_unit)}
                                                         {isCase && (i.units_per_case ?? 0) > 0 && (
-                                                            <span className="ml-2 text-xs opacity-70">({i.units_per_case} units/case)</span>
+                                                            <span className="ml-2 text-xs opacity-70">
+                                                                ({i.units_per_case} units/case
+                                                                {perUnitReference ? ` • $${perUnitReference.toFixed(2)}/unit` : ''})
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </div>

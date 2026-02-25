@@ -32,9 +32,13 @@ export interface ProductPricing {
  * Guarantees a number or null if completely unpriced.
  * 
  * Hierarchy:
- * 1. Override for requested mode
- * 2. Base price for requested mode
- * 3. Null (no implicit unit/case conversion)
+ * 1. Vendor override for requested mode
+ * 2. Bulk override for requested mode (when supplied by caller)
+ * 3. Base product price for requested mode
+ *
+ * Notes:
+ * - Unit price can be derived from case price when units_per_case exists.
+ * - Case price is derived from unit price only for base product pricing.
  */
 export function getEffectivePrice(
     product: ProductPricing,

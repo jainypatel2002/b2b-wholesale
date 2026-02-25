@@ -4,6 +4,8 @@ export type CartStorageItem = {
   product_id: string
   name: string
   unit_price: number
+  unit_price_snapshot?: number
+  case_price_snapshot?: number
   qty: number
   order_unit: CartOrderUnit
   units_per_case?: number
@@ -45,6 +47,35 @@ function normalizeUnitsPerCase(value: unknown): number {
   return parsed ?? 1
 }
 
+function deriveSnapshotPair(
+  orderUnit: CartOrderUnit,
+  legacyPrice: number,
+  unitsPerCase: number,
+  rawUnitSnapshot: unknown,
+  rawCaseSnapshot: unknown
+): { unitSnapshot: number; caseSnapshot: number; selectedPrice: number } {
+  const parsedUnitSnapshot = toPositiveNumber(rawUnitSnapshot)
+  const parsedCaseSnapshot = toPositiveNumber(rawCaseSnapshot)
+
+  if (orderUnit === 'case') {
+    const caseSnapshot = parsedCaseSnapshot ?? legacyPrice
+    const unitSnapshot = parsedUnitSnapshot ?? (caseSnapshot / unitsPerCase)
+    return {
+      unitSnapshot: Math.round(unitSnapshot * 1_000_000) / 1_000_000,
+      caseSnapshot: Math.round(caseSnapshot * 1_000_000) / 1_000_000,
+      selectedPrice: caseSnapshot
+    }
+  }
+
+  const unitSnapshot = parsedUnitSnapshot ?? legacyPrice
+  const caseSnapshot = parsedCaseSnapshot ?? (unitSnapshot * unitsPerCase)
+  return {
+    unitSnapshot: Math.round(unitSnapshot * 1_000_000) / 1_000_000,
+    caseSnapshot: Math.round(caseSnapshot * 1_000_000) / 1_000_000,
+    selectedPrice: unitSnapshot
+  }
+}
+
 function normalizeCartLine(input: unknown): CartStorageItem | null {
   if (!input || typeof input !== 'object') return null
   const raw = input as Record<string, unknown>
@@ -57,16 +88,30 @@ function normalizeCartLine(input: unknown): CartStorageItem | null {
   const qty = toPositiveInteger(raw.qty)
   if (!qty) return null
 
-  const unitPrice = toPositiveNumber(raw.unit_price)
+  const legacyPrice = toPositiveNumber(raw.unit_price)
+  if (!legacyPrice) return null
+
+  const unitsPerCase = normalizeUnitsPerCase(raw.units_per_case)
+  const snapshots = deriveSnapshotPair(
+    orderUnit,
+    legacyPrice,
+    unitsPerCase,
+    raw.unit_price_snapshot,
+    raw.case_price_snapshot
+  )
+
+  const unitPrice = toPositiveNumber(snapshots.selectedPrice)
   if (!unitPrice) return null
 
   return {
     product_id: productId,
     name: normalizeName(raw.name),
     unit_price: unitPrice,
+    unit_price_snapshot: snapshots.unitSnapshot,
+    case_price_snapshot: snapshots.caseSnapshot,
     qty,
     order_unit: orderUnit,
-    units_per_case: normalizeUnitsPerCase(raw.units_per_case),
+    units_per_case: unitsPerCase,
     distributor_id: typeof raw.distributor_id === 'string' ? raw.distributor_id : undefined
   }
 }
@@ -102,6 +147,8 @@ export function addManyToCart(current: unknown[], incoming: unknown[]): CartStor
       ...existing,
       qty: mergedQty,
       unit_price: line.unit_price,
+      unit_price_snapshot: line.unit_price_snapshot ?? existing.unit_price_snapshot,
+      case_price_snapshot: line.case_price_snapshot ?? existing.case_price_snapshot,
       units_per_case: line.units_per_case ?? existing.units_per_case ?? 1,
       name: line.name || existing.name
     })

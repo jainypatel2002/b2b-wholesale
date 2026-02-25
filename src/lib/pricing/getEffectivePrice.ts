@@ -24,6 +24,8 @@ export type EffectivePriceInput = {
   unitType: UnitType
 }
 
+export type EffectivePricesInput = Omit<EffectivePriceInput, 'unitType'>
+
 export type ResolveEffectivePriceInput = Omit<EffectivePriceInput, 'unitType'> & {
   priceUnit: PriceUnit
 }
@@ -36,6 +38,16 @@ export type EffectivePriceResult = {
 export type RequiredEffectivePriceResult = {
   price: number
   source: Exclude<PriceSource, null>
+}
+
+export type EffectivePricesResult = {
+  effective_unit_price: number | null
+  effective_case_price: number | null
+  units_per_case: number
+  unit_source: PriceSource
+  case_source: PriceSource
+  unit_display: string | null
+  case_display: string | null
 }
 
 export class MissingEffectivePriceError extends Error {
@@ -91,12 +103,8 @@ function toPriceUnit(unitType: UnitType): PriceUnit {
   return unitType === 'case' ? 'case' : 'unit'
 }
 
-function pickPriceByUnit(layer: { unit: number | null; case: number | null }, unit: PriceUnit): number | null {
-  return unit === 'unit' ? layer.unit : layer.case
-}
-
 function roundEquivalent(value: number): number {
-  return Math.round(value * 10000) / 10000
+  return Math.round(value * 1_000_000) / 1_000_000
 }
 
 export function computeEquivalentUnit(casePrice: number, unitsPerCase: number): number | null {
@@ -109,21 +117,84 @@ export function computeEquivalentCase(unitPrice: number, unitsPerCase: number): 
   return roundEquivalent(unitPrice * unitsPerCase)
 }
 
-export function resolveEffectivePrice(input: ResolveEffectivePriceInput): EffectivePriceResult {
-  const product = normalizeProduct(input.product)
-  const vendor = normalizeLayer(input.vendorOverride, 'vendorOverride')
-  const bulk = normalizeLayer(input.bulkOverride, 'bulkOverride')
+function deriveMissingPrices(
+  layer: { unit: number | null; case: number | null },
+  unitsPerCase: number,
+  options: { deriveUnitFromCase: boolean; deriveCaseFromUnit: boolean }
+): { unit: number | null; case: number | null } {
+  const unit = layer.unit ?? (
+    options.deriveUnitFromCase && layer.case !== null
+      ? computeEquivalentUnit(layer.case, unitsPerCase)
+      : null
+  )
+  const casePrice = layer.case ?? (
+    options.deriveCaseFromUnit && layer.unit !== null
+      ? computeEquivalentCase(layer.unit, unitsPerCase)
+      : null
+  )
+  return { unit, case: casePrice }
+}
 
-  const vendorPrice = pickPriceByUnit(vendor, input.priceUnit)
+function toDisplayPrice(value: number | null): string | null {
+  if (value === null) return null
+  return value.toFixed(2)
+}
+
+function pickFirstPrice(
+  vendorPrice: number | null,
+  bulkPrice: number | null,
+  basePrice: number | null
+): EffectivePriceResult {
   if (vendorPrice !== null) return { price: vendorPrice, source: 'vendor_override' }
-
-  const bulkPrice = pickPriceByUnit(bulk, input.priceUnit)
   if (bulkPrice !== null) return { price: bulkPrice, source: 'bulk_override' }
-
-  const basePrice = pickPriceByUnit(product, input.priceUnit)
   if (basePrice !== null) return { price: basePrice, source: 'product_default' }
-
   return { price: null, source: null }
+}
+
+export function getEffectivePrices(input: EffectivePricesInput): EffectivePricesResult {
+  const product = normalizeProduct(input.product)
+  const vendorLayer = normalizeLayer(input.vendorOverride, 'vendorOverride')
+  const bulkLayer = normalizeLayer(input.bulkOverride, 'bulkOverride')
+
+  const vendor = deriveMissingPrices(vendorLayer, product.unitsPerCase, {
+    deriveUnitFromCase: true,
+    deriveCaseFromUnit: false
+  })
+  const bulk = deriveMissingPrices(bulkLayer, product.unitsPerCase, {
+    deriveUnitFromCase: true,
+    deriveCaseFromUnit: false
+  })
+  const base = deriveMissingPrices(product, product.unitsPerCase, {
+    deriveUnitFromCase: true,
+    deriveCaseFromUnit: true
+  })
+
+  const unit = pickFirstPrice(vendor.unit, bulk.unit, base.unit)
+  const casePrice = pickFirstPrice(vendor.case, bulk.case, base.case)
+
+  return {
+    effective_unit_price: unit.price,
+    effective_case_price: casePrice.price,
+    units_per_case: product.unitsPerCase,
+    unit_source: unit.source,
+    case_source: casePrice.source,
+    unit_display: toDisplayPrice(unit.price),
+    case_display: toDisplayPrice(casePrice.price)
+  }
+}
+
+export function resolveEffectivePrice(input: ResolveEffectivePriceInput): EffectivePriceResult {
+  const effective = getEffectivePrices({
+    product: input.product,
+    vendorOverride: input.vendorOverride,
+    bulkOverride: input.bulkOverride
+  })
+
+  if (input.priceUnit === 'unit') {
+    return { price: effective.effective_unit_price, source: effective.unit_source }
+  }
+
+  return { price: effective.effective_case_price, source: effective.case_source }
 }
 
 export function getEffectivePrice(input: EffectivePriceInput): EffectivePriceResult {

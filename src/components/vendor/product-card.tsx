@@ -58,14 +58,20 @@ export function ProductCard({
 
         if (existingIdx >= 0) {
             cart.items[existingIdx].qty += 1
+            cart.items[existingIdx].unit_price = currentPrice
+            cart.items[existingIdx].unit_price_snapshot = piecePrice
+            cart.items[existingIdx].case_price_snapshot = casePrice
+            cart.items[existingIdx].units_per_case = unitsPerCase
         } else {
             cart.items.push({
                 product_id: p.id,
                 name: p.name,
-                unit_price: currentPrice, // Now securely stores the TRUE price for the chosen unit
+                unit_price: currentPrice, // legacy selected-mode price
+                unit_price_snapshot: piecePrice,
+                case_price_snapshot: casePrice,
                 qty: 1,
                 order_unit: unit,
-                units_per_case: p.units_per_case,
+                units_per_case: unitsPerCase,
                 distributor_id: distributorId // Store context just in case
             })
         }

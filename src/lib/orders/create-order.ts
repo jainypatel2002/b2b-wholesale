@@ -1,7 +1,5 @@
 import {
-  getEffectivePrice,
-  getRequiredEffectivePrice,
-  MissingEffectivePriceError
+  getEffectivePrices
 } from '@/lib/pricing/getEffectivePrice'
 import { validateVendorNote } from '@/lib/orders/vendor-note'
 
@@ -272,40 +270,35 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
       }
     }
 
-    let unitPriceSnapshot: number
-    try {
-      const priceResult = getRequiredEffectivePrice({
-        ...pricingInput,
-        unitType: item.order_unit
-      })
-      unitPriceSnapshot = priceResult.price
-    } catch (error) {
-      if (error instanceof MissingEffectivePriceError && error.unitType === 'case') {
+    const effectivePrices = getEffectivePrices(pricingInput)
+    const unitPriceSnapshot = effectivePrices.effective_unit_price
+    const casePriceSnapshot = effectivePrices.effective_case_price
+    const selectedPrice = isCase ? casePriceSnapshot : unitPriceSnapshot
+
+    if (!Number.isFinite(selectedPrice) || Number(selectedPrice) <= 0) {
+      if (isCase) {
         return {
           ok: false,
           status: 400,
           error: `Set case price in inventory before ordering ${product.name} by case`
         }
       }
-
       return {
         ok: false,
         status: 400,
-        error: `Price is not configured for ${product.name}`
+        error: `Set unit price in inventory before ordering ${product.name} by unit`
       }
     }
 
-    if (!Number.isFinite(unitPriceSnapshot) || unitPriceSnapshot <= 0) {
-      return {
-        ok: false,
-        status: 400,
-        error: `Price is not configured for ${product.name}`
-      }
-    }
-
-    const casePriceSnapshot = isCase
-      ? unitPriceSnapshot
-      : getEffectivePrice({ ...pricingInput, unitType: 'case' }).price
+    const selectedPriceSnapshot = Number(selectedPrice)
+    const canonicalUnitPriceSnapshot = Number(
+      unitPriceSnapshot
+      ?? (casePriceSnapshot && unitsPerCase > 0 ? (casePriceSnapshot / unitsPerCase) : selectedPriceSnapshot)
+    )
+    const canonicalCasePriceSnapshot = Number(
+      casePriceSnapshot
+      ?? (unitPriceSnapshot ? (unitPriceSnapshot * unitsPerCase) : selectedPriceSnapshot)
+    )
 
     orderItemsData.push({
       product_id: product.id,
@@ -314,13 +307,13 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
       cases_qty: isCase ? item.qty : null,
       pieces_qty: isPiece ? item.qty : null,
       units_per_case_snapshot: unitsPerCase,
-      unit_price_snapshot: unitPriceSnapshot,
-      case_price_snapshot: casePriceSnapshot,
+      unit_price_snapshot: canonicalUnitPriceSnapshot,
+      case_price_snapshot: canonicalCasePriceSnapshot,
       total_pieces: totalPiecesRequired,
-      selling_price_at_time: unitPriceSnapshot,
+      selling_price_at_time: selectedPriceSnapshot,
       cost_price_at_time: product.cost_per_unit ?? product.cost_price ?? 0,
       qty: item.qty,
-      unit_price: unitPriceSnapshot,
+      unit_price: selectedPriceSnapshot,
       unit_cost: product.cost_per_unit ?? product.cost_price ?? 0
     })
   }

@@ -25,7 +25,12 @@ export default async function VendorPricingPage() {
                 name, 
                 sku, 
                 sell_per_unit,
+                sell_per_case,
                 sell_price, 
+                price_case,
+                allow_case,
+                allow_piece,
+                units_per_case,
                 stock_pieces,
                 category_id, 
                 category_node_id
@@ -46,7 +51,11 @@ export default async function VendorPricingPage() {
         id: p.id,
         name: p.name,
         sku: p.sku,
-        base_price: p.sell_per_unit ?? p.sell_price, // Canonical first, legacy fallback
+        base_unit_price: p.sell_per_unit ?? p.sell_price, // Canonical first, legacy fallback
+        base_case_price: p.sell_per_case ?? p.price_case,
+        allow_case: p.allow_case !== false,
+        allow_piece: p.allow_piece !== false,
+        units_per_case: p.units_per_case,
         stock_pieces: p.stock_pieces,
         category_id: p.category_id,
         category_node_id: p.category_node_id,
