@@ -29,7 +29,7 @@ async function requireVendorUser(supabase: any) {
 async function ensureLinkedDistributor(supabase: any, vendorId: string, distributorId: string) {
   const { data: link, error } = await supabase
     .from('distributor_vendors')
-    .select('id')
+    .select('vendor_id')
     .eq('vendor_id', vendorId)
     .eq('distributor_id', distributorId)
     .limit(1)
@@ -227,4 +227,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error?.message || 'Failed to save draft' }, { status: 500 })
   }
 }
-

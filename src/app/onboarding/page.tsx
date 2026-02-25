@@ -59,7 +59,7 @@ async function saveOnboarding(formData: FormData) {
   // Validate if link already exists
   const { data: existingLink } = await supabase
     .from('distributor_vendors')
-    .select('id')
+    .select('vendor_id')
     .eq('vendor_id', user.id)
     .eq('distributor_id', distributor_id)
     .single()

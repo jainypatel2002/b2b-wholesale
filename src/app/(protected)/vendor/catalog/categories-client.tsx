@@ -4,14 +4,16 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Search, ShoppingCart, AlertTriangle } from 'lucide-react'
+import { Search, ShoppingCart } from 'lucide-react'
 import { CategoryCard } from '@/components/vendor/category-card'
+import { CatalogScanControl } from '@/components/vendor/catalog-scan-control'
 
 interface CategoriesClientProps {
     categories: any[]
+    distributorId: string
 }
 
-export function CategoriesClient({ categories }: CategoriesClientProps) {
+export function CategoriesClient({ categories, distributorId }: CategoriesClientProps) {
     const [searchTerm, setSearchTerm] = useState('')
 
     const filteredCategories = useMemo(() => {
@@ -26,8 +28,8 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
         <div className="space-y-6">
             <div className="flex flex-col gap-4">
                 {/* Search & Cart Bar */}
-                <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-                    <div className="relative w-full max-w-md">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="relative w-full sm:max-w-md">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
                         <Input
                             type="search"
@@ -37,11 +39,14 @@ export function CategoriesClient({ categories }: CategoriesClientProps) {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    <Link href="/vendor/cart">
-                        <Button variant="outline" className="w-full sm:w-auto relative">
-                            <ShoppingCart className="mr-2 h-4 w-4" /> Go to Cart
-                        </Button>
-                    </Link>
+                    <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+                        <CatalogScanControl distributorId={distributorId} compactOnMobile />
+                        <Link href="/vendor/cart" className="flex-1 sm:flex-none">
+                            <Button variant="outline" className="w-full sm:w-auto relative">
+                                <ShoppingCart className="mr-2 h-4 w-4" /> Go to Cart
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
 
                 {/* Results Count */}

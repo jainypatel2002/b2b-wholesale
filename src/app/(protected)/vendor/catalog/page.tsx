@@ -112,7 +112,7 @@ export default async function VendorCatalogPage() {
         </Card>
       )}
 
-      <CategoriesClient categories={categories} />
+      <CategoriesClient categories={categories} distributorId={distributorId} />
     </div>
   )
 }
