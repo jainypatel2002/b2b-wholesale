@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { executeBulkPriceAdjustment, fetchScopeProductCount, fetchSampleProducts } from './actions'
 import type { PriceUnit } from '@/lib/pricing/types'
 import { parseNumericInput } from '@/lib/pricing/priceValidation'
+import { getPriceUnitForBulkTarget, type BulkPriceFieldTarget, type CanonicalBulkPriceFieldTarget } from '@/lib/pricing/bulkPriceTargets'
 
 type CategoryNode = { id: string; name: string; category_id: string; children: CategoryNode[] }
 type Category = { id: string; name: string; nodes: CategoryNode[] }
@@ -17,7 +18,7 @@ type Vendor = { id: string; name: string }
 
 type ApplyMode = 'base_only' | 'base_and_overrides' | 'overrides_only'
 type ChangeType = 'percent' | 'fixed' | 'set'
-type PriceField = 'sell_price' | 'price_case' | 'cost_price'
+type PriceField = BulkPriceFieldTarget
 
 const APPLY_MODE_INFO: Record<ApplyMode, { label: string; desc: string; color: string }> = {
     base_only: {
@@ -37,10 +38,33 @@ const APPLY_MODE_INFO: Record<ApplyMode, { label: string; desc: string; color: s
     }
 }
 
-const FIELD_LABELS: Record<PriceField, string> = {
-    sell_price: 'Sell Price (per unit)',
-    price_case: 'Sell Price (per case)',
-    cost_price: 'Cost Price'
+const FIELD_OPTIONS: { value: PriceField; label: string }[] = [
+    { value: 'SELL_UNIT', label: 'Sell Price (per unit)' },
+    { value: 'SELL_CASE', label: 'Sell Price (per case)' },
+    { value: 'COST', label: 'Cost Price' },
+    { value: 'COST_UNIT', label: 'Cost Price (Per Unit)' },
+    { value: 'COST_CASE', label: 'Cost Price (Per Case)' }
+]
+
+const FIELD_LABELS: Record<PriceField, string> = FIELD_OPTIONS.reduce((acc, item) => {
+    acc[item.value] = item.label
+    return acc
+}, {} as Record<PriceField, string>)
+
+function toCanonicalFieldTarget(field: PriceField): CanonicalBulkPriceFieldTarget {
+    return field === 'COST' ? 'COST_UNIT' : field
+}
+
+function toNumericValue(value: unknown): number {
+    const n = Number(value)
+    return Number.isFinite(n) ? n : 0
+}
+
+function getSamplePriceForField(product: any, field: CanonicalBulkPriceFieldTarget): number {
+    if (field === 'SELL_UNIT') return toNumericValue(product.sell_per_unit ?? product.sell_price)
+    if (field === 'SELL_CASE') return toNumericValue(product.sell_per_case ?? product.price_case)
+    if (field === 'COST_UNIT') return toNumericValue(product.cost_per_unit ?? product.cost_price)
+    return toNumericValue(product.cost_per_case ?? product.cost_case)
 }
 
 export function BulkPricingClient({
@@ -59,7 +83,7 @@ export function BulkPricingClient({
     const [selectedSubNodeId, setSelectedSubNodeId] = useState('')
 
     // Price adjustment
-    const [field, setField] = useState<PriceField>('sell_price')
+    const [field, setField] = useState<PriceField>('SELL_UNIT')
     const [changeType, setChangeType] = useState<ChangeType>('percent')
     const [value, setValue] = useState('')
 
@@ -95,7 +119,8 @@ export function BulkPricingClient({
             : selectedCategory?.name || ''
 
     const showVendorSection = applyMode !== 'base_only'
-    const priceUnit: PriceUnit = field === 'price_case' ? 'case' : 'unit'
+    const canonicalField = toCanonicalFieldTarget(field)
+    const priceUnit: PriceUnit = getPriceUnitForBulkTarget(canonicalField)
 
     const handleCategoryChange = (catId: string) => {
         setSelectedCategoryId(catId)
@@ -173,7 +198,7 @@ export function BulkPricingClient({
             vendorIds,
             changeType,
             value: parsedValue.value,
-            field,
+            fieldTarget: field,
             priceUnit
         })
 
@@ -294,8 +319,8 @@ export function BulkPricingClient({
                                 value={field}
                                 onChange={e => setField(e.target.value as PriceField)}
                             >
-                                {Object.entries(FIELD_LABELS).map(([k, v]) => (
-                                    <option key={k} value={k}>{v}</option>
+                                {FIELD_OPTIONS.map(option => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
                                 ))}
                             </select>
                         </div>
@@ -341,7 +366,7 @@ export function BulkPricingClient({
                                 </thead>
                                 <tbody className="divide-y">
                                     {sampleProducts.map(p => {
-                                        const currentPrice = Number(p[field] || 0)
+                                        const currentPrice = getSamplePriceForField(p, canonicalField)
                                         const newPrice = computeNewPrice(currentPrice)
                                         const diff = newPrice - currentPrice
                                         return (

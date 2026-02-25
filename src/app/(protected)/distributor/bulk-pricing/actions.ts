@@ -5,6 +5,13 @@ import { getDistributorContext } from '@/lib/data'
 import { revalidatePath } from 'next/cache'
 import type { PriceUnit } from '@/lib/pricing/types'
 import { parseNumericInput, parsePriceUnit } from '@/lib/pricing/priceValidation'
+import {
+    getPriceUnitForBulkTarget,
+    resolveBulkPriceFieldTarget,
+    toLegacyBulkPriceField,
+    type BulkPriceFieldTarget,
+    type LegacyBulkPriceField
+} from '@/lib/pricing/bulkPriceTargets'
 
 export async function executeBulkPriceAdjustment(params: {
     distributorId: string
@@ -16,7 +23,8 @@ export async function executeBulkPriceAdjustment(params: {
     vendorIds: string[] | null
     changeType: 'percent' | 'fixed' | 'set'
     value: number
-    field: 'sell_price' | 'price_case' | 'cost_price'
+    fieldTarget?: BulkPriceFieldTarget | LegacyBulkPriceField
+    field?: BulkPriceFieldTarget | LegacyBulkPriceField
     priceUnit: PriceUnit
 }) {
     try {
@@ -27,16 +35,24 @@ export async function executeBulkPriceAdjustment(params: {
             return { ok: false, error: 'Distributor mismatch' }
         }
 
+        const resolvedFieldTarget = resolveBulkPriceFieldTarget({
+            fieldTarget: params.fieldTarget,
+            field: params.field
+        })
+        if (!resolvedFieldTarget.ok) {
+            return { ok: false, error: resolvedFieldTarget.error }
+        }
+
         const parsedUnit = parsePriceUnit(params.priceUnit)
         if (!parsedUnit.ok) {
             return { ok: false, error: parsedUnit.error }
         }
 
-        const expectedUnit = params.field === 'price_case' ? 'case' : 'unit'
+        const expectedUnit = getPriceUnitForBulkTarget(resolvedFieldTarget.value)
         if (parsedUnit.value !== expectedUnit) {
             return {
                 ok: false,
-                error: `Invalid price unit for ${params.field}. Expected ${expectedUnit}.`
+                error: `Invalid price unit for ${resolvedFieldTarget.value}. Expected ${expectedUnit}.`
             }
         }
 
@@ -56,19 +72,22 @@ export async function executeBulkPriceAdjustment(params: {
             p_vendor_ids: params.vendorIds,
             p_change_type: params.changeType,
             p_value: parsedValue.value,
-            p_field: params.field,
+            p_field: toLegacyBulkPriceField(resolvedFieldTarget.value),
             p_price_unit: parsedUnit.value
         })
 
         if (error) {
             console.error('Bulk price adjustment RPC error:', error)
             if (error.code === 'PGRST202') {
-                return { ok: false, error: 'The bulk_adjust_prices function is not yet available. Please apply migration 20260309000001_bulk_price_unit_contract.sql in Supabase SQL Editor.' }
+                return { ok: false, error: 'The bulk_adjust_prices function is missing required parameters. Please apply migration 20260313000001_bulk_pricing_cost_targets.sql in Supabase SQL Editor.' }
             }
             return { ok: false, error: error.message }
         }
 
         if (data?.error) {
+            if (resolvedFieldTarget.value === 'COST_CASE' && data.error === 'Invalid field') {
+                return { ok: false, error: 'Cost Price (Per Case) requires migration 20260313000001_bulk_pricing_cost_targets.sql. Please apply it in Supabase SQL Editor.' }
+            }
             return { ok: false, error: data.error }
         }
 
@@ -138,7 +157,7 @@ export async function fetchSampleProducts(scopeType: 'category' | 'category_node
 
         let query = supabase
             .from('products')
-            .select('id, name, sku, sell_price, price_case, cost_price')
+            .select('id, name, sku, sell_price, price_case, cost_price, cost_case')
             .eq('distributor_id', distributorId)
             .is('deleted_at', null)
             .order('name', { ascending: true })
