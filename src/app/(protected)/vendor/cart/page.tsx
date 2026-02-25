@@ -5,8 +5,13 @@ import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 
-export default async function VendorCartPage() {
+export default async function VendorCartPage({
+  searchParams
+}: {
+  searchParams: Promise<{ resumeDraftId?: string }>
+}) {
   const { distributorId } = await getVendorContext({ strict: false })
+  const { resumeDraftId } = await searchParams
 
   if (!distributorId) {
     return (
@@ -24,5 +29,5 @@ export default async function VendorCartPage() {
     )
   }
 
-  return <CartClient distributorId={distributorId} />
+  return <CartClient distributorId={distributorId} initialResumeDraftId={resumeDraftId || null} />
 }
