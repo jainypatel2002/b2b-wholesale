@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScanLine, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -8,9 +9,7 @@ import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeSca
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { sanitizeBarcode } from '@/lib/utils/barcode'
 import {
-    addOrIncrementProductInCart,
-    readCartItemsFromStorage,
-    writeCartItemsToStorage
+    addProductToVendorCart
 } from '@/lib/vendor/cart-storage'
 import type { CartOrderUnit } from '@/lib/vendor/reorder'
 
@@ -49,6 +48,7 @@ export function CatalogScanControl({
     const [scanStatus, setScanStatus] = useState<ScannerStatus>('idle')
     const [scanStatusMessage, setScanStatusMessage] = useState('')
     const [lastScannedCode, setLastScannedCode] = useState('')
+    const [lastAddedProductName, setLastAddedProductName] = useState('')
     const [scanMatches, setScanMatches] = useState<BarcodeMatch[]>([])
     const [cameraOpen, setCameraOpen] = useState(false)
     const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
@@ -63,6 +63,7 @@ export function CatalogScanControl({
         setScanMode(true)
         setScanStatus('ready')
         setScanStatusMessage('Ready for scanner input')
+        setLastAddedProductName('')
     }, [])
 
     const closeCamera = useCallback(() => {
@@ -88,30 +89,40 @@ export function CatalogScanControl({
         setScanMode(false)
         setScanStatus('idle')
         setScanStatusMessage('')
+        setLastAddedProductName('')
         setScanMatches([])
     }, [closeCamera])
 
     const addScannedProductToCart = useCallback((match: BarcodeMatch, requestedUnit?: CartOrderUnit) => {
-        const orderUnit: CartOrderUnit = requestedUnit
-            ? requestedUnit
-            : (match.allow_piece ? 'piece' : 'case')
+        const result = addProductToVendorCart({
+            distributorId,
+            product: match,
+            requestedUnit,
+            qty: 1
+        })
+        if (!result.ok) {
+            if (result.reason === 'invalid_distributor') {
+                toast.error('No distributor context found. Please refresh.')
+                return false
+            }
 
-        if (orderUnit === 'piece' && !match.allow_piece) {
-            toast.error(`${match.name} cannot be ordered by unit`)
-            return
-        }
-        if (orderUnit === 'case' && !match.allow_case) {
-            toast.error(`${match.name} cannot be ordered by case`)
-            return
+            if (result.reason === 'unit_not_allowed') {
+                toast.error(`${match.name} cannot be ordered by ${requestedUnit === 'case' ? 'case' : 'unit'}`)
+                return false
+            }
+
+            if (result.reason === 'price_unavailable') {
+                toast.error(`Price is not available for ${match.name}`)
+                return false
+            }
+
+            toast.error(`Could not add ${match.name}. Please try again.`)
+            return false
         }
 
-        const existing = readCartItemsFromStorage(distributorId)
-        const next = addOrIncrementProductInCart(existing, match, orderUnit, 1).map((line) => ({
-            ...line,
-            distributor_id: distributorId
-        }))
-        writeCartItemsToStorage(distributorId, next)
+        setLastAddedProductName(match.name)
         toast.success(`Added: ${match.name}`)
+        return true
     }, [distributorId])
 
     const handleBarcodeDetected = useCallback(async (rawCode: string) => {
@@ -123,6 +134,7 @@ export function CatalogScanControl({
         scanLockUntilRef.current = now + 800
 
         setLastScannedCode(barcode)
+        setLastAddedProductName('')
         setScanMatches([])
         setScanStatus('searching')
         setScanStatusMessage(`Looking up ${barcode}...`)
@@ -151,9 +163,9 @@ export function CatalogScanControl({
             }
 
             if (matches.length === 1) {
-                addScannedProductToCart(matches[0])
-                setScanStatus('found')
-                setScanStatusMessage(`Added: ${matches[0].name}`)
+                const added = addScannedProductToCart(matches[0])
+                setScanStatus(added ? 'found' : 'error')
+                setScanStatusMessage(added ? `Added: ${matches[0].name}` : `Could not add ${matches[0].name} to cart`)
                 return
             }
 
@@ -323,6 +335,15 @@ export function CatalogScanControl({
                                         Last code: <span className="font-mono">{lastScannedCode}</span>
                                     </div>
                                 )}
+                                {lastAddedProductName && (
+                                    <div className="mt-3">
+                                        <Link href="/vendor/cart" onClick={closeScanModal}>
+                                            <Button type="button" size="sm" variant="outline">
+                                                Go to cart
+                                            </Button>
+                                        </Link>
+                                    </div>
+                                )}
                             </div>
 
                             {scanMatches.length > 1 && (
@@ -342,7 +363,12 @@ export function CatalogScanControl({
                                                         <Button
                                                             size="sm"
                                                             variant="outline"
-                                                            onClick={() => addScannedProductToCart(match, 'piece')}
+                                                            onClick={() => {
+                                                                const added = addScannedProductToCart(match, 'piece')
+                                                                if (!added) return
+                                                                setScanStatus('found')
+                                                                setScanStatusMessage(`Added: ${match.name}`)
+                                                            }}
                                                         >
                                                             + Unit
                                                         </Button>
@@ -351,7 +377,12 @@ export function CatalogScanControl({
                                                         <Button
                                                             size="sm"
                                                             variant="outline"
-                                                            onClick={() => addScannedProductToCart(match, 'case')}
+                                                            onClick={() => {
+                                                                const added = addScannedProductToCart(match, 'case')
+                                                                if (!added) return
+                                                                setScanStatus('found')
+                                                                setScanStatusMessage(`Added: ${match.name}`)
+                                                            }}
                                                         >
                                                             + Case
                                                         </Button>

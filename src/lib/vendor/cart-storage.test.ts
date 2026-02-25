@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  addProductToVendorCart,
   addOrIncrementProductInCart,
   decrementProductInCart,
   getCartItemQuantity,
@@ -75,3 +76,38 @@ test('getCartItemQuantity returns unit-specific quantity', () => {
   assert.equal(getCartItemQuantity(seeded, PRODUCT_A, 'piece'), 5)
 })
 
+test('addProductToVendorCart uses canonical add flow and returns updated cart items', () => {
+  const result = addProductToVendorCart({
+    distributorId: 'dist-1',
+    product: BASE_PRODUCT,
+    existingItems: []
+  })
+
+  assert.equal(result.ok, true)
+  if (!result.ok) return
+
+  assert.equal(result.orderUnit, 'piece')
+  assert.equal(result.items.length, 1)
+  assert.equal(result.items[0].qty, 1)
+  assert.equal(result.items[0].distributor_id, 'dist-1')
+})
+
+test('addProductToVendorCart reports pricing failure when no effective price exists', () => {
+  const result = addProductToVendorCart({
+    distributorId: 'dist-1',
+    product: {
+      ...BASE_PRODUCT,
+      sell_per_unit: null,
+      sell_per_case: null,
+      override_unit_price: null,
+      override_case_price: null
+    },
+    existingItems: []
+  })
+
+  assert.equal(result.ok, false)
+  if (result.ok) return
+
+  assert.equal(result.reason, 'price_unavailable')
+  assert.equal(result.items.length, 0)
+})

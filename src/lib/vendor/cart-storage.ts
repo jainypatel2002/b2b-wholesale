@@ -6,6 +6,69 @@ export type CartLikeProduct = ProductPricing & {
   name: string
 }
 
+export type CartAddFailureReason =
+  | 'invalid_distributor'
+  | 'unit_not_allowed'
+  | 'price_unavailable'
+  | 'line_rejected'
+
+export type AddProductToVendorCartResult =
+  | {
+      ok: true
+      items: CartStorageItem[]
+      orderUnit: CartOrderUnit
+    }
+  | {
+      ok: false
+      items: CartStorageItem[]
+      orderUnit: CartOrderUnit | null
+      reason: CartAddFailureReason
+    }
+
+function canOrderByUnit(product: CartLikeProduct, orderUnit: CartOrderUnit): boolean {
+  if (orderUnit === 'piece') return product.allow_piece !== false
+  return product.allow_case !== false
+}
+
+function hasValidPrice(product: CartLikeProduct, orderUnit: CartOrderUnit): boolean {
+  const price = getEffectivePrice(product, orderUnit)
+  return !!price && price > 0
+}
+
+function resolveOrderUnit(
+  product: CartLikeProduct,
+  requestedUnit?: CartOrderUnit
+): { orderUnit: CartOrderUnit | null; reason: CartAddFailureReason | null } {
+  if (requestedUnit) {
+    if (!canOrderByUnit(product, requestedUnit)) {
+      return { orderUnit: null, reason: 'unit_not_allowed' }
+    }
+
+    if (!hasValidPrice(product, requestedUnit)) {
+      return { orderUnit: null, reason: 'price_unavailable' }
+    }
+
+    return { orderUnit: requestedUnit, reason: null }
+  }
+
+  const pieceAllowed = canOrderByUnit(product, 'piece')
+  const caseAllowed = canOrderByUnit(product, 'case')
+
+  if (pieceAllowed && hasValidPrice(product, 'piece')) {
+    return { orderUnit: 'piece', reason: null }
+  }
+
+  if (caseAllowed && hasValidPrice(product, 'case')) {
+    return { orderUnit: 'case', reason: null }
+  }
+
+  if (!pieceAllowed && !caseAllowed) {
+    return { orderUnit: null, reason: 'unit_not_allowed' }
+  }
+
+  return { orderUnit: null, reason: 'price_unavailable' }
+}
+
 export function getCartStorageKey(distributorId: string): string {
   return `dv_cart_${distributorId}`
 }
@@ -94,6 +157,68 @@ export function addOrIncrementProductInCart(
   return addManyToCart(normalized, [line])
 }
 
+export function addProductToVendorCart({
+  distributorId,
+  product,
+  requestedUnit,
+  qty = 1,
+  existingItems
+}: {
+  distributorId: string
+  product: CartLikeProduct
+  requestedUnit?: CartOrderUnit
+  qty?: number
+  existingItems?: unknown
+}): AddProductToVendorCartResult {
+  if (!distributorId) {
+    const fallbackItems = existingItems === undefined ? [] : normalizeCartItems(existingItems)
+    return {
+      ok: false,
+      items: fallbackItems,
+      orderUnit: null,
+      reason: 'invalid_distributor'
+    }
+  }
+
+  const source = existingItems === undefined
+    ? readCartItemsFromStorage(distributorId)
+    : normalizeCartItems(existingItems)
+
+  const { orderUnit, reason } = resolveOrderUnit(product, requestedUnit)
+  if (!orderUnit) {
+    return {
+      ok: false,
+      items: source,
+      orderUnit: null,
+      reason: reason ?? 'line_rejected'
+    }
+  }
+
+  const addQty = Math.max(1, Math.floor(Number(qty) || 1))
+  const beforeQty = getCartItemQuantity(source, product.id, orderUnit)
+  const next = addOrIncrementProductInCart(source, product, orderUnit, addQty).map((line) => ({
+    ...line,
+    distributor_id: distributorId
+  }))
+  const saved = writeCartItemsToStorage(distributorId, next)
+  const afterQty = getCartItemQuantity(saved, product.id, orderUnit)
+
+  if (afterQty <= beforeQty) {
+    return {
+      ok: false,
+      items: saved,
+      orderUnit,
+      reason: 'line_rejected'
+    }
+  }
+
+  return {
+    ok: true,
+    items: saved,
+    orderUnit
+  }
+}
+
 export function decrementProductInCart(
   existingItems: unknown,
   productId: string,
@@ -112,4 +237,3 @@ export function decrementProductInCart(
 
   return normalizeCartItems(next)
 }
-

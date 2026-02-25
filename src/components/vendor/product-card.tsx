@@ -10,7 +10,7 @@ import { computeEquivalentCase } from '@/lib/pricing/getEffectivePrice'
 import { computeUnitPrice, formatMoney } from '@/lib/pricing/display'
 import { toast } from 'sonner'
 import {
-    addOrIncrementProductInCart,
+    addProductToVendorCart,
     decrementProductInCart,
     getCartItemQuantity,
     readCartItemsFromStorage,
@@ -62,23 +62,34 @@ export function ProductCard({
     )
 
     function addToCart() {
-        if (!distributorId) {
-            toast.error('No distributor context found. Please refresh.')
+        const result = addProductToVendorCart({
+            distributorId,
+            product: p,
+            requestedUnit: unit,
+            qty: 1,
+            existingItems: cartItems.length > 0 ? cartItems : undefined
+        })
+        if (!result.ok) {
+            if (result.reason === 'invalid_distributor') {
+                toast.error('No distributor context found. Please refresh.')
+                return
+            }
+
+            if (result.reason === 'unit_not_allowed') {
+                toast.error(`${p.name} cannot be ordered by ${unit === 'case' ? 'case' : 'unit'}`)
+                return
+            }
+
+            if (result.reason === 'price_unavailable') {
+                toast.error(`Price for ${unit === 'case' ? 'cases' : 'units'} is not available.`)
+                return
+            }
+
+            toast.error(`Could not add ${p.name}. Please try again.`)
             return
         }
 
-        if (currentPrice === null || currentPrice <= 0) {
-            toast.error(`Price for ${unit === 'case' ? 'cases' : 'units'} is not available.`)
-            return
-        }
-
-        const sourceItems = cartItems.length > 0 ? cartItems : readCartItemsFromStorage(distributorId)
-        const next = addOrIncrementProductInCart(sourceItems, p, unit, 1).map((line) => ({
-            ...line,
-            distributor_id: distributorId
-        }))
-        const saved = writeCartItemsToStorage(distributorId, next)
-        onCartItemsChange?.(saved)
+        onCartItemsChange?.(result.items)
 
         if (!quickAddMode) {
             toast.success(`Added ${p.name}`)
