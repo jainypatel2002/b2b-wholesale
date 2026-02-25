@@ -18,8 +18,8 @@ export default async function InventoryPage() {
 
   // Try full query including lock columns; fall back if schema is stale
   let products: any[] | null = null
-  const fullSelect = 'id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)'
-  const fallbackSelect = 'id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,categories(name),category_nodes(name)'
+  const fullSelect = 'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)'
+  const fallbackSelect = 'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,categories(name),category_nodes(name)'
 
   const { data, error } = await supabase
     .from('products')

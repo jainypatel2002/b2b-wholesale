@@ -5,8 +5,9 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Plus, Star } from 'lucide-react'
-import { getEffectivePrice, formatPriceLabel } from '@/lib/pricing-engine'
-import { computeEquivalentCase, computeEquivalentUnit } from '@/lib/pricing/getEffectivePrice'
+import { getEffectivePrice } from '@/lib/pricing-engine'
+import { computeEquivalentCase } from '@/lib/pricing/getEffectivePrice'
+import { computeUnitPrice, formatMoney } from '@/lib/pricing/display'
 
 type ProductCardProps = {
     product: any
@@ -33,8 +34,9 @@ export function ProductCard({
     const piecePrice = getEffectivePrice(p, 'piece')
     const casePrice = getEffectivePrice(p, 'case')
     const unitsPerCase = Number(p.units_per_case ?? 1)
-    const equivalentUnit = casePrice !== null ? computeEquivalentUnit(casePrice, unitsPerCase) : null
     const equivalentCase = piecePrice !== null ? computeEquivalentCase(piecePrice, unitsPerCase) : null
+    const displayUnitPrice = piecePrice ?? (casePrice !== null ? computeUnitPrice(casePrice, unitsPerCase) : null)
+    const showCasePrimary = p.allow_case && casePrice !== null && casePrice > 0
 
     // Determine the current price based on the mode
     const currentPrice = unit === 'case' ? casePrice : piecePrice
@@ -112,9 +114,27 @@ export function ProductCard({
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0 flex-grow">
-                {currentPrice !== null && currentPrice > 0 ? (
-                    <div className="mt-2 text-2xl font-bold text-slate-900">
-                        {formatPriceLabel(currentPrice, unit)}
+                {showCasePrimary ? (
+                    <div className="mt-2">
+                        <div className="text-2xl font-bold text-slate-900">
+                            {formatMoney(casePrice)}/case
+                        </div>
+                        {displayUnitPrice !== null && displayUnitPrice > 0 && (
+                            <div className="text-xs text-slate-500">
+                                {formatMoney(displayUnitPrice)}/unit
+                            </div>
+                        )}
+                    </div>
+                ) : displayUnitPrice !== null && displayUnitPrice > 0 ? (
+                    <div className="mt-2">
+                        <div className="text-2xl font-bold text-slate-900">
+                            {formatMoney(displayUnitPrice)}/unit
+                        </div>
+                        {equivalentCase !== null && equivalentCase > 0 && (
+                            <div className="text-xs text-slate-500">
+                                {formatMoney(equivalentCase)}/case (derived)
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="mt-2 text-lg font-medium text-red-500">
@@ -123,33 +143,8 @@ export function ProductCard({
                 )}
 
                 <p className="text-xs text-slate-500 mb-3">
-                    {unit === 'case' ? `Pack of ${p.units_per_case ?? 1}` : 'Single unit'}
-                    {unit === 'case' && equivalentUnit !== null && casePrice !== null && casePrice > 0 && (
-                        <span className="block mt-0.5 opacity-80">
-                            (${equivalentUnit.toFixed(2)} / item eq.)
-                        </span>
-                    )}
+                    {unit === 'case' ? `Ordering by case (${p.units_per_case ?? 1}/case)` : 'Ordering by unit'}
                 </p>
-
-                <div className="mb-3 text-xs text-slate-500 space-y-1">
-                    {p.allow_piece && (
-                        <div>
-                            {piecePrice !== null && piecePrice > 0
-                                ? `$${piecePrice.toFixed(2)} / unit`
-                                : 'Set unit price in inventory'}
-                        </div>
-                    )}
-                    {p.allow_case && (
-                        <div>
-                            {casePrice !== null && casePrice > 0
-                                ? `$${casePrice.toFixed(2)} / case`
-                                : 'Set case price in inventory'}
-                            {casePrice === null && equivalentCase !== null && equivalentCase > 0 && (
-                                <span className="ml-1 opacity-80">(${equivalentCase.toFixed(2)} / case eq.)</span>
-                            )}
-                        </div>
-                    )}
-                </div>
 
                 {showToggle && (
                     <div className="flex rounded-md shadow-sm" role="group">

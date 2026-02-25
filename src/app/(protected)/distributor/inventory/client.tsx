@@ -12,6 +12,7 @@ import type { ScanStatus } from '@/components/scanner/BarcodeScannerPanel'
 import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeScannerModal'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { createClient } from '@/lib/supabase/client'
+import { formatMoney, resolveCaseUnitPrices } from '@/lib/pricing/display'
 
 interface Category {
     id: string
@@ -30,6 +31,8 @@ interface Product {
     sku: string | null
     cost_price: number | null
     sell_price: number | null
+    cost_per_unit?: number | null
+    sell_per_unit?: number | null
     stock_qty: number
     category_id: string | null
     category_node_id: string | null
@@ -46,6 +49,8 @@ interface Product {
     // Pricing Mode Fields
     cost_case?: number | null
     price_case?: number | null
+    cost_per_case?: number | null
+    sell_per_case?: number | null
     cost_mode?: 'unit' | 'case'
     price_mode?: 'unit' | 'case'
     stock_mode?: 'pieces' | 'cases'
@@ -191,7 +196,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             const supabase = createClient()
             const { data, error } = await supabase
                 .from('products')
-                .select('id,name,sku,barcode,cost_price,sell_price,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,category_id,category_node_id,cost_case,price_case,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)')
+                .select('id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,category_id,category_node_id,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)')
                 .eq('distributor_id', distributorId)
                 .eq('barcode', barcode)
                 .is('deleted_at', null)
@@ -582,6 +587,27 @@ function ProductGroup({ title, products, onEdit, onDelete }: { title: string, pr
     )
 }
 
+function getPriceDisplay(product: Product, kind: 'cost' | 'sell') {
+    const resolved = kind === 'cost'
+        ? resolveCaseUnitPrices({
+            casePrice: product.cost_per_case ?? product.cost_case,
+            unitPrice: product.cost_per_unit ?? product.cost_price,
+            unitsPerCase: product.units_per_case
+        })
+        : resolveCaseUnitPrices({
+            casePrice: product.sell_per_case ?? product.price_case,
+            unitPrice: product.sell_per_unit ?? product.sell_price,
+            unitsPerCase: product.units_per_case
+        })
+
+    const showCasePrimary = product.allow_case !== false && resolved.casePrice !== null
+    return {
+        primary: showCasePrimary ? resolved.casePrice : resolved.unitPrice,
+        primarySuffix: showCasePrimary ? '/case' : '/unit',
+        secondaryUnit: showCasePrimary ? resolved.unitPrice : null
+    }
+}
+
 function ProductList({ products, onEdit, onDelete }: { products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
     if (!products.length) return <p className="py-4 text-center text-sm italic text-slate-500">No products in this category.</p>
 
@@ -601,6 +627,8 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
             <TableBody>
                 {products.map((p) => {
                     const isLow = (p.stock_pieces ?? 0) <= (p.low_stock_threshold ?? 5)
+                    const costDisplay = getPriceDisplay(p, 'cost')
+                    const sellDisplay = getPriceDisplay(p, 'sell')
                     return (
                         <TableRow key={p.id}>
                             <TableCell className="font-medium">
@@ -613,17 +641,39 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
                             <TableCell className="font-mono text-xs text-slate-500">{p.sku || '-'}</TableCell>
                             <TableCell>
                                 <div className="flex flex-col">
-                                    <span>${Number(p.cost_price || 0).toFixed(2)}</span>
-                                    {p.allow_case && p.cost_case != null && Number(p.cost_case) > 0 && (
-                                        <span className="text-[10px] text-slate-400">${Number(p.cost_case).toFixed(2)}/case</span>
+                                    {costDisplay.primary !== null ? (
+                                        <>
+                                            <span className="text-base font-semibold text-slate-900">
+                                                {formatMoney(costDisplay.primary)}
+                                            </span>
+                                            {costDisplay.secondaryUnit !== null && (
+                                                <span className="text-xs text-slate-500">{formatMoney(costDisplay.secondaryUnit)}/unit</span>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <span className="text-xs text-slate-400">Not set</span>
+                                    )}
+                                    {costDisplay.primary !== null && (
+                                        <span className="text-[10px] uppercase tracking-wide text-slate-400">{costDisplay.primarySuffix}</span>
                                     )}
                                 </div>
                             </TableCell>
                             <TableCell>
                                 <div className="flex flex-col">
-                                    <span>${Number(p.sell_price || 0).toFixed(2)}</span>
-                                    {p.allow_case && p.price_case != null && Number(p.price_case) > 0 && (
-                                        <span className="text-[10px] text-slate-400">${Number(p.price_case).toFixed(2)}/case</span>
+                                    {sellDisplay.primary !== null ? (
+                                        <>
+                                            <span className="text-base font-semibold text-slate-900">
+                                                {formatMoney(sellDisplay.primary)}
+                                            </span>
+                                            {sellDisplay.secondaryUnit !== null && (
+                                                <span className="text-xs text-slate-500">{formatMoney(sellDisplay.secondaryUnit)}/unit</span>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <span className="text-xs text-slate-400">Not set</span>
+                                    )}
+                                    {sellDisplay.primary !== null && (
+                                        <span className="text-[10px] uppercase tracking-wide text-slate-400">{sellDisplay.primarySuffix}</span>
                                     )}
                                 </div>
                             </TableCell>
@@ -668,6 +718,8 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
         <div className="divide-y divide-slate-100/80">
             {products.map((p) => {
                 const isLow = (p.stock_pieces ?? 0) <= (p.low_stock_threshold ?? 5)
+                const costDisplay = getPriceDisplay(p, 'cost')
+                const sellDisplay = getPriceDisplay(p, 'sell')
                 return (
                     <div key={p.id} className="flex flex-col gap-2 p-4">
                         <div className="flex justify-between items-start">
@@ -689,9 +741,33 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
 
                         <div className="grid grid-cols-2 gap-2 text-sm mt-1">
                             <div>
-                                <span className="text-xs text-slate-500 block">Price</span>
-                                <span className="font-medium">${Number(p.sell_price).toFixed(2)}</span>
+                                <span className="text-xs text-slate-500 block">Cost</span>
+                                {costDisplay.primary !== null ? (
+                                    <div className="leading-tight">
+                                        <span className="font-semibold text-slate-900">{formatMoney(costDisplay.primary)}</span>
+                                        {costDisplay.secondaryUnit !== null && (
+                                            <span className="text-[11px] text-slate-500 block">{formatMoney(costDisplay.secondaryUnit)}/unit</span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <span className="text-xs text-slate-400">Not set</span>
+                                )}
                             </div>
+                            <div>
+                                <span className="text-xs text-slate-500 block">Price</span>
+                                {sellDisplay.primary !== null ? (
+                                    <div className="leading-tight">
+                                        <span className="font-semibold text-slate-900">{formatMoney(sellDisplay.primary)}</span>
+                                        {sellDisplay.secondaryUnit !== null && (
+                                            <span className="text-[11px] text-slate-500 block">{formatMoney(sellDisplay.secondaryUnit)}/unit</span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <span className="text-xs text-slate-400">Not set</span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 text-sm">
                             <div>
                                 <span className="text-xs text-slate-500 block">Stock</span>
                                 <div className="flex items-center gap-2 mt-0.5">
@@ -1054,13 +1130,14 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                             className="pl-7"
                         />
                     </div>
-                    {/* Calculation Helper */}
-                    <p className="text-xs text-slate-500 text-right">
-                        {costMode === 'unit'
-                            ? `~ $${getCostPerCase().toFixed(2)} per case`
-                            : `~ $${getCostPerUnit().toFixed(2)} per unit`
-                        }
-                    </p>
+                    <div className="rounded-md border border-slate-200 bg-slate-50/70 px-3 py-2">
+                        <div className="text-sm font-semibold text-slate-900">
+                            {formatMoney(getCostPerCase())}/case
+                        </div>
+                        <div className="text-xs text-slate-500">
+                            {formatMoney(getCostPerUnit())}/unit
+                        </div>
+                    </div>
                 </div>
 
                 {/* Sell Price */}
@@ -1095,13 +1172,14 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                             className="pl-7"
                         />
                     </div>
-                    {/* Calculation Helper */}
-                    <p className="text-xs text-slate-500 text-right">
-                        {priceMode === 'unit'
-                            ? `~ $${getSellPerCase().toFixed(2)} per case`
-                            : `~ $${getSellPerUnit().toFixed(2)} per unit`
-                        }
-                    </p>
+                    <div className="rounded-md border border-slate-200 bg-slate-50/70 px-3 py-2">
+                        <div className="text-sm font-semibold text-slate-900">
+                            {formatMoney(getSellPerCase())}/case
+                        </div>
+                        <div className="text-xs text-slate-500">
+                            {formatMoney(getSellPerUnit())}/unit
+                        </div>
+                    </div>
                 </div>
             </div>
 

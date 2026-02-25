@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Search, Loader2, RotateCcw, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { fetchOverrides, saveOverride, removeOverride } from './actions'
+import { formatMoney, resolveCaseUnitPrices } from '@/lib/pricing/display'
 
 type Vendor = { id: string, name: string }
 type Product = {
@@ -202,8 +203,14 @@ function ProductRow({
 }) {
     const targetUnit: 'unit' | 'case' = product.allow_case ? 'case' : 'unit'
     const unitsPerCase = Math.max(1, Math.floor(Number(product.units_per_case || 1)))
-    const baseUnitPrice = product.base_unit_price
-    const baseCasePrice = product.base_case_price ?? (baseUnitPrice == null ? null : baseUnitPrice * unitsPerCase)
+    const baseResolved = resolveCaseUnitPrices({
+        casePrice: product.base_case_price,
+        unitPrice: product.base_unit_price,
+        unitsPerCase
+    })
+    const baseUnitPrice = baseResolved.unitPrice
+    const baseCasePrice = baseResolved.casePrice
+    const showCasePrimary = product.allow_case && baseCasePrice !== null
 
     const savedValue = targetUnit === 'case'
         ? (override?.price_per_case ?? override?.price_per_unit ?? null)
@@ -273,10 +280,20 @@ function ProductRow({
             </td>
             <td className="px-4 py-3 font-mono text-xs text-slate-500">{product.sku || '-'}</td>
             <td className="px-4 py-3 text-slate-600">
-                ${Number(basePrice ?? 0).toFixed(2)}
-                <span className="ml-2 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] uppercase text-slate-500">
-                    {targetUnit}
-                </span>
+                {showCasePrimary && baseCasePrice !== null ? (
+                    <div className="leading-tight">
+                        <div className="font-semibold text-slate-900">{formatMoney(baseCasePrice)}/case</div>
+                        {baseUnitPrice !== null && (
+                            <div className="text-xs text-slate-500">{formatMoney(baseUnitPrice)}/unit</div>
+                        )}
+                    </div>
+                ) : baseUnitPrice !== null ? (
+                    <div className="leading-tight">
+                        <div className="font-semibold text-slate-900">{formatMoney(baseUnitPrice)}/unit</div>
+                    </div>
+                ) : (
+                    <span className="text-xs text-slate-400">Not set</span>
+                )}
             </td>
             <td className="px-4 py-3">
                 <div className="relative max-w-[120px]">

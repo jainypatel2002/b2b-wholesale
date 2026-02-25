@@ -64,7 +64,7 @@ export async function executeBulkPriceAdjustment(params: {
             return { ok: false, error: parsedValue.error }
         }
 
-        const { data, error } = await supabase.rpc('bulk_adjust_prices', {
+        const rpcPayload = {
             p_distributor_id: distributorId,
             p_scope_type: params.scope.type,
             p_scope_id: params.scope.id,
@@ -74,12 +74,14 @@ export async function executeBulkPriceAdjustment(params: {
             p_value: parsedValue.value,
             p_field: toLegacyBulkPriceField(resolvedFieldTarget.value),
             p_price_unit: parsedUnit.value
-        })
+        }
+
+        const { data, error } = await supabase.rpc('bulk_adjust_prices_atomic', rpcPayload)
 
         if (error) {
             console.error('Bulk price adjustment RPC error:', error)
             if (error.code === 'PGRST202') {
-                return { ok: false, error: 'The bulk_adjust_prices function is missing required parameters. Please apply migration 20260313000001_bulk_pricing_cost_targets.sql in Supabase SQL Editor.' }
+                return { ok: false, error: 'The bulk_adjust_prices_atomic function is missing. Please apply migration 20260315000001_bulk_case_unit_sync.sql in Supabase SQL Editor.' }
             }
             return { ok: false, error: error.message }
         }
@@ -157,7 +159,7 @@ export async function fetchSampleProducts(scopeType: 'category' | 'category_node
 
         let query = supabase
             .from('products')
-            .select('id, name, sku, sell_price, price_case, cost_price, cost_case')
+            .select('id, name, sku, sell_price, price_case, cost_price, cost_case, sell_per_unit, sell_per_case, cost_per_unit, cost_per_case')
             .eq('distributor_id', distributorId)
             .is('deleted_at', null)
             .order('name', { ascending: true })

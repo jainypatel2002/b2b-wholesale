@@ -99,6 +99,15 @@ export function CategoryProductsClient({
     const filteredProducts = useMemo(() => {
         let result = products
 
+        const getPrimaryCasePrice = (product: any) => {
+            const unitsPerCase = Math.max(1, Number(product.units_per_case || 1))
+            const casePrice = Number(product.sell_per_case)
+            if (Number.isFinite(casePrice)) return casePrice
+            const unitPrice = Number(product.sell_per_unit)
+            if (Number.isFinite(unitPrice)) return unitPrice * unitsPerCase
+            return 0
+        }
+
         if (favoritesOnly) {
             result = result.filter((p: any) => favoriteIds.has(p.id))
         }
@@ -127,9 +136,9 @@ export function CategoryProductsClient({
         result = [...result].sort((a, b) => {
             switch (sortOrder) {
                 case 'price_asc':
-                    return (a.sell_per_unit || 0) - (b.sell_per_unit || 0)
+                    return getPrimaryCasePrice(a) - getPrimaryCasePrice(b)
                 case 'price_desc':
-                    return (b.sell_per_unit || 0) - (a.sell_per_unit || 0)
+                    return getPrimaryCasePrice(b) - getPrimaryCasePrice(a)
                 case 'name_asc':
                 default:
                     return a.name.localeCompare(b.name)

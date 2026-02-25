@@ -7,8 +7,8 @@ import { Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { getEffectivePrice, formatPriceLabel } from '@/lib/pricing-engine'
+import { getEffectivePrice } from '@/lib/pricing-engine'
+import { computeUnitPrice, formatMoney } from '@/lib/pricing/display'
 import { createDistributorOrderAction, fetchVendorOrderOverrides } from './actions'
 
 type OrderUnit = 'piece' | 'case'
@@ -408,6 +408,9 @@ export function DistributorCreateOrderClient({
                 const selectedPrice = draft.order_unit === 'case' ? casePrice : piecePrice
                 const canAdd = selectedPrice !== null && selectedPrice > 0
                 const unitsPerCase = Number(product.units_per_case || 1)
+                const derivedUnitFromCase = casePrice === null ? null : computeUnitPrice(casePrice, unitsPerCase)
+                const displayUnitPrice = piecePrice ?? derivedUnitFromCase
+                const showCasePrimary = product.allow_case && casePrice !== null && casePrice > 0
 
                 return (
                   <div key={product.id} className="border rounded-lg p-3">
@@ -419,20 +422,27 @@ export function DistributorCreateOrderClient({
                           {product.categories?.name ? ` • ${product.categories.name}` : ''}
                           {product.category_nodes?.name ? ` • ${product.category_nodes.name}` : ''}
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {product.allow_piece && (
-                            <Badge variant="secondary" className="font-normal">
-                              {piecePrice !== null && piecePrice > 0
-                                ? formatPriceLabel(piecePrice, 'piece')
-                                : 'Unit price missing'}
-                            </Badge>
-                          )}
-                          {product.allow_case && (
-                            <Badge variant="secondary" className="font-normal">
-                              {casePrice !== null && casePrice > 0
-                                ? `${formatPriceLabel(casePrice, 'case')} (${unitsPerCase}/case)`
-                                : 'Case price missing'}
-                            </Badge>
+                        <div className="mt-2">
+                          {showCasePrimary ? (
+                            <div className="leading-tight">
+                              <div className="text-lg font-semibold text-slate-900">
+                                {formatMoney(casePrice)}/case
+                              </div>
+                              {displayUnitPrice !== null && displayUnitPrice > 0 && (
+                                <div className="text-xs text-slate-500">
+                                  {formatMoney(displayUnitPrice)}/unit
+                                </div>
+                              )}
+                              <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                                {unitsPerCase}/case
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-slate-500">
+                              {displayUnitPrice !== null && displayUnitPrice > 0
+                                ? `${formatMoney(displayUnitPrice)}/unit`
+                                : 'Pricing not configured'}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -490,15 +500,29 @@ export function DistributorCreateOrderClient({
                 <div className="space-y-3">
                   {cart.map((line, index) => {
                     const lineTotal = line.qty * line.unit_price
+                    const casePrice = line.order_unit === 'case'
+                      ? line.unit_price
+                      : (line.units_per_case > 0 ? line.unit_price * line.units_per_case : null)
+                    const unitPrice = line.order_unit === 'piece'
+                      ? line.unit_price
+                      : computeUnitPrice(line.unit_price, line.units_per_case)
                     return (
                       <div key={`${line.product_id}-${line.order_unit}`} className="border rounded-md p-2">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <div className="text-sm font-medium">{line.name}</div>
-                            <div className="text-xs text-slate-500">
-                              {formatPriceLabel(line.unit_price, line.order_unit)}
-                              {line.order_unit === 'case' && line.units_per_case > 0 ? ` • ${line.units_per_case}/case` : ''}
-                            </div>
+                            {casePrice !== null ? (
+                              <div className="text-xs leading-tight">
+                                <div className="font-medium text-slate-700">{formatMoney(casePrice)}/case</div>
+                                {unitPrice !== null && (
+                                  <div className="text-slate-500">
+                                    {formatMoney(unitPrice)}/unit
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-slate-500">{formatMoney(unitPrice)}/unit</div>
+                            )}
                           </div>
                           <Button
                             variant="ghost"
