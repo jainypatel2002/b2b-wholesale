@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useMemo, useRef, useCallback } from 'react'
-import { Search, Plus, Edit, Package } from 'lucide-react'
+import React, { useState, useMemo, useRef, useCallback, useEffect, useActionState } from 'react'
+import { useFormStatus } from 'react-dom'
+import { AlertCircle, ChevronDown, ChevronUp, Edit, Package, Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -12,7 +13,9 @@ import type { ScanStatus } from '@/components/scanner/BarcodeScannerPanel'
 import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeScannerModal'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { createClient } from '@/lib/supabase/client'
+import { deleteProduct, createProductAction, updateProductAction } from './actions'
 import { formatMoney, resolveCaseUnitPrices } from '@/lib/pricing/display'
+import { filterCategoryNodesForCategory, isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
 
 interface Category {
     id: string
@@ -481,6 +484,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                                 defaultValues={editingProduct}
                                 categories={categories}
                                 categoryNodes={categoryNodes}
+                                distributorId={distributorId}
                                 type="edit"
                                 onCancel={() => {
                                     modalRef.current?.close()
@@ -503,6 +507,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                         <ProductForm
                             categories={categories}
                             categoryNodes={categoryNodes}
+                            distributorId={distributorId}
                             type="add"
                             onCancel={() => { addModalRef.current?.close(); setPendingScannedBarcode(null) }}
                             pendingScannedBarcode={pendingScannedBarcode}
@@ -553,8 +558,6 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
         </div>
     )
 }
-
-import { ChevronDown, ChevronUp } from 'lucide-react'
 
 function ProductGroup({ title, products, onEdit, onDelete }: { title: string, products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
     const [isOpen, setIsOpen] = useState(true)
@@ -784,20 +787,12 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
     )
 }
 
-// @ts-ignore
-import { useFormStatus } from 'react-dom'
-import { createProductAction, updateProductAction, deleteProduct } from './actions'
-import { useEffect, useActionState } from 'react' // Import useActionState from react
-import { AlertCircle, Trash2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-
-// ... (other imports)
-
 // ProductForm Component using useActionState
-function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel, pendingScannedBarcode }: {
-    defaultValues?: any,
-    categories: any[],
-    categoryNodes: any[],
+function ProductForm({ defaultValues, categories, categoryNodes, distributorId, type, onCancel, pendingScannedBarcode }: {
+    defaultValues?: Product,
+    categories: Category[],
+    categoryNodes: CategoryNode[],
+    distributorId: string,
     type: 'add' | 'edit',
     onCancel: () => void,
     pendingScannedBarcode?: string | null
@@ -835,8 +830,24 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
     const unitsPerCase = Math.max(1, Number(unitsPerCaseInput || 1))
 
     // Subcategory logic
-    const [selectedCategory, setSelectedCategory] = useState(defaultValues?.category_id || '')
-    const [selectedSubcategory, setSelectedSubcategory] = useState(defaultValues?.category_node_id || '')
+    const [selectedCategory, setSelectedCategory] = useState(String(defaultValues?.category_id ?? ''))
+    const [selectedSubcategory, setSelectedSubcategory] = useState(String(defaultValues?.category_node_id ?? ''))
+    const [subcategoryCacheByCategory, setSubcategoryCacheByCategory] = useState<Record<string, CategoryNode[]>>(() => {
+        const initialCategoryId = String(defaultValues?.category_id ?? '').trim()
+        if (!initialCategoryId) return {}
+        return {
+            [initialCategoryId]: filterCategoryNodesForCategory(categoryNodes, initialCategoryId) as CategoryNode[],
+        }
+    })
+    const [subcategoryNotice, setSubcategoryNotice] = useState<string | null>(null)
+    const [subcategoryWarning, setSubcategoryWarning] = useState<string | null>(null)
+    const [subcategoryLoadError, setSubcategoryLoadError] = useState<string | null>(null)
+    const [clientFormError, setClientFormError] = useState<string | null>(null)
+    const hasInitialCategoryOptions = filterCategoryNodesForCategory(categoryNodes, String(defaultValues?.category_id ?? '')).length > 0
+    const [isSubcategoryLoading, setIsSubcategoryLoading] = useState(Boolean(defaultValues?.category_id) && !hasInitialCategoryOptions)
+    const latestSubcategoryFetchRef = useRef(0)
+    const fetchedSubcategoryCategoriesRef = useRef<Set<string>>(new Set())
+    const supabase = useMemo(() => createClient(), [])
 
     // Pricing Modes
     const [costMode, setCostMode] = useState<'unit' | 'case'>(defaultValues?.cost_mode || 'unit')
@@ -865,8 +876,8 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
     // Derive initial stock input based on mode
     const initialCanonicalStock = defaultValues?.stock_pieces || defaultValues?.stock_qty || 0
     const initialStockInput = useMemo(() => {
-        if (defaultValues?.stock_mode === 'cases' && defaultValues.units_per_case > 1) {
-            return String(initialCanonicalStock / defaultValues.units_per_case)
+        if (defaultValues?.stock_mode === 'cases' && (defaultValues.units_per_case ?? 0) > 1) {
+            return String(initialCanonicalStock / (defaultValues.units_per_case ?? 1))
         }
         return String(initialCanonicalStock)
     }, [defaultValues])
@@ -956,20 +967,169 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
         return val * Math.max(1, unitsPerCase)
     }
 
-    // Filter subcategories based on selected category
-    const availableSubcategories = categoryNodes.filter(s => s.category_id === selectedCategory)
+    const availableSubcategories = useMemo(() => {
+        if (!selectedCategory) return []
+        const cached = subcategoryCacheByCategory[selectedCategory] ?? []
+        const fallback = filterCategoryNodesForCategory(categoryNodes, selectedCategory) as CategoryNode[]
+        const source = cached.length > 0 ? cached : fallback
 
-    // Reset subcategory when category changes (but not on initial load)
+        // Defensive filter: keep options scoped even if stale or overly broad rows ever leak in.
+        return filterCategoryNodesForCategory(source, selectedCategory) as CategoryNode[]
+    }, [categoryNodes, selectedCategory, subcategoryCacheByCategory])
+
+    const knownSubcategoriesById = useMemo(() => {
+        const map = new Map<string, CategoryNode>()
+        for (const node of categoryNodes) {
+            map.set(node.id, node)
+        }
+        for (const nodes of Object.values(subcategoryCacheByCategory)) {
+            for (const node of nodes) {
+                map.set(node.id, node)
+            }
+        }
+        return map
+    }, [categoryNodes, subcategoryCacheByCategory])
+
+    useEffect(() => {
+        if (!selectedCategory) {
+            setIsSubcategoryLoading(false)
+            setSubcategoryLoadError(null)
+            return
+        }
+
+        if (fetchedSubcategoryCategoriesRef.current.has(selectedCategory)) {
+            return
+        }
+
+        let active = true
+        const requestId = ++latestSubcategoryFetchRef.current
+        const hasCachedEntries = (subcategoryCacheByCategory[selectedCategory]?.length ?? 0) > 0
+        if (!hasCachedEntries) {
+            setIsSubcategoryLoading(true)
+        }
+        setSubcategoryLoadError(null)
+
+        void (async () => {
+            const { data, error } = await supabase
+                .from('category_nodes')
+                .select('id,name,category_id')
+                .eq('distributor_id', distributorId)
+                .eq('category_id', selectedCategory)
+                .order('name', { ascending: true })
+
+            if (!active || requestId !== latestSubcategoryFetchRef.current) {
+                return
+            }
+
+            setIsSubcategoryLoading(false)
+
+            if (error) {
+                setSubcategoryLoadError('Unable to load sub-categories right now.')
+                if (process.env.NODE_ENV !== 'production') {
+                    console.error('[Inventory] Failed to fetch sub-categories', {
+                        selectedCategory,
+                        error,
+                    })
+                }
+                return
+            }
+
+            const scoped = filterCategoryNodesForCategory((data ?? []) as CategoryNode[], selectedCategory) as CategoryNode[]
+            setSubcategoryCacheByCategory(prev => ({
+                ...prev,
+                [selectedCategory]: scoped,
+            }))
+            fetchedSubcategoryCategoriesRef.current.add(selectedCategory)
+        })()
+
+        return () => {
+            active = false
+        }
+    }, [distributorId, selectedCategory, subcategoryCacheByCategory, supabase])
+
+    useEffect(() => {
+        if (!selectedSubcategory) return
+        if (!selectedCategory) {
+            setSelectedSubcategory('')
+            if (type === 'edit') {
+                setSubcategoryWarning('Saved sub-category no longer matches a selected category. Please re-select.')
+            } else {
+                setSubcategoryNotice('Sub-category cleared because category changed.')
+            }
+            return
+        }
+        if (isSubcategoryLoading) return
+
+        const stillValid = availableSubcategories.some(node => node.id === selectedSubcategory)
+        if (stillValid) return
+
+        setSelectedSubcategory('')
+        if (type === 'edit') {
+            setSubcategoryWarning('Saved sub-category no longer belongs to the selected category. Please re-select.')
+        } else {
+            setSubcategoryNotice('Sub-category cleared because category changed.')
+        }
+        if (process.env.NODE_ENV !== 'production') {
+            console.warn('[Inventory] Cleared invalid sub-category selection', {
+                selectedCategory,
+                selectedSubcategory,
+                type,
+            })
+        }
+    }, [availableSubcategories, isSubcategoryLoading, selectedCategory, selectedSubcategory, type])
+
     const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const newVal = e.target.value
+        if (newVal === selectedCategory) return
+
         setSelectedCategory(newVal)
-        if (newVal !== defaultValues?.category_id) {
+        setClientFormError(null)
+        setSubcategoryLoadError(null)
+        setSubcategoryWarning(null)
+
+        if (!selectedSubcategory) {
+            setSubcategoryNotice(null)
+            return
+        }
+
+        const selectedNode = knownSubcategoriesById.get(selectedSubcategory)
+        const stillMatches = isCategoryNodeInCategory(selectedNode, newVal)
+        if (!stillMatches) {
             setSelectedSubcategory('')
+            setSubcategoryNotice('Sub-category cleared because category changed.')
+            return
+        }
+
+        setSubcategoryNotice(null)
+    }
+
+    const handleSubcategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        setSelectedSubcategory(e.target.value)
+        setClientFormError(null)
+        setSubcategoryNotice(null)
+        setSubcategoryWarning(null)
+    }
+
+    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        setClientFormError(null)
+        if (!selectedSubcategory) return
+
+        if (!selectedCategory) {
+            e.preventDefault()
+            setClientFormError('Select a category before selecting a sub-category.')
+            return
+        }
+
+        const selectedNode = availableSubcategories.find(node => node.id === selectedSubcategory)
+        const isValid = isCategoryNodeInCategory(selectedNode, selectedCategory)
+        if (!isValid) {
+            e.preventDefault()
+            setClientFormError('Selected sub-category does not belong to the selected category.')
         }
     }
 
     const serverAction = type === 'edit' ? updateProductAction : createProductAction
-    const [state, formAction, isPending] = useActionState(serverAction, { success: false, error: null })
+    const [state, formAction] = useActionState(serverAction, { success: false, error: null })
 
     useEffect(() => {
         if (state.success) {
@@ -978,15 +1138,15 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
     }, [state.success, onCancel])
 
     return (
-        <form action={formAction} className="space-y-4 p-5">
-            {state.error && (
+        <form action={formAction} onSubmit={handleSubmit} className="space-y-4 p-5">
+            {(clientFormError || state.error) && (
                 <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
                     <AlertCircle className="h-4 w-4" />
-                    {state.error}
+                    {clientFormError || state.error}
                 </div>
             )}
 
-            {type === 'edit' && <input type="hidden" name="id" value={defaultValues.id} />}
+            {type === 'edit' && <input type="hidden" name="id" value={defaultValues?.id || ''} />}
 
             {/* Hidden fields to pass canonical values and modes to server */}
             <input type="hidden" name="cost_mode" value={costMode} />
@@ -1038,7 +1198,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                             className="form-select"
                         >
                             <option value="">Uncategorized</option>
-                            {categories.map((c: any) => (
+                            {categories.map((c) => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                         </select>
@@ -1052,15 +1212,35 @@ function ProductForm({ defaultValues, categories, categoryNodes, type, onCancel,
                 <select
                     name="category_node_id"
                     value={selectedSubcategory}
-                    onChange={(e) => setSelectedSubcategory(e.target.value)}
-                    disabled={!selectedCategory || availableSubcategories.length === 0}
+                    onChange={handleSubcategoryChange}
+                    disabled={!selectedCategory || isSubcategoryLoading}
                     className="form-select disabled:bg-slate-100/80"
                 >
-                    <option value="">{availableSubcategories.length === 0 ? 'No subcategories available' : 'Select Subcategory (Optional)'}</option>
-                    {availableSubcategories.map((s: any) => (
+                    <option value="">
+                        {!selectedCategory
+                            ? 'Select a category first'
+                            : isSubcategoryLoading
+                                ? 'Loading subcategories...'
+                                : availableSubcategories.length === 0
+                                    ? 'No subcategories available'
+                                    : 'Select Subcategory (Optional)'}
+                    </option>
+                    {availableSubcategories.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                 </select>
+                {!selectedCategory && (
+                    <p className="text-xs text-slate-500">Select a category first.</p>
+                )}
+                {subcategoryNotice && (
+                    <p className="text-xs text-amber-700">{subcategoryNotice}</p>
+                )}
+                {subcategoryWarning && (
+                    <p className="text-xs font-medium text-amber-700">{subcategoryWarning}</p>
+                )}
+                {subcategoryLoadError && (
+                    <p className="text-xs text-red-600">{subcategoryLoadError}</p>
+                )}
             </div>
 
             {/* Ordering Configuration */}

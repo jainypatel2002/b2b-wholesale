@@ -3,12 +3,52 @@
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
 import { revalidatePath } from 'next/cache'
-import { updateProduct as originalUpdateProduct } from '@/app/actions/distributor'
+import { isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
 
 export type InventoryActionState = {
     success?: boolean
     error?: string | null
     details?: any
+}
+
+type InventorySupabaseClient = Awaited<ReturnType<typeof createClient>>
+
+async function validateCategoryNodeSelection({
+    supabase,
+    distributorId,
+    categoryId,
+    categoryNodeId,
+}: {
+    supabase: InventorySupabaseClient
+    distributorId: string
+    categoryId: string | null
+    categoryNodeId: string | null
+}): Promise<InventoryActionState | null> {
+    if (!categoryNodeId) return null
+    if (!categoryId) {
+        return { error: 'Select a category before selecting a sub-category.' }
+    }
+
+    // Verified in schema/migrations: products.category_node_id references category_nodes.id,
+    // and category_nodes.category_id references categories.id.
+    const { data, error } = await supabase
+        .from('category_nodes')
+        .select('id,category_id')
+        .eq('id', categoryNodeId)
+        .eq('distributor_id', distributorId)
+        .limit(1)
+        .maybeSingle()
+
+    if (error) {
+        console.error('validateCategoryNodeSelection Error:', error)
+        return { error: 'Unable to validate selected sub-category. Please try again.' }
+    }
+
+    if (!data || !isCategoryNodeInCategory(data, categoryId)) {
+        return { error: 'Selected sub-category does not belong to the selected category.' }
+    }
+
+    return null
 }
 
 export async function deleteProduct(productId: string) {
@@ -82,6 +122,14 @@ export async function createProductAction(
         if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
 
         const supabase = await createClient()
+        const categoryNodeValidation = await validateCategoryNodeSelection({
+            supabase,
+            distributorId,
+            categoryId: category_id,
+            categoryNodeId: category_node_id,
+        })
+        if (categoryNodeValidation) return categoryNodeValidation
+
         const { error } = await supabase.from('products').insert({
             distributor_id: distributorId,
             category_id,
@@ -183,6 +231,14 @@ export async function updateProductAction(
         if (!Number.isFinite(sell_price) || !Number.isFinite(stock_pieces)) return { error: 'Invalid numeric input' }
         if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
         if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
+
+        const categoryNodeValidation = await validateCategoryNodeSelection({
+            supabase,
+            distributorId,
+            categoryId: category_id,
+            categoryNodeId: category_node_id,
+        })
+        if (categoryNodeValidation) return categoryNodeValidation
 
         // Build update payload — only include cost/price fields when they have values
         // This prevents bulk pricing (which only updates sell_price) from zeroing cost
