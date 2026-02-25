@@ -7,7 +7,6 @@ import { Loader2 } from 'lucide-react'
 import { resolveDistributor } from './actions'
 import { CopyButton } from '@/components/ui/copy-button'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
 
 interface OnboardingFormProps {
     submitAction: (formData: FormData) => Promise<void>
@@ -15,6 +14,7 @@ interface OnboardingFormProps {
 
 export function OnboardingForm({ submitAction }: OnboardingFormProps) {
     const [role, setRole] = useState('distributor')
+    const [distributorSignupCode, setDistributorSignupCode] = useState('')
     const [code, setCode] = useState('')
     const [useUuid, setUseUuid] = useState(false)
     const [resolvedDistributor, setResolvedDistributor] = useState<any>(null)
@@ -80,6 +80,9 @@ export function OnboardingForm({ submitAction }: OnboardingFormProps) {
                     onChange={(e) => {
                         setRole(e.target.value)
                         setResolvedDistributor(null)
+                        if (e.target.value !== 'distributor') {
+                            setDistributorSignupCode('')
+                        }
                     }}
                 >
                     <option value="distributor">Distributor</option>
@@ -87,6 +90,20 @@ export function OnboardingForm({ submitAction }: OnboardingFormProps) {
                 </select>
                 <p className="mt-1 text-xs text-slate-500">If you pick Vendor, you must link to a distributor below.</p>
             </div>
+
+            {role === 'distributor' && (
+                <div className="space-y-2">
+                    <label className="text-sm font-medium">Distributor Signup Code</label>
+                    <Input
+                        name="distributor_signup_code"
+                        placeholder="Enter your distributor signup code"
+                        className="font-mono uppercase"
+                        value={distributorSignupCode}
+                        onChange={(e) => setDistributorSignupCode(e.target.value.toUpperCase())}
+                    />
+                    <p className="text-xs text-slate-500">Required for first-time distributor activation.</p>
+                </div>
+            )}
 
             {role === 'vendor' && (
                 <div className="space-y-4 rounded-lg border border-slate-200 p-4 bg-slate-50">

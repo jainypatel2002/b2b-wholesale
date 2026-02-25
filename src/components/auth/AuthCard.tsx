@@ -18,9 +18,11 @@ interface AuthCardProps {
   password: string
   loading: boolean
   role: string
+  signupCode: string
   onEmailChange: (value: string) => void
   onPasswordChange: (value: string) => void
   onRoleChange: (value: string) => void
+  onSignupCodeChange: (value: string) => void
   onSignIn: () => Promise<void>
   onSignUp: () => Promise<void>
 }
@@ -35,15 +37,18 @@ export function AuthCard({
   password,
   loading,
   role,
+  signupCode,
   onEmailChange,
   onPasswordChange,
   onRoleChange,
+  onSignupCodeChange,
   onSignIn,
   onSignUp,
 }: AuthCardProps) {
   const prefersReducedMotion = usePrefersReducedMotion()
   const canAnimate = !prefersReducedMotion
   const [activeTab, setActiveTab] = useState<AuthTab>('sign-in')
+  const requiresDistributorCode = activeTab === 'sign-up' && role === 'distributor'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -151,6 +156,22 @@ export function AuthCard({
               className="space-y-3"
             >
               <RoleSelector onSelect={onRoleChange} initialRole={role} />
+              {role === 'distributor' ? (
+                <div className="space-y-1.5">
+                  <label htmlFor="distributor-signup-code" className="text-sm font-medium text-white/85">
+                    Distributor Signup Code
+                  </label>
+                  <Input
+                    id="distributor-signup-code"
+                    type="text"
+                    autoComplete="off"
+                    className="h-11 border-white/22 bg-white/[0.11] font-mono uppercase text-white placeholder:text-white/45 focus-visible:border-white/45 focus-visible:ring-white/35 focus-visible:ring-offset-0"
+                    placeholder="Enter your invite code"
+                    value={signupCode}
+                    onChange={(event) => onSignupCodeChange(event.target.value.toUpperCase())}
+                  />
+                </div>
+              ) : null}
               <p className="-mt-3 text-xs text-white/72">
                 {role === 'distributor' ? 'Distributor Portal' : 'Vendor Portal'}
               </p>
@@ -164,7 +185,7 @@ export function AuthCard({
               className="sr-only"
             />
 
-            <Button type="submit" className="h-11 w-full" disabled={loading}>
+            <Button type="submit" className="h-11 w-full" disabled={loading || (requiresDistributorCode && !signupCode.trim())}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
               {activeTab === 'sign-in' ? 'Sign in' : `Create account (${role})`}
             </Button>
