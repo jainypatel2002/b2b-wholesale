@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/client'
 import { deleteProduct, createProductAction, updateProductAction } from './actions'
 import { formatMoney, resolveCaseUnitPrices } from '@/lib/pricing/display'
 import { filterCategoryNodesForCategory, isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
+import { normalizeBarcode } from '@/lib/utils/barcode'
 
 interface Category {
     id: string
@@ -60,6 +61,78 @@ interface Product {
     stock_locked?: boolean
     locked_stock_qty?: number | null
     barcode?: string | null
+    barcodes?: ProductBarcode[]
+}
+
+interface ProductBarcode {
+    id: string
+    barcode: string
+    is_primary: boolean
+    created_at?: string
+}
+
+type BarcodeDraft = {
+    id: string
+    value: string
+    isPrimary: boolean
+}
+
+function createBarcodeDraft(value: string, isPrimary = false): BarcodeDraft {
+    const normalized = normalizeBarcode(value)
+    return {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        value: normalized || value.trim(),
+        isPrimary,
+    }
+}
+
+function normalizeBarcodeDrafts(drafts: BarcodeDraft[]): Array<{ barcode: string; isPrimary: boolean }> {
+    const normalized: Array<{ barcode: string; isPrimary: boolean }> = []
+    const seen = new Set<string>()
+
+    for (const draft of drafts) {
+        const barcode = normalizeBarcode(draft.value)
+        if (!barcode || seen.has(barcode)) continue
+        seen.add(barcode)
+        normalized.push({ barcode, isPrimary: draft.isPrimary })
+    }
+
+    if (normalized.length === 0) return []
+    const primary = normalized.find((entry) => entry.isPrimary)?.barcode ?? normalized[0].barcode
+    return normalized.map((entry) => ({ barcode: entry.barcode, isPrimary: entry.barcode === primary }))
+}
+
+function buildInitialBarcodeDrafts(defaultValues?: Product, pendingScannedBarcode?: string | null): BarcodeDraft[] {
+    const source: string[] = []
+
+    if (Array.isArray(defaultValues?.barcodes) && defaultValues?.barcodes.length > 0) {
+        const sorted = [...defaultValues.barcodes].sort((a, b) => {
+            if (a.is_primary && !b.is_primary) return -1
+            if (!a.is_primary && b.is_primary) return 1
+            return a.barcode.localeCompare(b.barcode)
+        })
+        source.push(...sorted.map((entry) => entry.barcode))
+    } else if (defaultValues?.barcode) {
+        source.push(defaultValues.barcode)
+    }
+
+    if (pendingScannedBarcode) {
+        source.unshift(pendingScannedBarcode)
+    }
+
+    const drafts: BarcodeDraft[] = []
+    const seen = new Set<string>()
+    for (const value of source) {
+        const normalized = normalizeBarcode(value)
+        if (!normalized || seen.has(normalized)) continue
+        seen.add(normalized)
+        drafts.push(createBarcodeDraft(normalized, drafts.length === 0))
+    }
+
+    if (drafts.length === 0) return []
+    drafts[0].isPrimary = true
+    for (let i = 1; i < drafts.length; i += 1) drafts[i].isPrimary = false
+    return drafts
 }
 
 interface InventoryClientProps {
@@ -116,6 +189,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                 p.name.toLowerCase().includes(lowerTerm) ||
                 (p.sku && p.sku.toLowerCase().includes(lowerTerm)) ||
                 (p.barcode && p.barcode.toLowerCase().includes(lowerTerm)) ||
+                (p.barcodes && p.barcodes.some((entry) => entry.barcode.toLowerCase().includes(lowerTerm))) ||
                 (p.categories?.name && p.categories.name.toLowerCase().includes(lowerTerm)) ||
                 (p.category_nodes?.name && p.category_nodes.name.toLowerCase().includes(lowerTerm))
             )
@@ -176,13 +250,25 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
 
     // ── Barcode Scan Handler ──
     const handleBarcodeScan = useCallback(async (barcode: string) => {
+        const normalizedBarcode = normalizeBarcode(barcode)
+        if (!normalizedBarcode || normalizedBarcode.length < 6) {
+            setScanStatus('error')
+            setScanStatusMessage('Invalid barcode scan')
+            setTimeout(() => {
+                if (scanMode) { setScanStatus('ready'); setScanStatusMessage('') }
+            }, 2500)
+            return
+        }
+
         setScanStatus('searching')
-        setScanStatusMessage(`Looking up ${barcode}…`)
+        setScanStatusMessage(`Looking up ${normalizedBarcode}…`)
 
         try {
             // First check in-memory (already loaded products)
             const localMatch = initialProducts.find(
-                p => p.barcode?.toLowerCase() === barcode.toLowerCase()
+                p =>
+                    p.barcode?.toLowerCase() === normalizedBarcode.toLowerCase()
+                    || p.barcodes?.some((entry) => entry.barcode.toLowerCase() === normalizedBarcode.toLowerCase())
             )
 
             if (localMatch) {
@@ -195,42 +281,31 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                 return
             }
 
-            // Also check server (in case page data is stale)
-            const supabase = createClient()
-            const { data, error } = await supabase
-                .from('products')
-                .select('id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,category_id,category_node_id,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)')
-                .eq('distributor_id', distributorId)
-                .eq('barcode', barcode)
-                .is('deleted_at', null)
-                .limit(1)
-                .maybeSingle()
+            const response = await fetch(
+                `/api/distributor/inventory/barcode?barcode=${encodeURIComponent(normalizedBarcode)}`,
+                { method: 'GET', cache: 'no-store' }
+            )
+            const payload = await response.json().catch(() => ({}))
 
-            if (error) {
-                console.error('Barcode lookup error:', error)
+            if (!response.ok) {
+                console.error('Distributor barcode lookup error:', payload)
                 setScanStatus('error')
-                setScanStatusMessage('Lookup failed. Try again.')
+                setScanStatusMessage(payload?.error || 'Lookup failed. Try again.')
                 setTimeout(() => {
                     if (scanMode) { setScanStatus('ready'); setScanStatusMessage('') }
                 }, 3000)
                 return
             }
 
-            if (data) {
-                // Format the product data
-                const product: Product = {
-                    ...data,
-                    stock_qty: data.stock_qty ?? 0,
-                    categories: Array.isArray(data.categories) ? data.categories[0] : data.categories,
-                    category_nodes: Array.isArray(data.category_nodes) ? data.category_nodes[0] : data.category_nodes,
-                } as Product
+            if (payload?.product) {
+                const product: Product = payload.product as Product
                 setScanStatus('found')
                 setScanStatusMessage(`Found: ${product.name}`)
                 handleEdit(product)
             } else {
                 setScanStatus('not_found')
                 setScanStatusMessage('New barcode — add product')
-                openAddModal(barcode)
+                openAddModal(normalizedBarcode)
             }
 
             setTimeout(() => {
@@ -244,7 +319,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                 if (scanMode) { setScanStatus('ready'); setScanStatusMessage('') }
             }, 3000)
         }
-    }, [initialProducts, distributorId, scanMode])
+    }, [initialProducts, scanMode])
 
     useBarcodeScanner({
         enabled: scanMode,
@@ -632,12 +707,17 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
                     const isLow = (p.stock_pieces ?? 0) <= (p.low_stock_threshold ?? 5)
                     const costDisplay = getPriceDisplay(p, 'cost')
                     const sellDisplay = getPriceDisplay(p, 'sell')
+                    const primaryBarcode = p.barcodes?.find((entry) => entry.is_primary)?.barcode || p.barcode
                     return (
                         <TableRow key={p.id}>
                             <TableCell className="font-medium">
                                 <div className="flex flex-col">
                                     <span>{p.name}</span>
                                     {p.category_nodes && <span className="text-[10px] text-slate-400">{p.category_nodes.name}</span>}
+                                    {primaryBarcode && <span className="text-[10px] font-mono text-slate-400">Barcode: {primaryBarcode}</span>}
+                                    {(p.barcodes?.length ?? 0) > 1 && (
+                                        <span className="text-[10px] text-slate-400">{p.barcodes?.length} aliases</span>
+                                    )}
                                     {isLow && <Badge variant="destructive" className="w-fit mt-1 text-[10px] h-5 px-1">Low Stock</Badge>}
                                 </div>
                             </TableCell>
@@ -723,6 +803,7 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
                 const isLow = (p.stock_pieces ?? 0) <= (p.low_stock_threshold ?? 5)
                 const costDisplay = getPriceDisplay(p, 'cost')
                 const sellDisplay = getPriceDisplay(p, 'sell')
+                const primaryBarcode = p.barcodes?.find((entry) => entry.is_primary)?.barcode || p.barcode
                 return (
                     <div key={p.id} className="flex flex-col gap-2 p-4">
                         <div className="flex justify-between items-start">
@@ -780,6 +861,7 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
                             </div>
                         </div>
                         {p.sku && <div className="text-xs text-slate-400 font-mono">SKU: {p.sku}</div>}
+                        {primaryBarcode && <div className="text-xs text-slate-400 font-mono">Barcode: {primaryBarcode}</div>}
                     </div>
                 )
             })}
@@ -814,9 +896,14 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     // Use fully controlled inputs with string state to prevent jumping/incorrect resets
     const [name, setName] = useState(defaultValues?.name || '')
     const [sku, setSku] = useState(defaultValues?.sku || '')
-    const [barcode, setBarcode] = useState(pendingScannedBarcode || defaultValues?.barcode || '')
+    const [barcodeDrafts, setBarcodeDrafts] = useState<BarcodeDraft[]>(
+        () => buildInitialBarcodeDrafts(defaultValues, type === 'add' ? pendingScannedBarcode : null)
+    )
+    const [barcodeInput, setBarcodeInput] = useState('')
     const barcodeInputRef = useRef<HTMLInputElement>(null)
     const [lowStockThreshold, setLowStockThreshold] = useState(String(defaultValues?.low_stock_threshold ?? 5))
+    const normalizedBarcodeEntries = useMemo(() => normalizeBarcodeDrafts(barcodeDrafts), [barcodeDrafts])
+    const primaryBarcode = normalizedBarcodeEntries.find((entry) => entry.isPrimary)?.barcode ?? null
 
     const [allowCase, setAllowCase] = useState(defaultValues?.allow_case ?? false)
     const [allowPiece, setAllowPiece] = useState(defaultValues?.allow_piece ?? true)
@@ -884,17 +971,51 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
 
     const [stockInput, setStockInput] = useState<string>(initialStockInput)
 
-    const applyScannedBarcode = useCallback((rawBarcode: string) => {
-        // Sanitize: trim, remove whitespace, keep digits/letters, preserve leading zeros
-        const sanitized = rawBarcode.replace(/[\s\W_]+/g, '').trim()
-        if (sanitized.length > 0) {
-            setBarcode(sanitized)
-            // Optional: focus field
-            setTimeout(() => {
-                barcodeInputRef.current?.focus()
-            }, 0)
-        }
+    const addBarcodeDraft = useCallback((rawBarcode: string, makePrimary = false) => {
+        const normalized = normalizeBarcode(rawBarcode)
+        if (!normalized) return
+
+        setBarcodeDrafts((prev) => {
+            const existing = prev.find((entry) => normalizeBarcode(entry.value) === normalized)
+            if (existing) {
+                if (!makePrimary) return prev
+                return prev.map((entry) => ({
+                    ...entry,
+                    isPrimary: entry.id === existing.id
+                }))
+            }
+
+            const next = makePrimary
+                ? prev.map((entry) => ({ ...entry, isPrimary: false }))
+                : [...prev]
+
+            next.push(createBarcodeDraft(normalized, makePrimary || next.length === 0))
+            if (!next.some((entry) => entry.isPrimary) && next.length > 0) {
+                next[0] = { ...next[0], isPrimary: true }
+            }
+            return next
+        })
     }, [])
+
+    const removeBarcodeDraft = useCallback((id: string) => {
+        setBarcodeDrafts((prev) => {
+            const next = prev.filter((entry) => entry.id !== id)
+            if (next.length === 0) return next
+            if (next.some((entry) => entry.isPrimary)) return next
+            return next.map((entry, idx) => ({ ...entry, isPrimary: idx === 0 }))
+        })
+    }, [])
+
+    const setPrimaryBarcodeDraft = useCallback((id: string) => {
+        setBarcodeDrafts((prev) => prev.map((entry) => ({ ...entry, isPrimary: entry.id === id })))
+    }, [])
+
+    const applyScannedBarcode = useCallback((rawBarcode: string) => {
+        addBarcodeDraft(rawBarcode, true)
+        setTimeout(() => {
+            barcodeInputRef.current?.focus()
+        }, 0)
+    }, [addBarcodeDraft])
 
     useEffect(() => {
         if (pendingScannedBarcode && type === 'add') {
@@ -1112,6 +1233,19 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         setClientFormError(null)
+
+        const invalidDraft = barcodeDrafts.find((entry) => {
+            const raw = String(entry.value || '').trim()
+            if (!raw) return false
+            const normalized = normalizeBarcode(raw)
+            return normalized.length > 0 && normalized.length < 6
+        })
+        if (invalidDraft) {
+            e.preventDefault()
+            setClientFormError(`Barcode "${invalidDraft.value}" is too short. Minimum length is 6.`)
+            return
+        }
+
         if (!selectedSubcategory) return
 
         if (!selectedCategory) {
@@ -1159,6 +1293,8 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
             <input type="hidden" name="sell_price" value={getSellPerUnit()} />
             <input type="hidden" name="cost_case" value={getCostPerCase()} />
             <input type="hidden" name="price_case" value={getSellPerCase()} />
+            <input type="hidden" name="barcode" value={primaryBarcode ?? ''} />
+            <input type="hidden" name="barcodes_json" value={JSON.stringify(normalizedBarcodeEntries)} />
 
 
             <div className="grid gap-2">
@@ -1171,21 +1307,79 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                     <label className="text-sm font-medium">SKU</label>
                     <Input name="sku" value={sku} onChange={e => setSku(e.target.value)} placeholder="SKU-123" />
                 </div>
-                <div className="grid gap-2">
-                    <label className="text-sm font-medium">Barcode</label>
-                    <Input
-                        name="barcode"
-                        value={barcode}
-                        ref={barcodeInputRef}
-                        onChange={e => setBarcode(e.target.value)}
-                        onKeyDown={e => {
-                            if (e.key === 'Enter') {
+                <div className="col-span-2 grid gap-2 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                        <label className="text-sm font-medium">Barcodes</label>
+                        <span className="text-xs text-slate-500">Primary barcode stays synced to legacy field</span>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <Input
+                            ref={barcodeInputRef}
+                            value={barcodeInput}
+                            onChange={(e) => setBarcodeInput(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key !== 'Enter') return
                                 e.preventDefault()
-                                applyScannedBarcode(e.currentTarget.value)
-                            }
-                        }}
-                        placeholder="e.g. 012345678905"
-                    />
+                                addBarcodeDraft(barcodeInput)
+                                setBarcodeInput('')
+                            }}
+                            placeholder="Add barcode (UPC/EAN/alias)"
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                                addBarcodeDraft(barcodeInput)
+                                setBarcodeInput('')
+                                barcodeInputRef.current?.focus()
+                            }}
+                        >
+                            Add
+                        </Button>
+                    </div>
+
+                    {barcodeDrafts.length === 0 ? (
+                        <p className="text-xs text-slate-500">No barcodes yet. Add one to support scan lookup aliases.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            {barcodeDrafts.map((entry) => {
+                                const normalized = normalizeBarcode(entry.value)
+                                const isTooShort = normalized.length > 0 && normalized.length < 6
+                                return (
+                                    <div key={entry.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setPrimaryBarcodeDraft(entry.id)}
+                                            className={`rounded-md px-2 py-1 text-xs font-medium ${entry.isPrimary ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                        >
+                                            {entry.isPrimary ? 'Primary' : 'Set Primary'}
+                                        </button>
+                                        <Input
+                                            value={entry.value}
+                                            onChange={(e) => {
+                                                const next = e.target.value
+                                                setBarcodeDrafts((prev) => prev.map((row) => row.id === entry.id ? { ...row, value: next } : row))
+                                            }}
+                                            className="font-mono text-xs"
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                            onClick={() => removeBarcodeDraft(entry.id)}
+                                        >
+                                            Remove
+                                        </Button>
+                                        {isTooShort && (
+                                            <span className="text-[11px] font-medium text-amber-700">Min 6 chars</span>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
                 </div>
                 {/* Category & Subcategory */}
                 <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">

@@ -7,15 +7,16 @@ import { Button } from '@/components/ui/button'
 import { Search, ShoppingCart, ArrowLeft, Star, X, ScanLine, Zap } from 'lucide-react'
 import { ProductCard } from '@/components/vendor/product-card'
 import { toast } from 'sonner'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeScannerModal'
-import { sanitizeBarcode } from '@/lib/utils/barcode'
+import { normalizeBarcode } from '@/lib/utils/barcode'
 import {
     addProductToVendorCart,
     readCartItemsFromStorage,
 } from '@/lib/vendor/cart-storage'
 import type { CartStorageItem, CartOrderUnit } from '@/lib/vendor/reorder'
+import { switchDistributor } from '@/app/(protected)/vendor/actions'
 
 interface CategoryProductsClientProps {
     products: any[]
@@ -39,6 +40,12 @@ type BarcodeMatch = {
     sell_per_case: number | null
     override_unit_price: number | null
     override_case_price: number | null
+}
+
+type LinkedDistributorSuggestion = {
+    distributorId: string
+    distributorName: string
+    matches: BarcodeMatch[]
 }
 
 const SCAN_CATCHER_ID = 'vendor-barcode-scan-catcher'
@@ -66,11 +73,14 @@ export function CategoryProductsClient({
     const [lastScannedCode, setLastScannedCode] = useState('')
     const [lastAddedProductName, setLastAddedProductName] = useState('')
     const [scanMatches, setScanMatches] = useState<BarcodeMatch[]>([])
+    const [linkedSuggestion, setLinkedSuggestion] = useState<LinkedDistributorSuggestion | null>(null)
+    const [switchingDistributor, setSwitchingDistributor] = useState(false)
     const [cameraOpen, setCameraOpen] = useState(false)
     const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
     const [cameraError, setCameraError] = useState<string | null>(null)
 
     const pathname = usePathname()
+    const router = useRouter()
     const searchParams = useSearchParams()
     const scanInputRef = useRef<HTMLInputElement>(null)
     const scanLockUntilRef = useRef<number>(0)
@@ -138,13 +148,19 @@ export function CategoryProductsClient({
         }
     }, [scanMode, scanOpen])
 
-    const addScannedProductToCart = useCallback((match: BarcodeMatch, requestedUnit?: CartOrderUnit) => {
+    const addScannedProductToCart = useCallback((
+        match: BarcodeMatch,
+        requestedUnit?: CartOrderUnit,
+        targetDistributorId?: string
+    ) => {
+        const effectiveDistributorId = targetDistributorId || distributorId
+        const existingItems = effectiveDistributorId === distributorId ? cartRef.current : undefined
         const result = addProductToVendorCart({
-            distributorId,
+            distributorId: effectiveDistributorId,
             product: match,
             requestedUnit,
             qty: 1,
-            existingItems: cartRef.current
+            existingItems
         })
         if (!result.ok) {
             if (result.reason === 'invalid_distributor') {
@@ -173,8 +189,8 @@ export function CategoryProductsClient({
     }, [distributorId])
 
     const handleBarcodeDetected = useCallback(async (rawCode: string) => {
-        const barcode = sanitizeBarcode(rawCode)
-        if (!barcode) return
+        const barcode = normalizeBarcode(rawCode)
+        if (!barcode || barcode.length < 6) return
 
         const now = Date.now()
         if (now < scanLockUntilRef.current) return
@@ -183,12 +199,13 @@ export function CategoryProductsClient({
         setLastScannedCode(barcode)
         setLastAddedProductName('')
         setScanMatches([])
+        setLinkedSuggestion(null)
         setScanStatus('searching')
         setScanStatusMessage(`Looking up ${barcode}...`)
 
         try {
             const response = await fetch(
-                `/api/vendor/catalog/barcode?distributorId=${encodeURIComponent(distributorId)}&barcode=${encodeURIComponent(barcode)}`,
+                `/api/vendor/catalog/barcode?distributorId=${encodeURIComponent(distributorId)}&barcode=${encodeURIComponent(barcode)}&searchLinked=1`,
                 {
                     method: 'GET',
                     cache: 'no-store'
@@ -201,11 +218,20 @@ export function CategoryProductsClient({
             }
 
             const matches = Array.isArray(payload?.matches) ? payload.matches as BarcodeMatch[] : []
+            const suggestion = payload?.linkedSuggestion && typeof payload.linkedSuggestion === 'object'
+                ? payload.linkedSuggestion as LinkedDistributorSuggestion
+                : null
+
             setScanMatches(matches)
+            setLinkedSuggestion(suggestion)
 
             if (matches.length === 0) {
                 setScanStatus('not_found')
-                setScanStatusMessage('No product found for this barcode')
+                setScanStatusMessage(
+                    suggestion
+                        ? `Not found in this catalog. Available under ${suggestion.distributorName}.`
+                        : 'Not found in this distributor catalog'
+                )
                 return
             }
 
@@ -223,6 +249,42 @@ export function CategoryProductsClient({
             setScanStatusMessage(error?.message || 'Lookup failed')
         }
     }, [addScannedProductToCart, distributorId])
+
+    const handleSwitchDistributorAndRetry = useCallback(async () => {
+        if (!linkedSuggestion) return
+
+        setSwitchingDistributor(true)
+        try {
+            const switched = await switchDistributor(linkedSuggestion.distributorId)
+            if (!switched?.success) {
+                toast.error(switched?.message || 'Failed to switch distributor')
+                return
+            }
+
+            let added = false
+            const firstMatch = linkedSuggestion.matches[0]
+            if (firstMatch) {
+                added = addScannedProductToCart(firstMatch, undefined, linkedSuggestion.distributorId)
+            }
+
+            if (added && firstMatch) {
+                setScanStatus('found')
+                setScanStatusMessage(`Switched to ${linkedSuggestion.distributorName} and added ${firstMatch.name}`)
+            } else {
+                setScanStatus('ready')
+                setScanStatusMessage(`Switched to ${linkedSuggestion.distributorName}. Scan again to retry.`)
+            }
+
+            setLinkedSuggestion(null)
+            setScanMatches([])
+            router.refresh()
+        } catch (error) {
+            console.error('Failed to switch distributor from scanner', error)
+            toast.error('Failed to switch distributor')
+        } finally {
+            setSwitchingDistributor(false)
+        }
+    }, [addScannedProductToCart, linkedSuggestion, router])
 
     const openCamera = useCallback(async () => {
         setCameraError(null)
@@ -277,6 +339,7 @@ export function CategoryProductsClient({
         setScanStatusMessage('')
         setLastAddedProductName('')
         setScanMatches([])
+        setLinkedSuggestion(null)
     }, [closeCamera])
 
     useEffect(() => {
@@ -458,6 +521,7 @@ export function CategoryProductsClient({
                                 setScanStatus('ready')
                                 setScanStatusMessage('Ready for scanner input')
                                 setLastAddedProductName('')
+                                setLinkedSuggestion(null)
                             }}
                         >
                             <ScanLine className="mr-2 h-4 w-4" />
@@ -708,7 +772,19 @@ export function CategoryProductsClient({
 
                             {scanStatus === 'not_found' && (
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
-                                    <p className="text-sm font-medium">No product found for this barcode.</p>
+                                    <p className="text-sm font-medium">Not found in this distributor catalog.</p>
+                                    {linkedSuggestion && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="mt-2 mr-2"
+                                            disabled={switchingDistributor}
+                                            onClick={handleSwitchDistributorAndRetry}
+                                        >
+                                            {switchingDistributor ? 'Switching...' : `Switch to ${linkedSuggestion.distributorName} and retry`}
+                                        </Button>
+                                    )}
                                     <Button
                                         type="button"
                                         size="sm"

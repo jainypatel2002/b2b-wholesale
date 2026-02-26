@@ -16,36 +16,56 @@ export default async function InventoryPage() {
     supabase.from('category_nodes').select('id,name,category_id').eq('distributor_id', distributorId).order('name', { ascending: true }),
   ])
 
-  // Try full query including lock columns; fall back if schema is stale
+  // Try richer selects first; progressively fall back if schema cache is stale.
   let products: any[] | null = null
-  const fullSelect = 'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)'
-  const fallbackSelect = 'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,categories(name),category_nodes(name)'
+  const selectCandidates = [
+    'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,product_barcodes(id,barcode,is_primary,created_at),categories(name),category_nodes(name)',
+    'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)',
+    'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,product_barcodes(id,barcode,is_primary,created_at),categories(name),category_nodes(name)',
+    'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,categories(name),category_nodes(name)'
+  ]
 
-  const { data, error } = await supabase
-    .from('products')
-    .select(fullSelect)
-    .eq('distributor_id', distributorId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(500)
-
-  if (error && (error.message?.includes('schema cache') || error.message?.includes('Could not find'))) {
-    schemaPending = true
-    const fallback = await supabase
+  for (let i = 0; i < selectCandidates.length; i += 1) {
+    const attempt = await supabase
       .from('products')
-      .select(fallbackSelect)
+      .select(selectCandidates[i])
       .eq('distributor_id', distributorId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(500)
-    products = fallback.data
-  } else {
-    products = data
+
+    if (!attempt.error) {
+      products = attempt.data
+      if (i >= 2) schemaPending = true
+      break
+    }
+
+    const msg = String(attempt.error.message || '')
+    if (msg.includes('stock_locked') || msg.includes('locked_stock_qty')) {
+      schemaPending = true
+    }
   }
 
   // Transform products to match InventoryClient interface
   const formattedProducts = (products ?? []).map((p: any) => ({
     ...p,
+    barcodes: (
+      Array.isArray(p.product_barcodes) && p.product_barcodes.length > 0
+        ? p.product_barcodes
+        : (p.barcode ? [{ id: `legacy-${p.id}`, barcode: p.barcode, is_primary: true }] : [])
+    )
+      .map((entry: any) => ({
+        id: String(entry.id || ''),
+        barcode: String(entry.barcode || ''),
+        is_primary: entry.is_primary !== false,
+        created_at: entry.created_at ? String(entry.created_at) : undefined
+      }))
+      .filter((entry: any) => entry.id && entry.barcode)
+      .sort((a: any, b: any) => {
+        if (a.is_primary && !b.is_primary) return -1
+        if (!a.is_primary && b.is_primary) return 1
+        return a.barcode.localeCompare(b.barcode)
+      }),
     categories: Array.isArray(p.categories) ? p.categories[0] : p.categories,
     category_nodes: Array.isArray(p.category_nodes) ? p.category_nodes[0] : p.category_nodes
   }))

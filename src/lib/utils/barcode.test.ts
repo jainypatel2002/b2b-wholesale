@@ -1,6 +1,16 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { sanitizeBarcode } from './barcode'
+import { normalizeBarcode, sanitizeBarcode } from './barcode'
+
+describe('normalizeBarcode', () => {
+    test('trims and uppercases alphanumeric values', () => {
+        assert.equal(normalizeBarcode('  Abc-123  '), 'ABC123')
+    })
+
+    test('returns empty string for non-alphanumeric-only input', () => {
+        assert.equal(normalizeBarcode(' -_ '), '')
+    })
+})
 
 describe('sanitizeBarcode', () => {
     test('removes spaces and special characters', () => {
@@ -12,7 +22,7 @@ describe('sanitizeBarcode', () => {
     })
 
     test('preserves letters', () => {
-        assert.equal(sanitizeBarcode('A-B_C 123'), 'ABC123')
+        assert.equal(sanitizeBarcode('a-B_C 123'), 'ABC123')
     })
 
     test('returns empty string if only invalid characters are provided', () => {

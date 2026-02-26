@@ -5,6 +5,7 @@ import { getDistributorContext } from '@/lib/data'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { computeInvoiceSubtotal } from '@/lib/pricing-engine'
+import { kickEmailWorker } from '@/lib/email/kick-email-worker'
 
 export async function updateOrderStatus(orderId: string, newStatus: string) {
     const { distributorId } = await getDistributorContext()
@@ -22,6 +23,13 @@ export async function updateOrderStatus(orderId: string, newStatus: string) {
         .eq('distributor_id', distributorId)
 
     if (error) return { error: error.message }
+
+    if (newStatus === 'accepted') {
+        await kickEmailWorker({
+            orderId,
+            eventType: 'ORDER_ACCEPTED'
+        })
+    }
 
     revalidatePath('/distributor/orders')
     revalidatePath(`/distributor/orders/${orderId}`)

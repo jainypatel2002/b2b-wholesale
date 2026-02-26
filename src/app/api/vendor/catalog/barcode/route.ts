@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase/route'
-import { sanitizeBarcode } from '@/lib/utils/barcode'
+import { resolveProductByBarcode } from '@/lib/barcodes/resolver'
+import { normalizeBarcode } from '@/lib/utils/barcode'
 import { isUuid } from '@/lib/vendor/favorites'
 
 type CatalogProductMatch = {
@@ -16,6 +17,12 @@ type CatalogProductMatch = {
   override_case_price: number | null
 }
 
+type LinkedDistributorSuggestion = {
+  distributorId: string
+  distributorName: string
+  matches: CatalogProductMatch[]
+}
+
 async function requireVendorUser(supabase: any) {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) return { error: 'Unauthorized', status: 401 as const }
@@ -29,26 +36,6 @@ async function requireVendorUser(supabase: any) {
   if (error) return { error: error.message, status: 400 as const }
   if (!profile || profile.role !== 'vendor') return { error: 'Forbidden', status: 403 as const }
   return { userId: auth.user.id }
-}
-
-async function ensureLinkedDistributor(supabase: any, vendorId: string, distributorId: string) {
-  const { data: link, error } = await supabase
-    .from('distributor_vendors')
-    .select('vendor_id')
-    .eq('vendor_id', vendorId)
-    .eq('distributor_id', distributorId)
-    .limit(1)
-    .maybeSingle()
-
-  if (error && error.code !== 'PGRST116') {
-    return { ok: false as const, error: error.message, status: 400 as const }
-  }
-
-  if (!link) {
-    return { ok: false as const, error: 'Vendor is not linked to this distributor', status: 403 as const }
-  }
-
-  return { ok: true as const }
 }
 
 function toNumber(value: unknown): number | null {
@@ -69,41 +56,6 @@ function pickFirstNumber(...values: unknown[]): number | null {
     if (n != null) return n
   }
   return null
-}
-
-async function findProductIdsByBarcode(
-  supabase: any,
-  distributorId: string,
-  barcode: string
-): Promise<string[]> {
-  const fields = 'id,barcode,is_active,active,deleted_at'
-  let result = await supabase
-    .from('products')
-    .select(fields)
-    .eq('distributor_id', distributorId)
-    .eq('barcode', barcode)
-    .is('deleted_at', null)
-
-  if (result.error && result.error.code === '42703') {
-    result = await supabase
-      .from('products')
-      .select('id,barcode,active')
-      .eq('distributor_id', distributorId)
-      .eq('barcode', barcode)
-  }
-
-  if (result.error) {
-    throw new Error(result.error.message || 'Failed to lookup barcode')
-  }
-
-  return (result.data ?? [])
-    .filter((row: any) => {
-      const isActive = row?.is_active == null ? row?.active !== false : row?.is_active !== false
-      const notDeleted = row?.deleted_at == null
-      return isActive && notDeleted
-    })
-    .map((row: any) => String(row.id || ''))
-    .filter((id: string) => isUuid(id))
 }
 
 function mapRpcRows(rows: any[]): CatalogProductMatch[] {
@@ -132,10 +84,10 @@ function mapRpcRows(rows: any[]): CatalogProductMatch[] {
         toDollarsFromCents(row.override_unit_price_cents)
       )
       const inferredOverrideUnitPrice = (
-        overrideUnitPriceRaw == null &&
-        effectiveUnitFromLegacy != null &&
-        baseUnitFromLegacy != null &&
-        Math.abs(effectiveUnitFromLegacy - baseUnitFromLegacy) > 0.000001
+        overrideUnitPriceRaw == null
+        && effectiveUnitFromLegacy != null
+        && baseUnitFromLegacy != null
+        && Math.abs(effectiveUnitFromLegacy - baseUnitFromLegacy) > 0.000001
       ) ? effectiveUnitFromLegacy : null
 
       return {
@@ -254,6 +206,57 @@ async function fetchMatchesFallback(
   })
 }
 
+async function fetchLinkedDistributors(
+  supabase: any,
+  vendorId: string
+): Promise<Array<{ id: string; name: string }>> {
+  const { data, error } = await supabase
+    .from('distributor_vendors')
+    .select('distributor_id,distributor:profiles!distributor_id(id,display_name,email)')
+    .eq('vendor_id', vendorId)
+
+  if (error) {
+    throw new Error(error.message || 'Failed to load linked distributors')
+  }
+
+  return (data ?? [])
+    .map((row: any) => {
+      const distributor = row.distributor
+      return {
+        id: String(row.distributor_id || distributor?.id || ''),
+        name: String(distributor?.display_name || distributor?.email || 'Distributor')
+      }
+    })
+    .filter((row: { id: string }) => isUuid(row.id))
+}
+
+async function resolveDistributorMatches(params: {
+  supabase: any
+  vendorId: string
+  distributorId: string
+  barcode: string
+}): Promise<CatalogProductMatch[]> {
+  const { supabase, vendorId, distributorId, barcode } = params
+
+  const resolved = await resolveProductByBarcode({
+    supabase,
+    distributorId,
+    barcode,
+    viewerRole: 'vendor',
+    vendorId
+  })
+
+  if (!resolved) return []
+
+  const productId = String(resolved.product?.id || '')
+  if (!isUuid(productId)) return []
+
+  const productIds = [productId]
+  const rpcMatches = await fetchMatchesViaRpc(supabase, distributorId, productIds)
+  const matches = rpcMatches ?? await fetchMatchesFallback(supabase, distributorId, vendorId, productIds)
+  return matches.slice(0, 10)
+}
+
 export async function GET(request: NextRequest) {
   const { supabase } = createRouteClient(request)
   const vendor = await requireVendorUser(supabase)
@@ -261,32 +264,66 @@ export async function GET(request: NextRequest) {
 
   const distributorId = String(request.nextUrl.searchParams.get('distributorId') || '').trim()
   const barcodeRaw = String(request.nextUrl.searchParams.get('barcode') || '')
-  const barcode = sanitizeBarcode(barcodeRaw)
+  const searchLinked = ['1', 'true', 'yes'].includes(
+    String(request.nextUrl.searchParams.get('searchLinked') || '').toLowerCase()
+  )
+  const barcode = normalizeBarcode(barcodeRaw)
 
   if (!isUuid(distributorId)) {
     return NextResponse.json({ error: 'Invalid distributor id' }, { status: 400 })
   }
 
-  if (!barcode) {
+  if (!barcode || barcode.length < 6) {
     return NextResponse.json({ error: 'Invalid barcode' }, { status: 400 })
   }
 
-  const linkCheck = await ensureLinkedDistributor(supabase, vendor.userId, distributorId)
-  if (!linkCheck.ok) return NextResponse.json({ error: linkCheck.error }, { status: linkCheck.status })
-
   try {
-    const productIds = await findProductIdsByBarcode(supabase, distributorId, barcode)
-    if (productIds.length === 0) {
-      return NextResponse.json({ ok: true, barcode, matches: [] })
+    const matches = await resolveDistributorMatches({
+      supabase,
+      vendorId: vendor.userId,
+      distributorId,
+      barcode
+    })
+
+    if (matches.length > 0 || !searchLinked) {
+      return NextResponse.json({
+        ok: true,
+        barcode,
+        distributorId,
+        matches
+      })
     }
 
-    const rpcMatches = await fetchMatchesViaRpc(supabase, distributorId, productIds)
-    const matches = rpcMatches ?? await fetchMatchesFallback(supabase, distributorId, vendor.userId, productIds)
+    const linkedDistributors = await fetchLinkedDistributors(supabase, vendor.userId)
+    const alternatives = linkedDistributors.filter((linked) => linked.id !== distributorId)
+
+    let linkedSuggestion: LinkedDistributorSuggestion | null = null
+
+    for (const linked of alternatives) {
+      const linkedMatches = await resolveDistributorMatches({
+        supabase,
+        vendorId: vendor.userId,
+        distributorId: linked.id,
+        barcode
+      })
+
+      if (linkedMatches.length > 0) {
+        linkedSuggestion = {
+          distributorId: linked.id,
+          distributorName: linked.name,
+          matches: linkedMatches
+        }
+        break
+      }
+    }
 
     return NextResponse.json({
       ok: true,
       barcode,
-      matches: matches.slice(0, 10)
+      distributorId,
+      matches: [],
+      linkedDistributorCount: linkedDistributors.length,
+      linkedSuggestion
     })
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Failed to lookup barcode' }, { status: 500 })

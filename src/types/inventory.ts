@@ -13,10 +13,20 @@ export interface Product {
     units_per_case: number | null
     low_stock_threshold: number
     barcode?: string | null
+    barcodes?: ProductBarcode[]
     barcode_symbology?: string | null
     active: boolean
     created_at: string
     categories?: { name: string } | null
+}
+
+export interface ProductBarcode {
+    id: string
+    product_id?: string
+    distributor_id?: string
+    barcode: string
+    is_primary: boolean
+    created_at?: string
 }
 
 export type OrderUnit = 'piece' | 'case'

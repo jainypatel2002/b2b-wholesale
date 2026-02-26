@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase/route'
 import { createOrder, type CreateOrderItemInput } from '@/lib/orders/create-order'
 import { validateVendorNote } from '@/lib/orders/vendor-note'
+import { kickEmailWorker } from '@/lib/email/kick-email-worker'
 
 export async function POST(request: NextRequest) {
   const { supabase } = createRouteClient(request)
@@ -71,6 +72,11 @@ export async function POST(request: NextRequest) {
       { status: result.status }
     )
   }
+
+  await kickEmailWorker({
+    orderId: result.orderId,
+    eventType: 'ORDER_PLACED'
+  })
 
   return NextResponse.json({ ok: true, order_id: result.orderId })
 }
