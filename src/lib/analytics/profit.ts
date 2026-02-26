@@ -1,696 +1,412 @@
-
 import { createClient } from '@/lib/supabase/server'
-import { calcRevenue, calcCost, calcProfit, calcMargin } from './calc'
+import { calcMargin } from './calc'
+import { fetchDistributorTransactionLines } from './transactions'
 import { getEffectiveAnalyticsRange, getLatestProfitResetWithClient, type AnalyticsRange } from './profitReset'
 
 export type ProfitOverview = {
-    revenue: number
-    cost: number
-    profit: number
-    margin: number
-    orderCount: number
+  revenue: number
+  cost: number
+  profit: number
+  margin: number
+  orderCount: number
 }
 
 export type ProductProfitability = {
-    productId: string
-    productName: string
-    soldQty: number
-    revenue: number
-    cost: number
-    profit: number
-    margin: number
-    isEstimated: boolean
+  productId: string
+  productName: string
+  soldQty: number
+  soldCases: number
+  soldUnits: number
+  soldUnitsEquivalent: number | null
+  hasUnknownUnitConversion: boolean
+  revenue: number
+  cost: number
+  profit: number
+  margin: number
+  isEstimated: boolean
 }
 
 export type VendorProfitability = {
-    vendorId: string
-    vendorName: string
-    orderCount: number
-    revenue: number
-    profit: number
-    margin: number
+  vendorId: string
+  vendorName: string
+  orderCount: number
+  revenue: number
+  profit: number
+  margin: number
 }
 
 export type TimeSeriesPoint = {
-    date: string
-    revenue: number
-    profit: number
+  date: string
+  revenue: number
+  profit: number
 }
 
 export type LossSignal = {
-    type: 'Low Margin' | 'Dead Inventory' | 'Vendor Debt Risk' | 'Price Mistake' | 'Stockout Risk'
-    severity: 'high' | 'medium' | 'low'
-    message: string
-    entityName?: string
-    entityId?: string
+  type: 'Low Margin' | 'Dead Inventory' | 'Vendor Debt Risk' | 'Price Mistake' | 'Stockout Risk'
+  severity: 'high' | 'medium' | 'low'
+  message: string
+  entityName?: string
+  entityId?: string
 }
 
 const FIVE_PERCENT_MARGIN = 5
 
 type ProfitQueryOptions = {
-    resetAt?: Date | null
+  resetAt?: Date | null
 }
 
-/**
- * Helper to build date range filter
- */
-function applyDateRange(query: any, range: AnalyticsRange, createdAtField = 'created_at') {
-    return query
-        .gte(createdAtField, range.from.toISOString())
-        .lte(createdAtField, range.to.toISOString())
+function toTransactionKey(sourceType: string, sourceId: string): string {
+  return `${sourceType}:${sourceId}`
 }
 
 async function resolveResetAt(
-    supabase: any,
-    distributorId: string,
-    options?: ProfitQueryOptions
+  supabase: any,
+  distributorId: string,
+  options?: ProfitQueryOptions
 ): Promise<Date | null> {
-    if (options && Object.prototype.hasOwnProperty.call(options, 'resetAt')) {
-        return options.resetAt ?? null
-    }
+  if (options && Object.prototype.hasOwnProperty.call(options, 'resetAt')) {
+    return options.resetAt ?? null
+  }
 
-    const checkpoint = await getLatestProfitResetWithClient(supabase, distributorId)
-    if (!checkpoint?.reset_at) return null
+  const checkpoint = await getLatestProfitResetWithClient(supabase, distributorId)
+  if (!checkpoint?.reset_at) return null
 
-    const resetAt = new Date(checkpoint.reset_at)
-    return Number.isNaN(resetAt.getTime()) ? null : resetAt
+  const resetAt = new Date(checkpoint.reset_at)
+  return Number.isNaN(resetAt.getTime()) ? null : resetAt
 }
 
 /**
  * 1. Overview Stats
  */
 export async function getProfitOverview(
-    distributorId: string,
-    range: AnalyticsRange,
-    options?: ProfitQueryOptions
+  distributorId: string,
+  range: AnalyticsRange,
+  options?: ProfitQueryOptions
 ): Promise<ProfitOverview> {
-    const supabase = await createClient()
-    const resetAt = await resolveResetAt(supabase, distributorId, options)
-    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+  const supabase = await createClient()
+  const resetAt = await resolveResetAt(supabase, distributorId, options)
+  const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
 
-    if (!effectiveRange.hasData) {
-        return {
-            revenue: 0,
-            cost: 0,
-            profit: 0,
-            margin: 0,
-            orderCount: 0
-        }
-    }
-
-    let data: any[] = [];
-
-    // Try fetching with new columns
-    const { data: newData, error: newError } = await applyDateRange(
-        supabase
-            .from('orders')
-            .select(`
-                id,
-                order_items (
-                    selling_price_at_time,
-                    cost_price_at_time,
-                    unit_price,
-                    unit_cost,
-                    total_pieces,
-                    products (
-                        sell_price,
-                        cost_price
-                    )
-                )
-            `)
-            .eq('distributor_id', distributorId)
-            .neq('status', 'cancelled'),
-        effectiveRange
-    );
-
-    if (newError && newError.code === '42703') {
-        // Fallback: Column missing, use legacy fields (and join products for deep fallback)
-        console.warn('ProfitCenter: Missing columns, falling back to legacy schema.');
-        const { data: oldData, error: oldError } = await applyDateRange(
-            supabase
-                .from('orders')
-                .select(`
-                    id,
-                    order_items (
-                        unit_price,
-                        unit_cost,
-                        total_pieces,
-                        products (
-                            sell_price,
-                            cost_price
-                        )
-                    )
-                `)
-                .eq('distributor_id', distributorId)
-                .neq('status', 'cancelled'),
-            effectiveRange
-        );
-
-        if (oldError) throw new Error(oldError.message);
-
-        // Map legacy data to new structure
-        data = oldData?.map((o: any) => ({
-            ...o,
-            order_items: o.order_items.map((i: any) => ({
-                selling_price_at_time: i.unit_price,
-                cost_price_at_time: i.unit_cost, // might be null
-                total_pieces: i.total_pieces,
-                products: i.products
-            }))
-        })) || [];
-    } else if (newError) {
-        throw new Error(newError.message);
-    } else {
-        data = newData || [];
-    }
-
-    // Flatten items
-    const allItems = data?.flatMap(o => o.order_items) || []
-
-    const calcItems = allItems.map((i: any) => {
-        // Fallback Logic: Snapshot -> Legacy Unit Price -> Current Product Price -> 0
-        const sell = Number(i.selling_price_at_time) || Number(i.unit_price) || Number(i.products?.sell_price) || 0;
-        const cost = Number(i.cost_price_at_time) || Number(i.unit_cost) || Number(i.products?.cost_price) || 0;
-
-        return {
-            selling_price_at_time: sell,
-            cost_price_at_time: cost,
-            quantity: i.total_pieces || 0
-        };
-    })
-
-    const revenue = calcRevenue(calcItems)
-    const cost = calcCost(calcItems)
-    const profit = calcProfit(revenue, cost)
-    const margin = calcMargin(profit, revenue)
-
+  if (!effectiveRange.hasData) {
     return {
-        revenue,
-        cost,
-        profit,
-        margin,
-        orderCount: data?.length || 0
+      revenue: 0,
+      cost: 0,
+      profit: 0,
+      margin: 0,
+      orderCount: 0
     }
+  }
+
+  const lines = await fetchDistributorTransactionLines(supabase, distributorId, effectiveRange)
+
+  const revenue = lines.reduce((sum, line) => sum + line.revenue, 0)
+  const cost = lines.reduce((sum, line) => sum + line.cost, 0)
+  const profit = revenue - cost
+  const margin = calcMargin(profit, revenue)
+  const orderCount = new Set(lines.map((line) => toTransactionKey(line.sourceType, line.sourceId))).size
+
+  return {
+    revenue,
+    cost,
+    profit,
+    margin,
+    orderCount
+  }
 }
 
 /**
  * 2. Product Profitability
  */
 export async function getProductProfitability(
-    distributorId: string,
-    range: AnalyticsRange,
-    options?: ProfitQueryOptions
+  distributorId: string,
+  range: AnalyticsRange,
+  options?: ProfitQueryOptions
 ): Promise<ProductProfitability[]> {
-    const supabase = await createClient()
-    const resetAt = await resolveResetAt(supabase, distributorId, options)
-    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+  const supabase = await createClient()
+  const resetAt = await resolveResetAt(supabase, distributorId, options)
+  const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
 
-    if (!effectiveRange.hasData) return []
+  if (!effectiveRange.hasData) return []
 
-    let data: any[] = [];
+  const lines = await fetchDistributorTransactionLines(supabase, distributorId, effectiveRange)
+  const map = new Map<string, ProductProfitability>()
 
-    // Try new schema
-    const { data: newData, error: newError } = await applyDateRange(
-        supabase
-            .from('order_items')
-            .select(`
-                product_id,
-                selling_price_at_time,
-                cost_price_at_time,
-                unit_price,
-                unit_cost,
-                total_pieces,
-                products!inner (
-                    name,
-                    distributor_id,
-                    sell_price,
-                    cost_price
-                ),
-                orders!inner (
-                    created_at,
-                    distributor_id,
-                    status
-                )
-            `)
-            .eq('orders.distributor_id', distributorId)
-            .neq('orders.status', 'cancelled'),
-        effectiveRange,
-        'orders.created_at'
-    );
+  for (const line of lines) {
+    if (!line.productId) continue
 
-    if (newError && newError.code === '42703') {
-        const { data: oldData, error: oldError } = await applyDateRange(
-            supabase
-                .from('order_items')
-                .select(`
-                    product_id,
-                    unit_price,
-                    unit_cost,
-                    total_pieces,
-                    products!inner (
-                        name,
-                        distributor_id,
-                        sell_price,
-                        cost_price
-                    ),
-                    orders!inner (
-                        created_at,
-                        distributor_id,
-                        status
-                    )
-                `)
-                .eq('orders.distributor_id', distributorId)
-                .neq('orders.status', 'cancelled'),
-            effectiveRange,
-            'orders.created_at'
-        );
-        if (oldError) throw new Error(oldError.message);
-
-        data = oldData?.map((row: any) => ({
-            ...row,
-            selling_price_at_time: row.unit_price,
-            cost_price_at_time: row.unit_cost
-        })) || [];
-    } else if (newError) {
-        throw new Error(newError.message);
-    } else {
-        data = newData || [];
+    const existing = map.get(line.productId) || {
+      productId: line.productId,
+      productName: line.productName,
+      soldQty: 0,
+      soldCases: 0,
+      soldUnits: 0,
+      soldUnitsEquivalent: 0,
+      hasUnknownUnitConversion: false,
+      revenue: 0,
+      cost: 0,
+      profit: 0,
+      margin: 0,
+      isEstimated: false
     }
 
-    // Aggregation
-    const map = new Map<string, ProductProfitability>()
+    if (line.soldUnit === 'case') {
+      existing.soldCases += line.soldQty
+    } else {
+      existing.soldUnits += line.soldQty
+    }
 
-    data.forEach((row: any) => {
-        const pid = row.product_id
-        const pname = row.products?.name || 'Unknown'
-        const qty = row.total_pieces || 0
+    if (line.soldUnits !== null) {
+      existing.soldUnitsEquivalent = (existing.soldUnitsEquivalent || 0) + line.soldUnits
+    } else {
+      existing.hasUnknownUnitConversion = true
+    }
 
-        // Fallback Logic
-        const sell = Number(row.selling_price_at_time) || Number(row.unit_price) || Number(row.products?.sell_price) || 0;
-        const costPrice = Number(row.cost_price_at_time) || Number(row.unit_cost) || Number(row.products?.cost_price) || 0;
+    existing.revenue += line.revenue
+    existing.cost += line.cost
+    existing.isEstimated = existing.isEstimated || line.isEstimatedCost
 
-        // "Estimated" if we fell back to product price because snapshot/legacy was missing
-        // or if snapshot exists but cost is null.
-        // Actually, logic: if cost_price_at_time is NULL, it's estimated. 
-        // But if we used fallback, it's also estimated.
-        // Simplification: If snapshot cost is missing/zero, estimated.
-        const isEstimated = !row.cost_price_at_time;
+    map.set(line.productId, existing)
+  }
 
-        const rev = sell * qty
-        const cst = costPrice * qty
+  return Array.from(map.values())
+    .map((row) => {
+      const profit = row.revenue - row.cost
+      const soldUnitsEquivalent = row.hasUnknownUnitConversion
+        ? (row.soldUnitsEquivalent && row.soldUnitsEquivalent > 0 ? row.soldUnitsEquivalent : null)
+        : (row.soldUnitsEquivalent || 0)
 
-        const existing = map.get(pid) || {
-            productId: pid,
-            productName: pname,
-            soldQty: 0,
-            revenue: 0,
-            cost: 0,
-            profit: 0,
-            margin: 0,
-            isEstimated: false
-        }
-
-        existing.soldQty += qty
-        existing.revenue += rev
-        existing.cost += cst
-        existing.isEstimated = existing.isEstimated || isEstimated
-
-        map.set(pid, existing)
+      return {
+        ...row,
+        soldQty: soldUnitsEquivalent ?? (row.soldCases + row.soldUnits),
+        soldUnitsEquivalent,
+        profit,
+        margin: calcMargin(profit, row.revenue)
+      }
     })
-
-    // Finalize margins
-    const results = Array.from(map.values()).map(p => ({
-        ...p,
-        profit: calcProfit(p.revenue, p.cost),
-        margin: calcMargin(calcProfit(p.revenue, p.cost), p.revenue)
-    }))
-
-    return results.sort((a, b) => b.profit - a.profit)
+    .sort((a, b) => b.profit - a.profit)
 }
 
 /**
  * 3. Vendor Profitability
  */
 export async function getVendorProfitability(
-    distributorId: string,
-    range: AnalyticsRange,
-    options?: ProfitQueryOptions
+  distributorId: string,
+  range: AnalyticsRange,
+  options?: ProfitQueryOptions
 ): Promise<VendorProfitability[]> {
-    const supabase = await createClient()
-    const resetAt = await resolveResetAt(supabase, distributorId, options)
-    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+  const supabase = await createClient()
+  const resetAt = await resolveResetAt(supabase, distributorId, options)
+  const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
 
-    if (!effectiveRange.hasData) return []
+  if (!effectiveRange.hasData) return []
 
-    let data: any[] = [];
+  const lines = await fetchDistributorTransactionLines(supabase, distributorId, effectiveRange)
+  const vendorIds = Array.from(new Set(lines.map((line) => line.vendorId).filter((id): id is string => Boolean(id))))
 
-    // Try new schema
-    const { data: newData, error: newError } = await applyDateRange(
-        supabase
-            .from('orders')
-            .select(`
-                vendor_id,
-                order_items (
-                    selling_price_at_time,
-                    cost_price_at_time,
-                    unit_price,
-                    unit_cost,
-                    total_pieces,
-                    products (
-                        sell_price,
-                        cost_price
-                    )
-                )
-            `)
-            .eq('distributor_id', distributorId)
-            .neq('status', 'cancelled'),
-        effectiveRange
-    );
+  let profileRows: any[] = []
+  if (vendorIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, display_name, email')
+      .in('id', vendorIds)
 
-    if (newError && newError.code === '42703') {
-        const { data: oldData, error: oldError } = await applyDateRange(
-            supabase
-                .from('orders')
-                .select(`
-                    vendor_id,
-                    order_items (
-                        unit_price,
-                        unit_cost,
-                        total_pieces,
-                        products (
-                            sell_price,
-                            cost_price
-                        )
-                    )
-                `)
-                .eq('distributor_id', distributorId)
-                .neq('status', 'cancelled'),
-            effectiveRange
-        );
-        if (oldError) throw new Error(oldError.message);
-
-        data = oldData?.map((o: any) => ({
-            ...o,
-            order_items: o.order_items.map((i: any) => ({
-                selling_price_at_time: i.unit_price,
-                cost_price_at_time: i.unit_cost,
-                total_pieces: i.total_pieces,
-                products: i.products
-            }))
-        })) || [];
-    } else if (newError) {
-        throw new Error(newError.message);
+    if (profilesError && profilesError.code === '42703') {
+      const { data: legacyProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', vendorIds)
+      profileRows = legacyProfiles || []
+    } else if (profilesError) {
+      throw new Error(profilesError.message)
     } else {
-        data = newData || [];
+      profileRows = profiles || []
+    }
+  }
+
+  const profileMap = new Map<string, string>(
+    profileRows.map((profile: any) => [
+      String(profile.id),
+      String(profile.display_name || profile.full_name || profile.email || '')
+    ])
+  )
+
+  const map = new Map<string, VendorProfitability>()
+  const orderCountByVendor = new Map<string, Set<string>>()
+
+  for (const line of lines) {
+    const vendorId = line.vendorId || 'unknown'
+    const existing = map.get(vendorId) || {
+      vendorId,
+      vendorName: vendorId === 'unknown'
+        ? 'Unknown Vendor'
+        : (profileMap.get(vendorId) || `Vendor ${vendorId.slice(0, 8)}...`),
+      orderCount: 0,
+      revenue: 0,
+      profit: 0,
+      margin: 0
     }
 
-    const vendorIds = Array.from(new Set(data.map(o => o.vendor_id)))
+    existing.revenue += line.revenue
+    existing.profit += line.profit
 
-    let profileRows: any[] = []
-    if (vendorIds.length > 0) {
-        const { data: profiles, error: profilesError } = await supabase
-            .from('profiles')
-            .select('id, display_name, email')
-            .in('id', vendorIds)
-
-        if (profilesError && profilesError.code === '42703') {
-            const { data: legacyProfiles } = await supabase
-                .from('profiles')
-                .select('id, full_name, email')
-                .in('id', vendorIds)
-            profileRows = legacyProfiles || []
-        } else {
-            profileRows = profiles || []
-        }
+    if (!orderCountByVendor.has(vendorId)) {
+      orderCountByVendor.set(vendorId, new Set<string>())
     }
+    orderCountByVendor.get(vendorId)!.add(toTransactionKey(line.sourceType, line.sourceId))
 
-    const profileMap = new Map<string, string>(
-        profileRows.map((profile: any) => [
-            profile.id,
-            String(profile.display_name || profile.full_name || profile.email || '')
-        ])
-    )
+    map.set(vendorId, existing)
+  }
 
-    const map = new Map<string, VendorProfitability>()
-
-    data.forEach((o: any) => {
-        const vid = o.vendor_id
-        // If no profile found, show a fallback
-        const vname = profileMap.get(vid) || `Vendor ${vid.slice(0, 8)}...`
-
-        const items = o.order_items.map((i: any) => {
-            const sell = Number(i.selling_price_at_time) || Number(i.unit_price) || Number(i.products?.sell_price) || 0;
-            const cost = Number(i.cost_price_at_time) || Number(i.unit_cost) || Number(i.products?.cost_price) || 0;
-            return {
-                selling_price_at_time: sell,
-                cost_price_at_time: cost,
-                quantity: i.total_pieces || 0
-            };
-        })
-
-        const rev = calcRevenue(items)
-        const cost = calcCost(items)
-        const profit = calcProfit(rev, cost)
-
-        const existing = map.get(vid) || {
-            vendorId: vid,
-            vendorName: vname,
-            orderCount: 0,
-            revenue: 0,
-            profit: 0,
-            margin: 0
-        }
-
-        existing.orderCount++
-        existing.revenue += rev
-        existing.profit += profit
-
-        map.set(vid, existing)
-    })
-
-    const results = Array.from(map.values()).map(v => ({
-        ...v,
-        margin: calcMargin(v.profit, v.revenue)
+  return Array.from(map.values())
+    .map((row) => ({
+      ...row,
+      orderCount: orderCountByVendor.get(row.vendorId)?.size || 0,
+      margin: calcMargin(row.profit, row.revenue)
     }))
-
-    return results.sort((a, b) => b.profit - a.profit)
+    .sort((a, b) => b.profit - a.profit)
 }
 
 /**
  * 4. Time Series
  */
 export async function getTimeSeries(
-    distributorId: string,
-    range: AnalyticsRange,
-    options?: ProfitQueryOptions
+  distributorId: string,
+  range: AnalyticsRange,
+  options?: ProfitQueryOptions
 ): Promise<TimeSeriesPoint[]> {
-    const supabase = await createClient()
-    const resetAt = await resolveResetAt(supabase, distributorId, options)
-    const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
+  const supabase = await createClient()
+  const resetAt = await resolveResetAt(supabase, distributorId, options)
+  const effectiveRange = getEffectiveAnalyticsRange(range, resetAt)
 
-    if (!effectiveRange.hasData) return []
+  if (!effectiveRange.hasData) return []
 
-    let data: any[] = [];
+  const lines = await fetchDistributorTransactionLines(supabase, distributorId, effectiveRange)
+  const map = new Map<string, { label: string; revenue: number; profit: number }>()
 
-    // Try new schema
-    const { data: newData, error: newError } = await applyDateRange(
-        supabase
-            .from('orders')
-            .select(`
-                created_at,
-                order_items (
-                    selling_price_at_time,
-                    cost_price_at_time,
-                    unit_price,
-                    unit_cost,
-                    total_pieces,
-                    products (
-                        sell_price,
-                        cost_price
-                    )
-                )
-            `)
-            .eq('distributor_id', distributorId)
-            .neq('status', 'cancelled'),
-        effectiveRange
-    );
+  for (const line of lines) {
+    const date = new Date(line.sourceDate)
+    const dateKey = Number.isNaN(date.getTime()) ? line.sourceDate : date.toISOString().slice(0, 10)
+    const dateLabel = Number.isNaN(date.getTime()) ? line.sourceDate : date.toLocaleDateString()
 
-    if (newError && newError.code === '42703') {
-        const { data: oldData, error: oldError } = await applyDateRange(
-            supabase
-                .from('orders')
-                .select(`
-                    created_at,
-                    order_items (
-                        unit_price,
-                        unit_cost,
-                        total_pieces,
-                        products (
-                            sell_price,
-                            cost_price
-                        )
-                    )
-                `)
-                .eq('distributor_id', distributorId)
-                .neq('status', 'cancelled'),
-            effectiveRange
-        );
-        if (oldError) throw new Error(oldError.message);
+    const existing = map.get(dateKey) || { label: dateLabel, revenue: 0, profit: 0 }
+    existing.revenue += line.revenue
+    existing.profit += line.profit
+    map.set(dateKey, existing)
+  }
 
-        data = oldData?.map((o: any) => ({
-            ...o,
-            order_items: o.order_items.map((i: any) => ({
-                selling_price_at_time: i.unit_price,
-                cost_price_at_time: i.unit_cost,
-                total_pieces: i.total_pieces,
-                products: i.products
-            }))
-        })) || [];
-    } else if (newError) {
-        throw new Error(newError.message);
-    } else {
-        data = newData || [];
-    }
-
-    const map = new Map<string, { revenue: number, profit: number }>()
-
-    data.forEach((o: any) => {
-        const dateStr = new Date(o.created_at).toLocaleDateString()
-
-        const items = o.order_items.map((i: any) => {
-            const sell = Number(i.selling_price_at_time) || Number(i.unit_price) || Number(i.products?.sell_price) || 0;
-            const cost = Number(i.cost_price_at_time) || Number(i.unit_cost) || Number(i.products?.cost_price) || 0;
-            return {
-                selling_price_at_time: sell,
-                cost_price_at_time: cost,
-                quantity: i.total_pieces || 0
-            };
-        })
-
-        const rev = calcRevenue(items)
-        const cst = calcCost(items)
-        const prof = calcProfit(rev, cst)
-
-        const existing = map.get(dateStr) || { revenue: 0, profit: 0 }
-        existing.revenue += rev
-        existing.profit += prof
-        map.set(dateStr, existing)
-    })
-
-    return Array.from(map.entries()).map(([date, val]) => ({
-        date,
-        revenue: val.revenue,
-        profit: val.profit
-    })).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, value]) => ({
+      date: value.label,
+      revenue: value.revenue,
+      profit: value.profit
+    }))
 }
 
 /**
  * 5. Hidden Loss Signals
  */
 export async function getHiddenLossSignals(
-    distributorId: string,
-    options?: ProfitQueryOptions
+  distributorId: string,
+  options?: ProfitQueryOptions
 ): Promise<LossSignal[]> {
-    const supabase = await createClient()
-    const resetAt = await resolveResetAt(supabase, distributorId, options)
-    const signals: LossSignal[] = []
+  const supabase = await createClient()
+  const resetAt = await resolveResetAt(supabase, distributorId, options)
+  const signals: LossSignal[] = []
 
-    // 1. Low Margin Products (using current prices for forward looking, or past sales?)
-    // Let's check products with current margin < 5%
-    const { data: products } = await supabase
-        .from('products')
-        .select('id, name, cost_price, sell_price, stock_pieces')
-        .eq('distributor_id', distributorId)
+  // 1. Low Margin Products (using current prices for forward looking, or past sales?)
+  // Let's check products with current margin < 5%
+  const { data: products } = await supabase
+    .from('products')
+    .select('id, name, cost_price, sell_price, stock_pieces')
+    .eq('distributor_id', distributorId)
 
-    products?.forEach((p: any) => {
-        const cost = Number(p.cost_price) || 0
-        const sell = Number(p.sell_price) || 0
-        const margin = sell > 0 ? ((sell - cost) / sell) * 100 : 0
+  products?.forEach((p: any) => {
+    const cost = Number(p.cost_price) || 0
+    const sell = Number(p.sell_price) || 0
+    const margin = sell > 0 ? ((sell - cost) / sell) * 100 : 0
 
-        if (margin < FIVE_PERCENT_MARGIN && sell > 0) {
-            signals.push({
-                type: 'Low Margin',
-                severity: margin < 0 ? 'high' : 'medium',
-                message: `Product "${p.name}" has a low margin of ${margin.toFixed(1)}%`,
-                entityName: p.name,
-                entityId: p.id
-            })
-        }
+    if (margin < FIVE_PERCENT_MARGIN && sell > 0) {
+      signals.push({
+        type: 'Low Margin',
+        severity: margin < 0 ? 'high' : 'medium',
+        message: `Product "${p.name}" has a low margin of ${margin.toFixed(1)}%`,
+        entityName: p.name,
+        entityId: p.id
+      })
+    }
 
-        // Stockout Risk
-        if ((p.stock_pieces || 0) < 5) { // Hardcoded 5 as placeholder for reorder point
-            signals.push({
-                type: 'Stockout Risk',
-                severity: 'high',
-                message: `Product "${p.name}" is low on stock (${p.stock_pieces} left)`,
-                entityName: p.name,
-                entityId: p.id
-            })
-        }
-    })
+    // Stockout Risk
+    if ((p.stock_pieces || 0) < 5) {
+      signals.push({
+        type: 'Stockout Risk',
+        severity: 'high',
+        message: `Product "${p.name}" is low on stock (${p.stock_pieces} left)`,
+        entityName: p.name,
+        entityId: p.id
+      })
+    }
+  })
 
-    // 2. Dead Inventory (No sales in 30 days)
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+  // 2. Dead Inventory (No sales in 30 days)
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-    const recentSalesFrom = resetAt && resetAt.getTime() > thirtyDaysAgo.getTime()
-        ? resetAt
-        : thirtyDaysAgo
+  const recentSalesFrom = resetAt && resetAt.getTime() > thirtyDaysAgo.getTime()
+    ? resetAt
+    : thirtyDaysAgo
 
-    const { data: recentSales } = await supabase
-        .from('order_items')
-        .select('product_id, orders!inner(created_at, distributor_id)')
-        .eq('orders.distributor_id', distributorId)
-        .gt('orders.created_at', recentSalesFrom.toISOString())
+  const { data: recentSales } = await supabase
+    .from('order_items')
+    .select('product_id, orders!inner(created_at, distributor_id)')
+    .eq('orders.distributor_id', distributorId)
+    .gt('orders.created_at', recentSalesFrom.toISOString())
 
-    const activeProductIds = new Set(recentSales?.map((r: any) => r.product_id))
+  const activeProductIds = new Set(recentSales?.map((r: any) => r.product_id))
 
-    products?.forEach((p: any) => {
-        if (!activeProductIds.has(p.id) && (p.stock_pieces > 0)) {
-            signals.push({
-                type: 'Dead Inventory',
-                severity: 'medium',
-                message: `Product "${p.name}" has not sold in the last 30 days.`,
-                entityName: p.name,
-                entityId: p.id
-            })
-        }
-    })
+  products?.forEach((p: any) => {
+    if (!activeProductIds.has(p.id) && (p.stock_pieces > 0)) {
+      signals.push({
+        type: 'Dead Inventory',
+        severity: 'medium',
+        message: `Product "${p.name}" has not sold in the last 30 days.`,
+        entityName: p.name,
+        entityId: p.id
+      })
+    }
+  })
 
-    // 3. Price Mistakes (Historical)
-    // Avoid using .rpc() which might be missing. 
-    // Just fetch recent items and filter in JS.
-    const { data: badOrders } = await supabase
-        .from('order_items')
-        .select(`
-        id,
-        selling_price_at_time,
-        cost_price_at_time,
-        products(name),
-        orders!inner(distributor_id, created_at)
+  // 3. Price Mistakes (Historical)
+  const { data: badOrders } = await supabase
+    .from('order_items')
+    .select(`
+      id,
+      selling_price_at_time,
+      cost_price_at_time,
+      products(name),
+      orders!inner(distributor_id, created_at)
     `)
-        .eq('orders.distributor_id', distributorId)
-        .order('created_at', { ascending: false, foreignTable: 'orders' })
-        .limit(200)
+    .eq('orders.distributor_id', distributorId)
+    .order('created_at', { ascending: false, foreignTable: 'orders' })
+    .limit(200)
 
-    const scopedBadOrders = resetAt
-        ? badOrders?.filter((item: any) => new Date(item.orders?.created_at).getTime() >= resetAt.getTime())
-        : badOrders
+  const scopedBadOrders = resetAt
+    ? badOrders?.filter((item: any) => new Date(item.orders?.created_at).getTime() >= resetAt.getTime())
+    : badOrders
 
-    scopedBadOrders?.forEach((item: any) => {
-        const sell = Number(item.selling_price_at_time) || 0
-        const cost = Number(item.cost_price_at_time) || 0
-        // Flag if Sell < Cost, but only if Cost is known (>0).
-        if (cost > 0 && sell < cost) {
-            signals.push({
-                type: 'Price Mistake',
-                severity: 'high',
-                message: `Sold "${item.products?.name}" at loss (Sell: $${sell}, Cost: $${cost})`,
-                entityName: item.products?.name,
-                entityId: item.id
-            })
-        }
-    })
+  scopedBadOrders?.forEach((item: any) => {
+    const sell = Number(item.selling_price_at_time) || 0
+    const cost = Number(item.cost_price_at_time) || 0
+    if (cost > 0 && sell < cost) {
+      signals.push({
+        type: 'Price Mistake',
+        severity: 'high',
+        message: `Sold "${item.products?.name}" at loss (Sell: $${sell}, Cost: $${cost})`,
+        entityName: item.products?.name,
+        entityId: item.id
+      })
+    }
+  })
 
-    return signals
+  return signals
 }

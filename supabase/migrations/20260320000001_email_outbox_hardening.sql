@@ -145,6 +145,7 @@ set search_path = public
 as $$
 declare
   v_order public.orders%rowtype;
+  v_has_business_profiles boolean := to_regclass('public.business_profiles') is not null;
   v_dist_email text;
   v_dist_name text;
   v_vendor_email text;
@@ -166,21 +167,37 @@ begin
     return;
   end if;
 
-  select
-    public.normalize_email_text(coalesce(p.notification_email, p.email, bp.email)),
-    nullif(trim(coalesce(bp.business_name, p.display_name, p.email)), '')
-    into v_dist_email, v_dist_name
-  from public.profiles p
-  left join public.business_profiles bp on bp.user_id = p.id
-  where p.id = v_order.distributor_id;
+  if v_has_business_profiles then
+    select
+      public.normalize_email_text(coalesce(p.notification_email, p.email, bp.email)),
+      nullif(trim(coalesce(bp.business_name, p.display_name, p.email)), '')
+      into v_dist_email, v_dist_name
+    from public.profiles p
+    left join public.business_profiles bp on bp.user_id = p.id
+    where p.id = v_order.distributor_id;
 
-  select
-    public.normalize_email_text(coalesce(p.email, bp.email)),
-    nullif(trim(coalesce(bp.business_name, p.display_name, p.email)), '')
-    into v_vendor_email, v_vendor_name
-  from public.profiles p
-  left join public.business_profiles bp on bp.user_id = p.id
-  where p.id = v_order.vendor_id;
+    select
+      public.normalize_email_text(coalesce(p.email, bp.email)),
+      nullif(trim(coalesce(bp.business_name, p.display_name, p.email)), '')
+      into v_vendor_email, v_vendor_name
+    from public.profiles p
+    left join public.business_profiles bp on bp.user_id = p.id
+    where p.id = v_order.vendor_id;
+  else
+    select
+      public.normalize_email_text(coalesce(p.notification_email, p.email)),
+      nullif(trim(coalesce(p.display_name, p.email)), '')
+      into v_dist_email, v_dist_name
+    from public.profiles p
+    where p.id = v_order.distributor_id;
+
+    select
+      public.normalize_email_text(p.email),
+      nullif(trim(coalesce(p.display_name, p.email)), '')
+      into v_vendor_email, v_vendor_name
+    from public.profiles p
+    where p.id = v_order.vendor_id;
+  end if;
 
   v_dist_name := coalesce(v_dist_name, v_dist_email, 'Distributor');
   v_vendor_name := coalesce(v_vendor_name, v_vendor_email, 'Vendor');
@@ -292,6 +309,7 @@ set search_path = public
 as $$
 declare
   v_order public.orders%rowtype;
+  v_has_business_profiles boolean := to_regclass('public.business_profiles') is not null;
   v_dist_email text;
   v_dist_name text;
   v_vendor_email text;
@@ -312,21 +330,37 @@ begin
     return;
   end if;
 
-  select
-    public.normalize_email_text(coalesce(p.email, bp.email)),
-    nullif(trim(coalesce(bp.business_name, p.display_name, p.email)), '')
-    into v_dist_email, v_dist_name
-  from public.profiles p
-  left join public.business_profiles bp on bp.user_id = p.id
-  where p.id = v_order.distributor_id;
+  if v_has_business_profiles then
+    select
+      public.normalize_email_text(coalesce(p.email, bp.email)),
+      nullif(trim(coalesce(bp.business_name, p.display_name, p.email)), '')
+      into v_dist_email, v_dist_name
+    from public.profiles p
+    left join public.business_profiles bp on bp.user_id = p.id
+    where p.id = v_order.distributor_id;
 
-  select
-    public.normalize_email_text(coalesce(p.notification_email, p.email, bp.email)),
-    nullif(trim(coalesce(bp.business_name, p.display_name, p.email)), '')
-    into v_vendor_email, v_vendor_name
-  from public.profiles p
-  left join public.business_profiles bp on bp.user_id = p.id
-  where p.id = v_order.vendor_id;
+    select
+      public.normalize_email_text(coalesce(p.notification_email, p.email, bp.email)),
+      nullif(trim(coalesce(bp.business_name, p.display_name, p.email)), '')
+      into v_vendor_email, v_vendor_name
+    from public.profiles p
+    left join public.business_profiles bp on bp.user_id = p.id
+    where p.id = v_order.vendor_id;
+  else
+    select
+      public.normalize_email_text(p.email),
+      nullif(trim(coalesce(p.display_name, p.email)), '')
+      into v_dist_email, v_dist_name
+    from public.profiles p
+    where p.id = v_order.distributor_id;
+
+    select
+      public.normalize_email_text(coalesce(p.notification_email, p.email)),
+      nullif(trim(coalesce(p.display_name, p.email)), '')
+      into v_vendor_email, v_vendor_name
+    from public.profiles p
+    where p.id = v_order.vendor_id;
+  end if;
 
   v_dist_name := coalesce(v_dist_name, v_dist_email, 'Distributor');
   v_vendor_name := coalesce(v_vendor_name, v_vendor_email, 'Vendor');

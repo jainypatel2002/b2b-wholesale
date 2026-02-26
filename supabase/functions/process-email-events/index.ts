@@ -4,7 +4,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 const supabaseUrl = Deno.env.get('SUPABASE_URL') || Deno.env.get('SUPABASE_API_URL')
 const supabaseServiceKey = Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 const resendApiKey = Deno.env.get('RESEND_API_KEY')
-const resendFrom = Deno.env.get('RESEND_FROM') || 'onboarding@resend.dev'
+const configuredResendFrom = Deno.env.get('RESEND_FROM')
+const resendFrom = configuredResendFrom || 'onboarding@resend.dev'
 const appUrl = (Deno.env.get('APP_URL') || Deno.env.get('NEXT_PUBLIC_APP_URL') || 'https://distributor-vendor-portal.vercel.app').replace(/\/$/, '')
 const workerSecret = Deno.env.get('EMAIL_WORKER_SECRET')
 
@@ -300,6 +301,11 @@ serve(async (req) => {
     try {
       if (!resendApiKey) {
         throw new Error('RESEND_API_KEY is not configured')
+      }
+      if (!configuredResendFrom) {
+        throw new Error(
+          'RESEND_FROM is not configured. Set a verified sender domain in Supabase secrets. onboarding@resend.dev is sandbox-only.'
+        )
       }
 
       const toEmail = normalizeEmail(claimed.to_email)

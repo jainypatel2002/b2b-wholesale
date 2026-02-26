@@ -44,6 +44,25 @@ function formatSignalType(value: LossSignal['type']) {
     return value
 }
 
+function formatQty(value: number) {
+    return value.toLocaleString('en-US', { maximumFractionDigits: 2 })
+}
+
+function formatProductQuantity(product: ProductProfitability) {
+    const hasCases = product.soldCases > 0
+    const hasUnits = product.soldUnits > 0
+
+    let base = `${formatQty(product.soldUnits)} units`
+    if (hasCases && hasUnits) {
+        base = `${formatQty(product.soldCases)} cases + ${formatQty(product.soldUnits)} units`
+    } else if (hasCases) {
+        base = `${formatQty(product.soldCases)} cases`
+    }
+
+    if (product.soldUnitsEquivalent === null) return base
+    return `${base} (${formatQty(product.soldUnitsEquivalent)} units eq.)`
+}
+
 export function ProfitCenterReport({
     overview,
     products,
@@ -202,7 +221,7 @@ export function ProfitCenterReport({
                     <thead>
                         <tr>
                             <th>Product</th>
-                            <th className="text-right">Qty Sold</th>
+                            <th className="text-right">Qty Sold (Cases / Units)</th>
                             <th className="text-right">Revenue</th>
                             <th className="text-right">Cost</th>
                             <th className="text-right">Profit</th>
@@ -218,7 +237,7 @@ export function ProfitCenterReport({
                             products.map((product) => (
                                 <tr key={product.productId}>
                                     <td>{product.productName}</td>
-                                    <td className="text-right">{product.soldQty.toLocaleString('en-US')}</td>
+                                    <td className="text-right">{formatProductQuantity(product)}</td>
                                     <td className="text-right">{formatMoney(product.revenue)}</td>
                                     <td className="text-right">{formatMoney(product.cost)}</td>
                                     <td className="text-right">{formatMoney(product.profit)}</td>
