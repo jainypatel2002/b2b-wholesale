@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useRef, useCallback, useEffect, useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { AlertCircle, ChevronDown, ChevronUp, Edit, Package, Plus, Search, Trash2 } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Edit, Package, Plus, Search, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -13,8 +13,8 @@ import type { ScanStatus } from '@/components/scanner/BarcodeScannerPanel'
 import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeScannerModal'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { createClient } from '@/lib/supabase/client'
-import { deleteProduct, createProductAction, updateProductAction } from './actions'
-import { formatMoney, resolveCaseUnitPrices } from '@/lib/pricing/display'
+import { addBarcodeToProduct, deleteProduct, createProductAction, updateProductAction } from './actions'
+import { formatMoney, resolveCaseUnitPrices, safeUnitsPerCase, toCaseFromUnit, toUnitFromCase } from '@/lib/pricing/display'
 import { filterCategoryNodesForCategory, isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
 import { normalizeBarcode } from '@/lib/utils/barcode'
 
@@ -901,6 +901,25 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     )
     const [barcodeInput, setBarcodeInput] = useState('')
     const barcodeInputRef = useRef<HTMLInputElement>(null)
+    const isEditMode = type === 'edit' && Boolean(defaultValues?.id)
+    const [copiedBarcode, setCopiedBarcode] = useState<string | null>(null)
+
+    const barcodeScanModalRef = useRef<HTMLDialogElement>(null)
+    const scannerCatcherRef = useRef<HTMLInputElement>(null)
+    const scannerIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const scannerLastHandledRef = useRef<{ value: string; at: number }>({ value: '', at: 0 })
+    const [barcodeScanOpen, setBarcodeScanOpen] = useState(false)
+    const [barcodeScanMode, setBarcodeScanMode] = useState<'scanner' | 'camera'>('scanner')
+    const [barcodeScanStatus, setBarcodeScanStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
+    const [barcodeScanMessage, setBarcodeScanMessage] = useState('Ready to scan a barcode.')
+    const [barcodeScanLastCode, setBarcodeScanLastCode] = useState<string | null>(null)
+    const [barcodeScanSaving, setBarcodeScanSaving] = useState(false)
+
+    const [barcodeCameraOpen, setBarcodeCameraOpen] = useState(false)
+    const [barcodeCameraError, setBarcodeCameraError] = useState<string | null>(null)
+    const barcodeCameraStreamRef = useRef<MediaStream | null>(null)
+    const [barcodeCameraStream, setBarcodeCameraStream] = useState<MediaStream | null>(null)
+
     const [lowStockThreshold, setLowStockThreshold] = useState(String(defaultValues?.low_stock_threshold ?? 5))
     const normalizedBarcodeEntries = useMemo(() => normalizeBarcodeDrafts(barcodeDrafts), [barcodeDrafts])
     const primaryBarcode = normalizedBarcodeEntries.find((entry) => entry.isPrimary)?.barcode ?? null
@@ -913,8 +932,10 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     const [lockedStockQty, setLockedStockQty] = useState<string>(defaultValues?.locked_stock_qty != null ? String(defaultValues.locked_stock_qty) : '')
 
     // Units per Case (Central to calculations) - String state to allow smooth typing
-    const [unitsPerCaseInput, setUnitsPerCaseInput] = useState<string>(String(defaultValues?.units_per_case || 1))
-    const unitsPerCase = Math.max(1, Number(unitsPerCaseInput || 1))
+    const [unitsPerCaseInput, setUnitsPerCaseInput] = useState<string>(String(defaultValues?.units_per_case ?? 1))
+    const safeUnitsPerCaseValue = safeUnitsPerCase(unitsPerCaseInput)
+    const hasValidUnitsPerCase = safeUnitsPerCaseValue !== null
+    const unitsPerCase = safeUnitsPerCaseValue ?? 1
 
     // Subcategory logic
     const [selectedCategory, setSelectedCategory] = useState(String(defaultValues?.category_id ?? ''))
@@ -936,25 +957,29 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     const fetchedSubcategoryCategoriesRef = useRef<Set<string>>(new Set())
     const supabase = useMemo(() => createClient(), [])
 
+    const initialUnitsPerCase = safeUnitsPerCase(defaultValues?.units_per_case)
+    const initialCostMode: 'unit' | 'case' =
+        defaultValues?.cost_mode === 'case' && initialUnitsPerCase !== null ? 'case' : 'unit'
+    const initialPriceMode: 'unit' | 'case' =
+        defaultValues?.price_mode === 'case' && initialUnitsPerCase !== null ? 'case' : 'unit'
+
+    const initialCostResolved = resolveCaseUnitPrices({
+        casePrice: defaultValues?.cost_per_case ?? defaultValues?.cost_case,
+        unitPrice: defaultValues?.cost_per_unit ?? defaultValues?.cost_price,
+        unitsPerCase: defaultValues?.units_per_case
+    })
+    const initialSellResolved = resolveCaseUnitPrices({
+        casePrice: defaultValues?.sell_per_case ?? defaultValues?.price_case,
+        unitPrice: defaultValues?.sell_per_unit ?? defaultValues?.sell_price,
+        unitsPerCase: defaultValues?.units_per_case
+    })
+
+    const initialCostVal = initialCostMode === 'case' ? initialCostResolved.casePrice : initialCostResolved.unitPrice
+    const initialSellVal = initialPriceMode === 'case' ? initialSellResolved.casePrice : initialSellResolved.unitPrice
+
     // Pricing Modes
-    const [costMode, setCostMode] = useState<'unit' | 'case'>(defaultValues?.cost_mode || 'unit')
-    const [priceMode, setPriceMode] = useState<'unit' | 'case'>(defaultValues?.price_mode || 'unit')
-
-    // Derived Pricing Values (for display/input)
-    // We store the RAW input values in state to avoid jumping cursor issues,
-    // but the actual submission will use hidden fields or be calculated on server if we send raw.
-    // However, to show "Calculated" values, we need state.
-
-    // Initial load: prefer stored mode values if available, else derive
-    // BUG FIX: Handle 0 correctly (don't fallback to '' if value is 0)
-    const initialCostVal =
-        defaultValues?.cost_per_unit ??
-        (defaultValues?.cost_mode === 'case' ? defaultValues?.cost_case : defaultValues?.cost_price);
-
-    const initialSellVal =
-        defaultValues?.sell_per_unit ??
-        (defaultValues?.price_mode === 'case' ? defaultValues?.price_case : defaultValues?.sell_price);
-
+    const [costMode, setCostMode] = useState<'unit' | 'case'>(initialCostMode)
+    const [priceMode, setPriceMode] = useState<'unit' | 'case'>(initialPriceMode)
     const [costInput, setCostInput] = useState<string>(initialCostVal != null ? String(initialCostVal) : '')
     const [sellInput, setSellInput] = useState<string>(initialSellVal != null ? String(initialSellVal) : '')
 
@@ -1010,6 +1035,207 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
         setBarcodeDrafts((prev) => prev.map((entry) => ({ ...entry, isPrimary: entry.id === id })))
     }, [])
 
+    const copyBarcodeValue = useCallback(async (value: string) => {
+        const normalized = normalizeBarcode(value)
+        if (!normalized) return
+        try {
+            await navigator.clipboard.writeText(normalized)
+            setCopiedBarcode(normalized)
+            setTimeout(() => {
+                setCopiedBarcode((prev) => prev === normalized ? null : prev)
+            }, 1500)
+        } catch {
+            setClientFormError('Failed to copy barcode to clipboard.')
+        }
+    }, [])
+
+    const clearScannerIdleTimer = useCallback(() => {
+        if (scannerIdleTimerRef.current) {
+            clearTimeout(scannerIdleTimerRef.current)
+            scannerIdleTimerRef.current = null
+        }
+    }, [])
+
+    const focusScannerCatcher = useCallback(() => {
+        setTimeout(() => {
+            scannerCatcherRef.current?.focus()
+            scannerCatcherRef.current?.select()
+        }, 60)
+    }, [])
+
+    const stopBarcodeCameraStream = useCallback(() => {
+        if (barcodeCameraStreamRef.current) {
+            barcodeCameraStreamRef.current.getTracks().forEach((track) => track.stop())
+            barcodeCameraStreamRef.current = null
+        }
+        setBarcodeCameraStream(null)
+    }, [])
+
+    const closeBarcodeCamera = useCallback(() => {
+        stopBarcodeCameraStream()
+        setBarcodeCameraError(null)
+        setBarcodeCameraOpen(false)
+    }, [stopBarcodeCameraStream])
+
+    const openBarcodeCamera = useCallback(async () => {
+        setBarcodeCameraError(null)
+        stopBarcodeCameraStream()
+        setBarcodeScanMode('camera')
+        setBarcodeScanStatus('idle')
+        setBarcodeScanMessage('Starting camera…')
+        setBarcodeCameraOpen(true)
+
+        if (typeof window !== 'undefined' && !window.isSecureContext) {
+            setBarcodeCameraError('insecure_context: Camera requires HTTPS or localhost.')
+            setBarcodeScanStatus('error')
+            setBarcodeScanMessage('Camera requires HTTPS or localhost.')
+            return
+        }
+
+        if (!navigator?.mediaDevices?.getUserMedia) {
+            setBarcodeCameraError('Camera not supported in this browser.')
+            setBarcodeScanStatus('error')
+            setBarcodeScanMessage('Camera is not supported in this browser.')
+            return
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' } },
+                audio: false
+            })
+            barcodeCameraStreamRef.current = stream
+            setBarcodeCameraStream(stream)
+            setBarcodeScanMessage('Camera active. Point at a barcode.')
+        } catch {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+                barcodeCameraStreamRef.current = stream
+                setBarcodeCameraStream(stream)
+                setBarcodeScanMessage('Camera active. Point at a barcode.')
+            } catch (fallbackError: any) {
+                setBarcodeCameraError(`${fallbackError?.name || 'CameraError'}: ${fallbackError?.message || 'Unable to access camera.'}`)
+                setBarcodeScanStatus('error')
+                setBarcodeScanMessage('Unable to access camera.')
+            }
+        }
+    }, [stopBarcodeCameraStream])
+
+    const closeBarcodeScanModal = useCallback(() => {
+        clearScannerIdleTimer()
+        closeBarcodeCamera()
+        setBarcodeScanOpen(false)
+        setBarcodeScanMode('scanner')
+        setBarcodeScanStatus('idle')
+        setBarcodeScanMessage('Ready to scan a barcode.')
+        setBarcodeScanSaving(false)
+        if (barcodeScanModalRef.current?.open) {
+            barcodeScanModalRef.current.close()
+        }
+    }, [clearScannerIdleTimer, closeBarcodeCamera])
+
+    const openBarcodeScanModal = useCallback(() => {
+        setBarcodeScanOpen(true)
+        setBarcodeScanMode('scanner')
+        setBarcodeScanStatus('idle')
+        setBarcodeScanMessage('Scanner mode active. Scan a barcode now.')
+        setBarcodeScanLastCode(null)
+        setBarcodeScanSaving(false)
+        if (!barcodeScanModalRef.current?.open) {
+            barcodeScanModalRef.current?.showModal()
+        }
+        focusScannerCatcher()
+    }, [focusScannerCatcher])
+
+    const handleScannedBarcode = useCallback(async (rawBarcode: string) => {
+        const normalized = normalizeBarcode(rawBarcode)
+        const now = Date.now()
+
+        if (
+            normalized
+            && scannerLastHandledRef.current.value === normalized
+            && now - scannerLastHandledRef.current.at < 1200
+        ) {
+            return
+        }
+
+        scannerLastHandledRef.current = {
+            value: normalized,
+            at: now
+        }
+
+        setBarcodeScanLastCode(normalized || rawBarcode.trim())
+
+        if (!normalized || normalized.length < 6) {
+            setBarcodeScanStatus('error')
+            setBarcodeScanMessage('Invalid barcode. Minimum length is 6.')
+            if (barcodeScanMode === 'scanner') focusScannerCatcher()
+            return
+        }
+
+        const alreadyInDraft = barcodeDrafts.some((entry) => normalizeBarcode(entry.value) === normalized)
+        if (alreadyInDraft) {
+            setBarcodeScanStatus('success')
+            setBarcodeScanMessage('Already added to this product.')
+            if (barcodeScanMode === 'scanner') focusScannerCatcher()
+            return
+        }
+
+        if (isEditMode && defaultValues?.id) {
+            setBarcodeScanSaving(true)
+            setBarcodeScanStatus('saving')
+            setBarcodeScanMessage(`Saving ${normalized}…`)
+
+            const result = await addBarcodeToProduct({
+                productId: defaultValues.id,
+                barcode: normalized
+            })
+
+            setBarcodeScanSaving(false)
+
+            if (!result.success) {
+                setBarcodeScanStatus('error')
+                setBarcodeScanMessage(result.error || 'Failed to save barcode.')
+                if (barcodeScanMode === 'scanner') focusScannerCatcher()
+                return
+            }
+
+            addBarcodeDraft(result.barcode || normalized)
+            setBarcodeScanStatus('success')
+            setBarcodeScanMessage(
+                result.alreadyAdded
+                    ? 'Already added to this product.'
+                    : 'Barcode added and saved.'
+            )
+            if (barcodeScanMode === 'scanner') focusScannerCatcher()
+            return
+        }
+
+        addBarcodeDraft(normalized)
+        setBarcodeScanStatus('success')
+        setBarcodeScanMessage('Barcode queued. Save product to persist.')
+        if (barcodeScanMode === 'scanner') focusScannerCatcher()
+    }, [barcodeDrafts, barcodeScanMode, addBarcodeDraft, defaultValues?.id, focusScannerCatcher, isEditMode])
+
+    const commitScannerInput = useCallback(() => {
+        clearScannerIdleTimer()
+        const scannerInput = scannerCatcherRef.current
+        if (!scannerInput) return
+
+        const scannedValue = scannerInput.value.trim()
+        if (!scannedValue) return
+
+        scannerInput.value = ''
+        void handleScannedBarcode(scannedValue)
+    }, [clearScannerIdleTimer, handleScannedBarcode])
+
+    const queueScannerCommit = useCallback(() => {
+        clearScannerIdleTimer()
+        scannerIdleTimerRef.current = setTimeout(() => {
+            commitScannerInput()
+        }, 140)
+    }, [clearScannerIdleTimer, commitScannerInput])
+
     const applyScannedBarcode = useCallback((rawBarcode: string) => {
         addBarcodeDraft(rawBarcode, true)
         setTimeout(() => {
@@ -1023,25 +1249,58 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
         }
     }, [pendingScannedBarcode, type, applyScannedBarcode])
 
+    useEffect(() => {
+        if (!barcodeScanOpen || barcodeScanMode !== 'scanner') return
+        focusScannerCatcher()
+    }, [barcodeScanMode, barcodeScanOpen, focusScannerCatcher])
+
+    useEffect(() => {
+        return () => {
+            clearScannerIdleTimer()
+            stopBarcodeCameraStream()
+        }
+    }, [clearScannerIdleTimer, stopBarcodeCameraStream])
+
     // --- Explicit Handlers to prevent async side-effect overwrites ---
+    const parsePriceInput = (rawValue: string): number | null => {
+        if (rawValue.trim() === '') return null
+        const parsed = Number(rawValue)
+        return Number.isFinite(parsed) ? parsed : null
+    }
+
+    useEffect(() => {
+        if (!hasValidUnitsPerCase) {
+            if (costMode === 'case') setCostMode('unit')
+            if (priceMode === 'case') setPriceMode('unit')
+        }
+    }, [costMode, hasValidUnitsPerCase, priceMode])
 
     const handlePriceModeToggle = (target: 'cost' | 'price', newMode: 'unit' | 'case') => {
+        if (newMode === 'case' && !hasValidUnitsPerCase) {
+            setClientFormError('Set units per case to use case pricing.')
+            return
+        }
+
         if (target === 'cost') {
-            const currentVal = Number(costInput)
-            if (!isNaN(currentVal) && costMode !== newMode) {
-                // Convert value to match new mode
-                if (newMode === 'case') setCostInput(String(currentVal * unitsPerCase))
-                else setCostInput(String(currentVal / unitsPerCase))
+            const currentVal = parsePriceInput(costInput)
+            if (currentVal !== null && costMode !== newMode) {
+                const converted = newMode === 'case'
+                    ? toCaseFromUnit(currentVal, safeUnitsPerCaseValue)
+                    : toUnitFromCase(currentVal, safeUnitsPerCaseValue)
+                if (converted !== null) setCostInput(String(converted))
             }
             setCostMode(newMode)
+            setClientFormError(null)
         } else {
-            const currentVal = Number(sellInput)
-            if (!isNaN(currentVal) && priceMode !== newMode) {
-                // Convert value to match new mode
-                if (newMode === 'case') setSellInput(String(currentVal * unitsPerCase))
-                else setSellInput(String(currentVal / unitsPerCase))
+            const currentVal = parsePriceInput(sellInput)
+            if (currentVal !== null && priceMode !== newMode) {
+                const converted = newMode === 'case'
+                    ? toCaseFromUnit(currentVal, safeUnitsPerCaseValue)
+                    : toUnitFromCase(currentVal, safeUnitsPerCaseValue)
+                if (converted !== null) setSellInput(String(converted))
             }
             setPriceMode(newMode)
+            setClientFormError(null)
         }
     }
 
@@ -1061,32 +1320,37 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
 
     // Calculation Helpers
     const getCostPerUnit = () => {
-        const val = Number(costInput)
-        if (isNaN(val)) return 0
+        const val = parsePriceInput(costInput)
+        if (val === null) return null
         if (costMode === 'unit') return val
-        return val / Math.max(1, unitsPerCase)
+        return toUnitFromCase(val, safeUnitsPerCaseValue)
     }
 
     const getSellPerUnit = () => {
-        const val = Number(sellInput)
-        if (isNaN(val)) return 0
+        const val = parsePriceInput(sellInput)
+        if (val === null) return null
         if (priceMode === 'unit') return val
-        return val / Math.max(1, unitsPerCase)
+        return toUnitFromCase(val, safeUnitsPerCaseValue)
     }
 
     const getCostPerCase = () => {
-        const val = Number(costInput)
-        if (isNaN(val)) return 0
+        const val = parsePriceInput(costInput)
+        if (val === null) return null
         if (costMode === 'case') return val
-        return val * Math.max(1, unitsPerCase)
+        return toCaseFromUnit(val, safeUnitsPerCaseValue)
     }
 
     const getSellPerCase = () => {
-        const val = Number(sellInput)
-        if (isNaN(val)) return 0
+        const val = parsePriceInput(sellInput)
+        if (val === null) return null
         if (priceMode === 'case') return val
-        return val * Math.max(1, unitsPerCase)
+        return toCaseFromUnit(val, safeUnitsPerCaseValue)
     }
+
+    const costPerUnit = getCostPerUnit()
+    const sellPerUnit = getSellPerUnit()
+    const costPerCase = getCostPerCase()
+    const sellPerCase = getSellPerCase()
 
     const availableSubcategories = useMemo(() => {
         if (!selectedCategory) return []
@@ -1246,6 +1510,29 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
             return
         }
 
+        if ((costMode === 'case' || priceMode === 'case') && !hasValidUnitsPerCase) {
+            e.preventDefault()
+            setClientFormError('Set units per case to use case pricing.')
+            return
+        }
+
+        if (costPerUnit === null || sellPerUnit === null) {
+            e.preventDefault()
+            setClientFormError('Enter valid numeric prices before saving.')
+            return
+        }
+
+        if (
+            costPerUnit < 0 ||
+            sellPerUnit < 0 ||
+            (costPerCase !== null && costPerCase < 0) ||
+            (sellPerCase !== null && sellPerCase < 0)
+        ) {
+            e.preventDefault()
+            setClientFormError('Prices must be 0 or greater.')
+            return
+        }
+
         if (!selectedSubcategory) return
 
         if (!selectedCategory) {
@@ -1289,10 +1576,10 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                 and also the CASE prices as extra fields. 
                 Ideally, the server should validate, but we can compute here for convenience.
             */}
-            <input type="hidden" name="cost_price" value={getCostPerUnit()} />
-            <input type="hidden" name="sell_price" value={getSellPerUnit()} />
-            <input type="hidden" name="cost_case" value={getCostPerCase()} />
-            <input type="hidden" name="price_case" value={getSellPerCase()} />
+            <input type="hidden" name="cost_price" value={costPerUnit ?? ''} />
+            <input type="hidden" name="sell_price" value={sellPerUnit ?? ''} />
+            <input type="hidden" name="cost_case" value={costPerCase ?? ''} />
+            <input type="hidden" name="price_case" value={sellPerCase ?? ''} />
             <input type="hidden" name="barcode" value={primaryBarcode ?? ''} />
             <input type="hidden" name="barcodes_json" value={JSON.stringify(normalizedBarcodeEntries)} />
 
@@ -1313,7 +1600,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                         <span className="text-xs text-slate-500">Primary barcode stays synced to legacy field</span>
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <Input
                             ref={barcodeInputRef}
                             value={barcodeInput}
@@ -1325,6 +1612,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                                 setBarcodeInput('')
                             }}
                             placeholder="Add barcode (UPC/EAN/alias)"
+                            className="min-w-[220px] flex-1"
                         />
                         <Button
                             type="button"
@@ -1335,6 +1623,13 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                                 barcodeInputRef.current?.focus()
                             }}
                         >
+                            Add Typed
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={openBarcodeScanModal}
+                        >
+                            <Plus className="mr-1 h-3.5 w-3.5" />
                             Add
                         </Button>
                     </div>
@@ -1347,7 +1642,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                                 const normalized = normalizeBarcode(entry.value)
                                 const isTooShort = normalized.length > 0 && normalized.length < 6
                                 return (
-                                    <div key={entry.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2">
+                                    <div key={entry.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2">
                                         <button
                                             type="button"
                                             onClick={() => setPrimaryBarcodeDraft(entry.id)}
@@ -1361,8 +1656,21 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                                                 const next = e.target.value
                                                 setBarcodeDrafts((prev) => prev.map((row) => row.id === entry.id ? { ...row, value: next } : row))
                                             }}
-                                            className="font-mono text-xs"
+                                            className="min-w-[180px] flex-1 font-mono text-xs"
                                         />
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => copyBarcodeValue(entry.value)}
+                                            className="px-2"
+                                        >
+                                            {copiedBarcode === normalizeBarcode(entry.value) ? (
+                                                <Check className="h-4 w-4 text-emerald-600" />
+                                            ) : (
+                                                <Copy className="h-4 w-4 text-slate-500" />
+                                            )}
+                                        </Button>
                                         <Button
                                             type="button"
                                             variant="ghost"
@@ -1487,12 +1795,17 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                             <button
                                 type="button"
                                 onClick={() => handlePriceModeToggle('cost', 'case')}
-                                className={`rounded-md px-2 py-0.5 text-xs transition-colors ${costMode === 'case' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                disabled={!hasValidUnitsPerCase}
+                                title={!hasValidUnitsPerCase ? 'Set units per case to use case pricing' : undefined}
+                                className={`rounded-md px-2 py-0.5 text-xs transition-colors ${costMode === 'case' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'} ${!hasValidUnitsPerCase ? 'cursor-not-allowed opacity-60' : ''}`}
                             >
                                 Per Case
                             </button>
                         </div>
                     </div>
+                    {!hasValidUnitsPerCase && (
+                        <p className="text-xs text-amber-700">Set units per case to use case pricing.</p>
+                    )}
                     <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-500">$</span>
                         <Input
@@ -1500,16 +1813,17 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                             onChange={e => setCostInput(e.target.value)}
                             type="number"
                             step="0.0001"
+                            min="0"
                             placeholder="0.00"
                             className="pl-7"
                         />
                     </div>
                     <div className="rounded-md border border-slate-200 bg-slate-50/70 px-3 py-2">
                         <div className="text-sm font-semibold text-slate-900">
-                            {formatMoney(getCostPerCase())}/case
+                            {costPerCase === null ? 'Not set /case' : `${formatMoney(costPerCase)}/case`}
                         </div>
                         <div className="text-xs text-slate-500">
-                            {formatMoney(getCostPerUnit())}/unit
+                            {costPerUnit === null ? 'Not set /unit' : `${formatMoney(costPerUnit)}/unit`}
                         </div>
                     </div>
                 </div>
@@ -1529,12 +1843,17 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                             <button
                                 type="button"
                                 onClick={() => handlePriceModeToggle('price', 'case')}
-                                className={`rounded-md px-2 py-0.5 text-xs transition-colors ${priceMode === 'case' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                disabled={!hasValidUnitsPerCase}
+                                title={!hasValidUnitsPerCase ? 'Set units per case to use case pricing' : undefined}
+                                className={`rounded-md px-2 py-0.5 text-xs transition-colors ${priceMode === 'case' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'} ${!hasValidUnitsPerCase ? 'cursor-not-allowed opacity-60' : ''}`}
                             >
                                 Per Case
                             </button>
                         </div>
                     </div>
+                    {!hasValidUnitsPerCase && (
+                        <p className="text-xs text-amber-700">Set units per case to use case pricing.</p>
+                    )}
                     <div className="relative">
                         <span className="absolute left-3 top-2.5 text-slate-500">$</span>
                         <Input
@@ -1542,16 +1861,17 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                             onChange={e => setSellInput(e.target.value)}
                             type="number"
                             step="0.0001"
+                            min="0"
                             placeholder="0.00"
                             className="pl-7"
                         />
                     </div>
                     <div className="rounded-md border border-slate-200 bg-slate-50/70 px-3 py-2">
                         <div className="text-sm font-semibold text-slate-900">
-                            {formatMoney(getSellPerCase())}/case
+                            {sellPerCase === null ? 'Not set /case' : `${formatMoney(sellPerCase)}/case`}
                         </div>
                         <div className="text-xs text-slate-500">
-                            {formatMoney(getSellPerUnit())}/unit
+                            {sellPerUnit === null ? 'Not set /unit' : `${formatMoney(sellPerUnit)}/unit`}
                         </div>
                     </div>
                 </div>
@@ -1665,6 +1985,150 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                 type="hidden"
                 name="stock_qty"
                 value={stockMode === 'cases' ? Number(stockInput || 0) * unitsPerCase : Number(stockInput || 0)}
+            />
+
+            <dialog
+                ref={barcodeScanModalRef}
+                className="modal bg-transparent"
+                onClose={() => {
+                    setBarcodeScanOpen(false)
+                    clearScannerIdleTimer()
+                    closeBarcodeCamera()
+                }}
+            >
+                <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-xl rounded-2xl border border-white/70 bg-white/95 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                            <div>
+                                <h3 className="text-base font-semibold text-slate-900">Add Barcode</h3>
+                                <p className="text-xs text-slate-500">
+                                    {isEditMode
+                                        ? 'Scanned barcodes save immediately to this product.'
+                                        : 'Scanned barcodes are queued and saved when you create the product.'}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeBarcodeScanModal}
+                                className="rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 p-4">
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    type="button"
+                                    variant={barcodeScanMode === 'scanner' ? 'default' : 'outline'}
+                                    onClick={() => {
+                                        closeBarcodeCamera()
+                                        setBarcodeScanMode('scanner')
+                                        setBarcodeScanStatus('idle')
+                                        setBarcodeScanMessage('Scanner mode active. Scan a barcode now.')
+                                        focusScannerCatcher()
+                                    }}
+                                >
+                                    Scanner ON
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={barcodeScanMode === 'camera' ? 'default' : 'outline'}
+                                    onClick={() => {
+                                        void openBarcodeCamera()
+                                    }}
+                                >
+                                    Use Camera
+                                </Button>
+                                <Button type="button" variant="outline" onClick={closeBarcodeScanModal}>
+                                    Stop
+                                </Button>
+                            </div>
+
+                            <div
+                                className={`rounded-lg border px-3 py-2 text-xs ${
+                                    barcodeScanStatus === 'error'
+                                        ? 'border-red-200 bg-red-50 text-red-700'
+                                        : barcodeScanStatus === 'success'
+                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                            : barcodeScanStatus === 'saving'
+                                                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                                : 'border-slate-200 bg-slate-50 text-slate-700'
+                                }`}
+                            >
+                                <p className="font-medium">{barcodeScanMessage}</p>
+                                {barcodeScanLastCode && (
+                                    <p className="mt-1 font-mono text-[11px]">Last scanned: {barcodeScanLastCode}</p>
+                                )}
+                            </div>
+
+                            {barcodeScanMode === 'scanner' && (
+                                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                                    <p className="text-xs text-slate-600">
+                                        Keep this modal open and scan with your wireless scanner.
+                                    </p>
+                                    <input
+                                        ref={scannerCatcherRef}
+                                        type="text"
+                                        autoComplete="off"
+                                        autoCorrect="off"
+                                        autoCapitalize="off"
+                                        spellCheck={false}
+                                        inputMode="none"
+                                        tabIndex={-1}
+                                        className="sr-only"
+                                        aria-label="Scanner catcher input"
+                                        onInput={() => {
+                                            if (!barcodeScanSaving) {
+                                                setBarcodeScanStatus('idle')
+                                                setBarcodeScanMessage('Receiving scanner input…')
+                                            }
+                                            queueScannerCommit()
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === 'Tab') {
+                                                e.preventDefault()
+                                                commitScannerInput()
+                                            }
+                                        }}
+                                        onBlur={() => {
+                                            if (barcodeScanOpen && barcodeScanMode === 'scanner') {
+                                                focusScannerCatcher()
+                                            }
+                                        }}
+                                    />
+                                    <div className="mt-2 flex justify-end">
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={focusScannerCatcher}
+                                        >
+                                            Refocus Scanner
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {barcodeScanMode === 'camera' && (
+                                <p className="text-xs text-slate-600">
+                                    Camera scanner opens above this modal. Close the camera view to return here.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </dialog>
+
+            <CameraBarcodeScannerModal
+                open={barcodeCameraOpen}
+                stream={barcodeCameraStream}
+                cameraError={barcodeCameraError}
+                onClose={closeBarcodeCamera}
+                onScan={(scannedBarcode: string) => {
+                    closeBarcodeCamera()
+                    void handleScannedBarcode(scannedBarcode)
+                }}
             />
 
             <div className="pt-2 flex justify-end gap-2">

@@ -5,6 +5,7 @@ import { getDistributorContext } from '@/lib/data'
 import { revalidatePath } from 'next/cache'
 import { isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
 import { normalizeBarcode } from '@/lib/utils/barcode'
+import { safeUnitsPerCase, toCaseFromUnit, toUnitFromCase } from '@/lib/pricing/display'
 
 export type InventoryActionState = {
     success?: boolean
@@ -12,11 +13,44 @@ export type InventoryActionState = {
     details?: any
 }
 
+export type AddBarcodeToProductResult = {
+    success: boolean
+    barcode?: string
+    alreadyAdded?: boolean
+    error?: string
+}
+
 type InventorySupabaseClient = Awaited<ReturnType<typeof createClient>>
 
 type SubmittedBarcodeEntry = {
     barcode: string
     isPrimary: boolean
+}
+
+function resolveUnitCasePair(input: {
+    mode: 'unit' | 'case'
+    unitPrice: number | null | undefined
+    casePrice: number | null | undefined
+    unitsPerCase: unknown
+}): { unitPrice: number | null; casePrice: number | null } {
+    const unitInput = input.unitPrice ?? null
+    const caseInput = input.casePrice ?? null
+    const validUnitsPerCase = safeUnitsPerCase(input.unitsPerCase)
+
+    if (input.mode === 'case') {
+        const casePrice = caseInput ?? toCaseFromUnit(unitInput, validUnitsPerCase)
+        const unitPrice = casePrice !== null
+            ? (toUnitFromCase(casePrice, validUnitsPerCase) ?? unitInput)
+            : unitInput
+        return { unitPrice, casePrice }
+    }
+
+    const unitPrice = unitInput ?? toUnitFromCase(caseInput, validUnitsPerCase)
+    const casePrice = unitPrice !== null
+        ? (toCaseFromUnit(unitPrice, validUnitsPerCase) ?? caseInput)
+        : caseInput
+
+    return { unitPrice, casePrice }
 }
 
 function isMissingProductBarcodesTableError(error: any): boolean {
@@ -185,6 +219,197 @@ async function findBarcodeCollision(params: {
     return {
         barcode: firstCollision.barcode,
         productName: productNameById.get(firstCollision.product_id) || 'another product'
+    }
+}
+
+export async function addBarcodeToProduct(params: {
+    productId: string
+    barcode: string
+}): Promise<AddBarcodeToProductResult> {
+    try {
+        const { distributorId } = await getDistributorContext()
+        const productId = String(params.productId || '').trim()
+        const normalizedBarcode = normalizeBarcode(String(params.barcode || ''))
+
+        if (!productId) {
+            return { success: false, error: 'Product is required.' }
+        }
+
+        if (!normalizedBarcode || normalizedBarcode.length < 6) {
+            return { success: false, error: 'Invalid barcode. Minimum length is 6.' }
+        }
+
+        const supabase = await createClient()
+
+        let productResult = await supabase
+            .from('products')
+            .select('id,name,barcode')
+            .eq('id', productId)
+            .eq('distributor_id', distributorId)
+            .is('deleted_at', null)
+            .maybeSingle()
+
+        if (productResult.error && productResult.error.code === '42703') {
+            productResult = await supabase
+                .from('products')
+                .select('id,name,barcode')
+                .eq('id', productId)
+                .eq('distributor_id', distributorId)
+                .maybeSingle()
+        }
+
+        if (productResult.error) {
+            return { success: false, error: productResult.error.message || 'Failed to load product.' }
+        }
+
+        if (!productResult.data) {
+            return { success: false, error: 'Product not found for this distributor.' }
+        }
+
+        const legacyBarcode = normalizeBarcode(String((productResult.data as any).barcode || ''))
+
+        const sameProductAliasResult = await supabase
+            .from('product_barcodes')
+            .select('id')
+            .eq('product_id', productId)
+            .eq('barcode', normalizedBarcode)
+            .limit(1)
+            .maybeSingle()
+
+        if (!sameProductAliasResult.error && sameProductAliasResult.data) {
+            return {
+                success: true,
+                barcode: normalizedBarcode,
+                alreadyAdded: true
+            }
+        }
+
+        if (sameProductAliasResult.error && !isMissingProductBarcodesTableError(sameProductAliasResult.error)) {
+            return { success: false, error: sameProductAliasResult.error.message || 'Failed to validate barcode aliases.' }
+        }
+
+        if (legacyBarcode === normalizedBarcode) {
+            return {
+                success: true,
+                barcode: normalizedBarcode,
+                alreadyAdded: true
+            }
+        }
+
+        const collision = await findBarcodeCollision({
+            supabase,
+            distributorId,
+            barcodes: [normalizedBarcode],
+            excludeProductId: productId
+        })
+
+        if (collision) {
+            return {
+                success: false,
+                error: `This barcode is already assigned to another product: ${collision.productName}`
+            }
+        }
+
+        if (sameProductAliasResult.error && isMissingProductBarcodesTableError(sameProductAliasResult.error)) {
+            return {
+                success: false,
+                error: 'Barcode alias table is missing. Apply migration 20260321000001_product_barcodes.sql.'
+            }
+        }
+
+        let shouldSetPrimary = !legacyBarcode
+        const primaryAliasResult = await supabase
+            .from('product_barcodes')
+            .select('id', { count: 'exact', head: true })
+            .eq('product_id', productId)
+            .eq('is_primary', true)
+
+        if (!primaryAliasResult.error) {
+            shouldSetPrimary = shouldSetPrimary || Number(primaryAliasResult.count || 0) === 0
+        } else if (!isMissingProductBarcodesTableError(primaryAliasResult.error)) {
+            return {
+                success: false,
+                error: primaryAliasResult.error.message || 'Failed to validate existing primary barcode.'
+            }
+        }
+
+        const insertAliasResult = await supabase
+            .from('product_barcodes')
+            .insert({
+                product_id: productId,
+                distributor_id: distributorId,
+                barcode: normalizedBarcode,
+                is_primary: shouldSetPrimary
+            })
+
+        if (insertAliasResult.error) {
+            if (insertAliasResult.error.code === '23505') {
+                const postConflictCollision = await findBarcodeCollision({
+                    supabase,
+                    distributorId,
+                    barcodes: [normalizedBarcode],
+                    excludeProductId: productId
+                })
+
+                if (postConflictCollision) {
+                    return {
+                        success: false,
+                        error: `This barcode is already assigned to another product: ${postConflictCollision.productName}`
+                    }
+                }
+
+                const existingSameProduct = await supabase
+                    .from('product_barcodes')
+                    .select('id')
+                    .eq('product_id', productId)
+                    .eq('barcode', normalizedBarcode)
+                    .limit(1)
+                    .maybeSingle()
+
+                if (!existingSameProduct.error && existingSameProduct.data) {
+                    return { success: true, barcode: normalizedBarcode, alreadyAdded: true }
+                }
+
+                return {
+                    success: false,
+                    error: 'This barcode is already assigned to another product in your inventory.'
+                }
+            }
+
+            return { success: false, error: insertAliasResult.error.message || 'Failed to save barcode alias.' }
+        }
+
+        if (!legacyBarcode) {
+            const { error: syncLegacyError } = await supabase
+                .from('products')
+                .update({ barcode: normalizedBarcode })
+                .eq('id', productId)
+                .eq('distributor_id', distributorId)
+
+            if (syncLegacyError) {
+                return { success: false, error: syncLegacyError.message || 'Failed to sync primary barcode.' }
+            }
+        }
+
+        if (process.env.NODE_ENV !== 'production') {
+            console.info('[inventory:addBarcodeToProduct]', {
+                distributorId,
+                productId,
+                barcode: normalizedBarcode
+            })
+        }
+
+        revalidatePath('/distributor/inventory')
+        return {
+            success: true,
+            barcode: normalizedBarcode,
+            alreadyAdded: false
+        }
+    } catch (error: any) {
+        return {
+            success: false,
+            error: error?.message || 'Failed to add barcode.'
+        }
     }
 }
 
@@ -382,6 +607,8 @@ export async function createProductAction(
         const price_case = parseOptionalNumber('price_case')
         const cost_mode = String(formData.get('cost_mode') || 'unit')
         const price_mode = String(formData.get('price_mode') || 'unit')
+        const normalizedCostMode: 'unit' | 'case' = cost_mode === 'case' ? 'case' : 'unit'
+        const normalizedPriceMode: 'unit' | 'case' = price_mode === 'case' ? 'case' : 'unit'
         const stock_mode = String(formData.get('stock_mode') || 'pieces')
 
         const stock_pieces = parseRequiredNumber('stock_qty')
@@ -404,6 +631,38 @@ export async function createProductAction(
         if (!Number.isFinite(units_per_case) || !Number.isFinite(low_stock_threshold)) return { error: 'Invalid numeric input' }
         if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
         if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
+        if (cost_price < 0 || sell_price < 0) return { error: 'Prices must be 0 or greater' }
+        if ((normalizedCostMode === 'case' || normalizedPriceMode === 'case') && safeUnitsPerCase(units_per_case) === null) {
+            return { error: 'Set units per case to use case pricing.' }
+        }
+
+        const resolvedCostPair = resolveUnitCasePair({
+            mode: normalizedCostMode,
+            unitPrice: cost_price,
+            casePrice: cost_case as number | null,
+            unitsPerCase: units_per_case
+        })
+        const resolvedSellPair = resolveUnitCasePair({
+            mode: normalizedPriceMode,
+            unitPrice: sell_price,
+            casePrice: price_case as number | null,
+            unitsPerCase: units_per_case
+        })
+
+        if (
+            resolvedCostPair.unitPrice === null ||
+            resolvedSellPair.unitPrice === null
+        ) {
+            return { error: 'Invalid pricing input' }
+        }
+        if (
+            resolvedCostPair.unitPrice < 0 ||
+            resolvedSellPair.unitPrice < 0 ||
+            (resolvedCostPair.casePrice !== null && resolvedCostPair.casePrice < 0) ||
+            (resolvedSellPair.casePrice !== null && resolvedSellPair.casePrice < 0)
+        ) {
+            return { error: 'Prices must be 0 or greater' }
+        }
 
         const parsedBarcodes = parseBarcodesFromForm(formData)
         if (parsedBarcodes.error) return { error: parsedBarcodes.error }
@@ -436,12 +695,12 @@ export async function createProductAction(
                 name,
                 sku,
                 barcode: parsedBarcodes.primaryBarcode,
-                cost_price,
-                sell_price,
-                cost_case,
-                price_case,
-                cost_mode,
-                price_mode,
+                cost_price: resolvedCostPair.unitPrice,
+                sell_price: resolvedSellPair.unitPrice,
+                cost_case: resolvedCostPair.casePrice,
+                price_case: resolvedSellPair.casePrice,
+                cost_mode: normalizedCostMode,
+                price_mode: normalizedPriceMode,
                 stock_qty: final_stock_pieces,    // Sync legacy
                 stock_pieces: final_stock_pieces, // Canonical
                 stock_mode,                       // Preference
@@ -453,10 +712,10 @@ export async function createProductAction(
                 low_stock_threshold,
 
                 // Canonical Field Sync
-                cost_per_unit: cost_price,
-                sell_per_unit: sell_price,
-                cost_per_case: cost_case,
-                sell_per_case: price_case
+                cost_per_unit: resolvedCostPair.unitPrice,
+                sell_per_unit: resolvedSellPair.unitPrice,
+                cost_per_case: resolvedCostPair.casePrice,
+                sell_per_case: resolvedSellPair.casePrice
             })
             .select('id')
             .single()
@@ -528,6 +787,8 @@ export async function updateProductAction(
 
         const cost_mode = String(formData.get('cost_mode') || 'unit')
         const price_mode = String(formData.get('price_mode') || 'unit')
+        const normalizedCostMode: 'unit' | 'case' = cost_mode === 'case' ? 'case' : 'unit'
+        const normalizedPriceMode: 'unit' | 'case' = price_mode === 'case' ? 'case' : 'unit'
         const stock_mode = String(formData.get('stock_mode') || 'pieces')
 
         const stock_pieces = safeNum('stock_qty')
@@ -547,8 +808,44 @@ export async function updateProductAction(
         if (sell_price === undefined) return { error: 'Sell price is required' }
         if (stock_pieces === undefined) return { error: 'Stock quantity is required' }
         if (!Number.isFinite(sell_price) || !Number.isFinite(stock_pieces)) return { error: 'Invalid numeric input' }
+        if (!Number.isFinite(units_per_case) || !Number.isFinite(low_stock_threshold)) return { error: 'Invalid numeric input' }
         if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
         if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
+        if ((normalizedCostMode === 'case' || normalizedPriceMode === 'case') && safeUnitsPerCase(units_per_case) === null) {
+            return { error: 'Set units per case to use case pricing.' }
+        }
+        if (
+            sell_price < 0 ||
+            (cost_price !== undefined && cost_price < 0) ||
+            (cost_case !== undefined && cost_case < 0) ||
+            (price_case !== undefined && price_case < 0)
+        ) {
+            return { error: 'Prices must be 0 or greater' }
+        }
+
+        const resolvedSellPair = resolveUnitCasePair({
+            mode: normalizedPriceMode,
+            unitPrice: sell_price,
+            casePrice: price_case,
+            unitsPerCase: units_per_case
+        })
+        const resolvedCostPair = resolveUnitCasePair({
+            mode: normalizedCostMode,
+            unitPrice: cost_price,
+            casePrice: cost_case,
+            unitsPerCase: units_per_case
+        })
+
+        if (resolvedSellPair.unitPrice === null || resolvedSellPair.unitPrice < 0) {
+            return { error: 'Sell price is required' }
+        }
+        if (
+            (resolvedSellPair.casePrice !== null && resolvedSellPair.casePrice < 0) ||
+            (resolvedCostPair.unitPrice !== null && resolvedCostPair.unitPrice < 0) ||
+            (resolvedCostPair.casePrice !== null && resolvedCostPair.casePrice < 0)
+        ) {
+            return { error: 'Prices must be 0 or greater' }
+        }
 
         const collision = await findBarcodeCollision({
             supabase,
@@ -577,9 +874,9 @@ export async function updateProductAction(
             barcode: parsedBarcodes.primaryBarcode,
             category_id,
             category_node_id,
-            sell_price,
-            cost_mode,
-            price_mode,
+            sell_price: resolvedSellPair.unitPrice,
+            cost_mode: normalizedCostMode,
+            price_mode: normalizedPriceMode,
             stock_qty: final_stock_pieces,
             stock_pieces: final_stock_pieces,
             stock_mode,
@@ -591,19 +888,21 @@ export async function updateProductAction(
             low_stock_threshold,
 
             // Canonical Field Sync
-            sell_per_unit: sell_price,
-            cost_per_unit: cost_price ?? undefined
+            sell_per_unit: resolvedSellPair.unitPrice
         }
 
         // Only include cost/price fields if they have real values (not empty/undefined)
-        if (cost_price !== undefined) updatePayload.cost_price = cost_price
-        if (cost_case !== undefined) {
-            updatePayload.cost_case = cost_case
-            updatePayload.cost_per_case = cost_case
+        if (resolvedCostPair.unitPrice !== null) {
+            updatePayload.cost_price = resolvedCostPair.unitPrice
+            updatePayload.cost_per_unit = resolvedCostPair.unitPrice
         }
-        if (price_case !== undefined) {
-            updatePayload.price_case = price_case
-            updatePayload.sell_per_case = price_case
+        if (resolvedCostPair.casePrice !== null) {
+            updatePayload.cost_case = resolvedCostPair.casePrice
+            updatePayload.cost_per_case = resolvedCostPair.casePrice
+        }
+        if (resolvedSellPair.casePrice !== null) {
+            updatePayload.price_case = resolvedSellPair.casePrice
+            updatePayload.sell_per_case = resolvedSellPair.casePrice
         }
 
         const { error } = await supabase

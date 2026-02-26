@@ -13,54 +13,82 @@ export function moneyRound(value: number, digits = 2): number {
   return Math.round((value + Number.EPSILON) * factor) / factor
 }
 
-export function formatMoney(value: number | null | undefined): string {
+export function formatMoney(value: number | null | undefined, decimals = 2): string {
   const parsed = toFiniteNumber(value)
-  if (parsed === null) return '$0.00'
-  return `$${moneyRound(parsed, 2).toFixed(2)}`
+  if (parsed === null) return `$${(0).toFixed(decimals)}`
+  return `$${moneyRound(parsed, decimals).toFixed(decimals)}`
+}
+
+export function safeUnitsPerCase(unitsPerCase: unknown): number | null {
+  const parsed = toFiniteNumber(unitsPerCase)
+  if (parsed === null || parsed <= 0 || !Number.isInteger(parsed)) return null
+  return parsed
+}
+
+export function toUnitFromCase(
+  casePrice: number | null | undefined,
+  unitsPerCase: number | null | undefined,
+  precision = 4
+): NullableNumber {
+  const parsedCasePrice = toFiniteNumber(casePrice)
+  const validUnitsPerCase = safeUnitsPerCase(unitsPerCase)
+  if (parsedCasePrice === null || validUnitsPerCase === null) return null
+  return moneyRound(parsedCasePrice / validUnitsPerCase, precision)
+}
+
+export function toCaseFromUnit(
+  unitPrice: number | null | undefined,
+  unitsPerCase: number | null | undefined,
+  precision = 4
+): NullableNumber {
+  const parsedUnitPrice = toFiniteNumber(unitPrice)
+  const validUnitsPerCase = safeUnitsPerCase(unitsPerCase)
+  if (parsedUnitPrice === null || validUnitsPerCase === null) return null
+  return moneyRound(parsedUnitPrice * validUnitsPerCase, precision)
 }
 
 export function computeUnitPrice(
   casePrice: number | null | undefined,
   unitsPerCase: number | null | undefined
 ): NullableNumber {
-  const parsedCasePrice = toFiniteNumber(casePrice)
-  const parsedUnitsPerCase = toFiniteNumber(unitsPerCase)
-  if (parsedCasePrice === null || parsedUnitsPerCase === null || parsedUnitsPerCase <= 0) return null
-  return moneyRound(parsedCasePrice / parsedUnitsPerCase, 2)
+  return toUnitFromCase(casePrice, unitsPerCase, 4)
 }
 
 export function computeCasePrice(
   unitPrice: number | null | undefined,
   unitsPerCase: number | null | undefined
 ): NullableNumber {
-  const parsedUnitPrice = toFiniteNumber(unitPrice)
-  const parsedUnitsPerCase = toFiniteNumber(unitsPerCase)
-  if (parsedUnitPrice === null || parsedUnitsPerCase === null || parsedUnitsPerCase <= 0) return null
-  return moneyRound(parsedUnitPrice * parsedUnitsPerCase, 2)
+  return toCaseFromUnit(unitPrice, unitsPerCase, 4)
 }
 
 export function resolveCaseUnitPrices(input: {
   casePrice: unknown
   unitPrice: unknown
   unitsPerCase: unknown
+  precision?: number
 }): { casePrice: NullableNumber; unitPrice: NullableNumber } {
-  const unitsPerCase = toFiniteNumber(input.unitsPerCase)
+  const unitsPerCase = safeUnitsPerCase(input.unitsPerCase)
   const storedCasePrice = toFiniteNumber(input.casePrice)
   const storedUnitPrice = toFiniteNumber(input.unitPrice)
+  const precision = Number.isInteger(input.precision) ? Math.max(0, Number(input.precision)) : 4
 
-  const casePrice = storedCasePrice === null ? null : moneyRound(storedCasePrice, 2)
-  let unitPrice = storedUnitPrice === null ? null : moneyRound(storedUnitPrice, 2)
-
-  if (unitPrice === null && casePrice !== null) {
-    unitPrice = computeUnitPrice(casePrice, unitsPerCase)
+  if (storedCasePrice !== null && storedUnitPrice !== null) {
+    return { casePrice: storedCasePrice, unitPrice: storedUnitPrice }
   }
 
-  if (casePrice === null && unitPrice !== null) {
+  if (storedCasePrice !== null) {
     return {
-      casePrice: computeCasePrice(unitPrice, unitsPerCase),
-      unitPrice
+      casePrice: storedCasePrice,
+      unitPrice: toUnitFromCase(storedCasePrice, unitsPerCase, precision)
     }
   }
 
-  return { casePrice, unitPrice }
+  if (storedUnitPrice !== null) {
+    return {
+      casePrice: toCaseFromUnit(storedUnitPrice, unitsPerCase, precision),
+      unitPrice: storedUnitPrice
+    }
+  }
+
+  return { casePrice: null, unitPrice: null }
 }
