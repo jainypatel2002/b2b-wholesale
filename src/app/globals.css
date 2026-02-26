@@ -142,6 +142,146 @@ body {
   }
 }
 
+.profit-report {
+  color: #0f172a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.profit-report-header {
+  border-bottom: 1px solid #cbd5e1;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.profit-report-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.profit-report-meta-grid {
+  margin-top: 10px;
+  display: grid;
+  gap: 4px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profit-report-meta-label {
+  font-weight: 600;
+}
+
+.profit-report-warning {
+  margin-top: 8px;
+  border: 1px solid #fcd34d;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.profit-report-section {
+  margin-top: 14px;
+}
+
+.profit-report-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.profit-report-section-copy {
+  font-size: 11px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.profit-report-grid-2 {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profit-report-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.profit-report-kpi-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.profit-report-kpi-card {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.profit-report-kpi-label {
+  color: #475569;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.profit-report-kpi-value {
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.profit-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #cbd5e1;
+}
+
+.profit-report-table th,
+.profit-report-table td {
+  border: 1px solid #cbd5e1;
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.profit-report-table th {
+  background: #f8fafc;
+  color: #334155;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.profit-report-table td {
+  font-size: 11px;
+}
+
+.profit-report-table tbody tr:nth-child(even) td {
+  background: #f8fafc;
+}
+
+.profit-report-more {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #475569;
+}
+
+.profit-report-footer {
+  display: none;
+}
+
 @media print {
   body {
     background: white !important;
@@ -161,7 +301,7 @@ body {
   }
 
   @page {
-    margin: 0.5cm;
+    margin: 1.1cm;
   }
 
   /* Hide standard UI elements if they lack specific classes */
@@ -172,16 +312,59 @@ body {
     display: none !important;
   }
 
+  #profit-center-screen {
+    display: none !important;
+  }
+
   #profit-center-report {
+    display: block !important;
     width: 100% !important;
     max-width: none !important;
   }
 
-  #profit-center-report .rounded-2xl,
-  #profit-center-report table,
-  #profit-center-report svg {
+  #profit-center-report .profit-report {
+    padding-bottom: 14mm;
+  }
+
+  #profit-center-report .profit-report-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #profit-center-report thead {
+    display: table-header-group;
+  }
+
+  #profit-center-report tfoot {
+    display: table-footer-group;
+  }
+
+  #profit-center-report tr {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  #profit-center-report .print-page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  #profit-center-report .profit-report-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #cbd5e1;
+    background: white;
+    color: #64748b;
+    font-size: 10px;
+    padding-top: 2mm;
+  }
+
+  #profit-center-report .profit-report-page-count::after {
+    content: "Page " counter(page) " of " counter(pages);
   }
 }
 
