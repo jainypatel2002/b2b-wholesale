@@ -13,19 +13,16 @@ body {
 
 @layer utilities {
   .glass {
-    @apply border border-white/65 bg-white/75 shadow-[0_12px_30px_-22px_rgba(15,23,42,0.55)] backdrop-blur-xl;
+    @apply border border-white/65 bg-white/75 shadow-[0_12px_30px_-22px_#0f172a8c] backdrop-blur-xl dark:border-white/10 dark:bg-black/40 dark:shadow-[0_12px_30px_-22px_#000000cc];
   }
 
   .dashboard-shell {
-    background-color: #eef4ff;
-    background-image:
-      radial-gradient(1200px circle at 0% 0%, rgba(59, 130, 246, 0.18), transparent 55%),
-      radial-gradient(980px circle at 100% 0%, rgba(20, 184, 166, 0.14), transparent 48%),
-      radial-gradient(780px circle at 50% 100%, rgba(14, 165, 233, 0.1), transparent 52%);
+    background-color: var(--shell-bg);
+    background-image: var(--bg-gradient);
   }
 
   .dashboard-surface {
-    @apply rounded-3xl border border-white/70 bg-white/70 shadow-[0_24px_50px_-32px_rgba(15,23,42,0.45)] backdrop-blur-xl;
+    @apply rounded-3xl border border-white/70 bg-white/70 shadow-[0_24px_50px_-32px_#0f172a73] backdrop-blur-xl dark:border-white/10 dark:bg-black/60 dark:shadow-[0_24px_50px_-32px_#000000cc];
   }
 
   .brand-gradient {
@@ -37,12 +34,12 @@ body {
   }
 
   .form-select {
-    @apply h-10 w-full rounded-xl border border-[hsl(var(--surface-border))] bg-white/90 px-3 text-sm text-slate-800 shadow-sm transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35;
+    @apply h-10 w-full rounded-xl border border-[hsl(var(--surface-border))] bg-white/90 px-3 text-sm text-slate-800 shadow-sm transition-colors focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 dark:bg-slate-900/80 dark:text-slate-200 dark:border-slate-800/80;
   }
 }
 
 .card {
-  @apply rounded-2xl border border-slate-200/80 bg-white/80 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.55)] backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_45px_-28px_rgba(15,23,42,0.55)];
+  @apply rounded-2xl border border-slate-200/80 bg-white/80 shadow-[0_18px_40px_-30px_#0f172a8c] backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_45px_-28px_#0f172a8c] dark:border-slate-800/80 dark:bg-black/50 dark:shadow-[0_18px_40px_-30px_#000000cc] dark:hover:shadow-[0_24px_45px_-28px_#000000cc];
 }
 
 .btn {
@@ -51,7 +48,7 @@ body {
 }
 
 .input {
-  @apply flex h-10 w-full rounded-xl border border-[hsl(var(--surface-border))] bg-white/90 px-3 py-2 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply flex h-10 w-full rounded-xl border border-[hsl(var(--surface-border))] bg-white/90 px-3 py-2 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-900/80 dark:text-slate-200 dark:placeholder:text-slate-400;
 }
 
 .link {
@@ -84,21 +81,25 @@ body {
 }
 
 @keyframes auth-gradient-pan {
+
   0%,
   100% {
     background-position: 0% 0%;
   }
+
   50% {
     background-position: 100% 100%;
   }
 }
 
 @keyframes auth-blob-one {
+
   0%,
   100% {
     transform: translate3d(0, 0, 0);
     opacity: 0.6;
   }
+
   50% {
     transform: translate3d(18px, -12px, 0);
     opacity: 0.78;
@@ -106,11 +107,13 @@ body {
 }
 
 @keyframes auth-blob-two {
+
   0%,
   100% {
     transform: translate3d(25%, 25%, 0);
     opacity: 0.5;
   }
+
   50% {
     transform: translate3d(20%, 18%, 0);
     opacity: 0.72;
@@ -122,10 +125,12 @@ body {
     transform: translate3d(-150%, 0, 0) rotate(12deg);
     opacity: 0;
   }
+
   18%,
   82% {
     opacity: 0.32;
   }
+
   100% {
     transform: translate3d(360%, 0, 0) rotate(12deg);
     opacity: 0;
@@ -133,6 +138,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .auth-brand-background-motion,
   .auth-blob-one-motion,
   .auth-blob-two-motion,
@@ -403,7 +409,12 @@ body {
     --surface-muted: 214 62% 96%;
     --surface-border: 214 34% 84%;
     --radius: 0.5rem;
+    --shell-bg: #eef4ff;
+    --bg-gradient: radial-gradient(1200px circle at 0% 0%, rgba(59, 130, 246, 0.18), transparent 55%),
+      radial-gradient(980px circle at 100% 0%, rgba(20, 184, 166, 0.14), transparent 48%),
+      radial-gradient(780px circle at 50% 100%, rgba(14, 165, 233, 0.1), transparent 52%);
   }
+
   .dark {
     --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
@@ -429,5 +440,9 @@ body {
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    --shell-bg: #000000;
+    --bg-gradient: radial-gradient(1200px circle at top left, rgba(220, 38, 38, 0.22), transparent 55%),
+      radial-gradient(900px circle at bottom right, rgba(120, 10, 40, 0.18), transparent 60%),
+      linear-gradient(180deg, #000 0%, #050105 100%);
   }
 }

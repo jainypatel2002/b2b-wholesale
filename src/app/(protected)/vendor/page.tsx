@@ -3,8 +3,10 @@ import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { getVendorContext } from '@/lib/data'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { ShoppingCart, Package, FileText, LayoutGrid, Link as LinkIcon, Save } from 'lucide-react'
+import { ShoppingCart, Package, FileText, LayoutGrid, Link as LinkIcon, Save, Wallet } from 'lucide-react'
 import { VendorInsightsPanel } from '@/components/vendor/vendor-insights-panel'
+import { computeVendorCreditBalance } from '@/lib/credits/calc'
+import { formatMoney } from '@/lib/pricing-engine'
 
 export default async function VendorHome() {
   const profile = await requireRole('vendor')
@@ -19,23 +21,38 @@ export default async function VendorHome() {
   }
 
   let autosaveDraft: { id: string; updated_at: string } | null = null
+  let availableCredit = 0
   if (distributorId) {
-    const draftResult = await supabase
-      .from('vendor_draft_orders')
-      .select('id,updated_at')
-      .eq('vendor_id', profile.id)
-      .eq('distributor_id', distributorId)
-      .eq('status', 'draft')
-      .is('name', null)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const [draftResult, creditResult] = await Promise.all([
+      supabase
+        .from('vendor_draft_orders')
+        .select('id,updated_at')
+        .eq('vendor_id', profile.id)
+        .eq('distributor_id', distributorId)
+        .eq('status', 'draft')
+        .is('name', null)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('vendor_credit_ledger')
+        .select('type,amount')
+        .eq('vendor_id', profile.id)
+        .eq('distributor_id', distributorId)
+    ])
 
     if (!draftResult.error && draftResult.data?.id) {
       autosaveDraft = {
         id: draftResult.data.id,
         updated_at: String(draftResult.data.updated_at || '')
       }
+    }
+
+    if (!creditResult.error) {
+      availableCredit = computeVendorCreditBalance((creditResult.data ?? []).map((row: any) => ({
+        type: row.type,
+        amount: row.amount
+      })))
     }
   }
 
@@ -99,7 +116,30 @@ export default async function VendorHome() {
             </CardHeader>
           </Card>
         </Link>
+        <Link href="/vendor/credits">
+          <Card className="h-full cursor-pointer border-white/70 bg-white/80 transition-colors hover:bg-white">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Wallet className="h-5 w-5 text-primary" /> Credits
+              </CardTitle>
+              <CardDescription>View balance and credit history</CardDescription>
+            </CardHeader>
+          </Card>
+        </Link>
       </div>
+
+      <Card className="border-emerald-200 bg-emerald-50/40">
+        <CardHeader className="flex flex-row items-center space-y-0 pb-2">
+          <div className="flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-emerald-700" />
+            <CardTitle className="text-sm font-medium text-emerald-800">Available Credit</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold text-emerald-800">{formatMoney(availableCredit)}</div>
+          <p className="mt-1 text-xs text-emerald-700/80">Managed manually by your distributor.</p>
+        </CardContent>
+      </Card>
 
       {autosaveDraft && (
         <Link href={`/vendor/cart?resumeDraftId=${encodeURIComponent(autosaveDraft.id)}`}>

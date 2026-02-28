@@ -11,9 +11,20 @@ export default async function VendorInvoicePrintPage({ params }: { params: Promi
     const { vendorId } = await getVendorContext()
     const supabase = await createClient()
 
-    const { data: invoice, error: invoiceErr } = (await supabase
-        .from('invoices')
-        .select(`
+    const selectWithCredit = `
+            id, invoice_number, subtotal, tax, total, credit_applied, created_at, payment_status, paid_at, terms, notes,
+            seller_profile, buyer_profile,
+            invoice_items(
+                qty, unit_price, unit_cost, item_code, upc,
+                effective_units, ext_amount, is_manual, product_name,
+                product_name_snapshot, category_name_snapshot, order_mode, 
+                quantity_snapshot, line_total_snapshot,
+                unit_price_snapshot, case_price_snapshot, units_per_case_snapshot
+            ),
+            invoice_taxes(*),
+            distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone, location_address)
+        `
+    const selectWithoutCredit = `
             id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
             seller_profile, buyer_profile,
             invoice_items(
@@ -25,10 +36,26 @@ export default async function VendorInvoicePrintPage({ params }: { params: Promi
             ),
             invoice_taxes(*),
             distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone, location_address)
-        `)
+        `
+
+    let invoiceResult = (await supabase
+        .from('invoices')
+        .select(selectWithCredit)
         .eq('id', id)
         .eq('vendor_id', vendorId)
         .single()) as any
+
+    if (invoiceResult.error?.code === '42703') {
+        invoiceResult = (await supabase
+            .from('invoices')
+            .select(selectWithoutCredit)
+            .eq('id', id)
+            .eq('vendor_id', vendorId)
+            .single()) as any
+    }
+
+    const invoiceErr = invoiceResult.error
+    const invoice = invoiceResult.data ? { ...invoiceResult.data, credit_applied: invoiceResult.data.credit_applied ?? 0 } : null
 
     if (invoiceErr) {
         console.error('[VendorInvoicePrintPage] Query Error:', invoiceErr)

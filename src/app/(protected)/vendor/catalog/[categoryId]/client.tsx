@@ -4,11 +4,12 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Search, ShoppingCart, ArrowLeft, Star, X, ScanLine, Zap } from 'lucide-react'
+import { Search, ShoppingCart, ArrowLeft, Star, ScanLine, Zap, X } from 'lucide-react'
 import { ProductCard } from '@/components/vendor/product-card'
 import { toast } from 'sonner'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
+import { BarcodeScanModal } from '@/components/scanner/BarcodeScanModal'
 import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeScannerModal'
 import { normalizeBarcode } from '@/lib/utils/barcode'
 import {
@@ -636,179 +637,177 @@ export function CategoryProductsClient({
                 </div>
             )}
 
-            {scanOpen && (
-                <div className="fixed inset-0 z-[90] bg-black/50 p-4 backdrop-blur-sm">
-                    <div className="mx-auto flex h-full w-full max-w-lg flex-col rounded-2xl border border-white/70 bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b px-4 py-3">
-                            <div>
-                                <h2 className="text-base font-semibold text-slate-900">Scan Barcode</h2>
-                                <p className="text-xs text-slate-500">Scanner input or camera</p>
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={closeScanModal}>
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
+            <BarcodeScanModal
+                open={scanOpen}
+                onClose={closeScanModal}
+                title="Scan Barcode"
+                description="Scanner input or camera"
+            >
+                <div className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            type="button"
+                            variant={scanMode ? 'secondary' : 'outline'}
+                            onClick={() => {
+                                setScanMode((prev) => {
+                                    const next = !prev
+                                    setScanStatus(next ? 'ready' : 'idle')
+                                    setScanStatusMessage(next ? 'Ready for scanner input' : 'Scanner off')
+                                    return next
+                                })
+                            }}
+                        >
+                            <ScanLine className="mr-2 h-4 w-4" />
+                            {scanMode ? 'Scanner ON' : 'Scan Mode'}
+                        </Button>
+                        <Button type="button" variant="outline" onClick={openCamera}>
+                            Use Camera
+                        </Button>
+                        <Button type="button" variant="ghost" onClick={closeScanModal}>
+                            Stop
+                        </Button>
+                    </div>
 
-                        <div className="space-y-4 overflow-y-auto p-4">
-                            <div className="flex flex-wrap gap-2">
+                    {scanMode && (
+                        <>
+                            <input
+                                ref={scanInputRef}
+                                id={SCAN_CATCHER_ID}
+                                type="text"
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                                className="sr-only"
+                                tabIndex={-1}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') e.preventDefault()
+                                }}
+                            />
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => scanInputRef.current?.focus()}
+                            >
+                                Tap to focus scanner input
+                            </Button>
+                        </>
+                    )}
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</div>
+                        <div className="mt-1 text-sm text-slate-800">
+                            {scanStatusMessage || (scanStatus === 'idle' ? 'Scanner idle' : 'Ready')}
+                        </div>
+                        {lastScannedCode && (
+                            <div className="mt-2 text-xs text-slate-600">
+                                Last code: <span className="font-mono">{lastScannedCode}</span>
+                            </div>
+                        )}
+                        {lastAddedProductName && (
+                            <div className="mt-3">
+                                <Link href="/vendor/cart" onClick={closeScanModal}>
+                                    <Button type="button" size="sm" variant="outline">
+                                        Go to cart
+                                    </Button>
+                                </Link>
+                            </div>
+                        )}
+                    </div>
+
+                    {scanMatches.length > 1 && (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Multiple Matches
+                            </div>
+                            <div className="space-y-2">
+                                {scanMatches.map((match) => (
+                                    <div key={match.id} className="flex items-center justify-between rounded-md border border-slate-200 p-2">
+                                        <div>
+                                            <p className="text-sm font-medium text-slate-900">{match.name}</p>
+                                            {match.sku && <p className="text-xs text-slate-500">SKU: {match.sku}</p>}
+                                        </div>
+                                        <div className="flex gap-1">
+                                            {match.allow_piece && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                        const added = addScannedProductToCart(match, 'piece')
+                                                        if (!added) return
+                                                        setScanStatus('found')
+                                                        setScanStatusMessage(`Added: ${match.name}`)
+                                                    }}
+                                                >
+                                                    + Unit
+                                                </Button>
+                                            )}
+                                            {match.allow_case && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                        const added = addScannedProductToCart(match, 'case')
+                                                        if (!added) return
+                                                        setScanStatus('found')
+                                                        setScanStatusMessage(`Added: ${match.name}`)
+                                                    }}
+                                                >
+                                                    + Case
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {scanStatus === 'not_found' && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                            <p className="text-sm font-medium">Not found in this distributor catalog.</p>
+                            {linkedSuggestion && (
                                 <Button
                                     type="button"
-                                    variant={scanMode ? 'secondary' : 'outline'}
-                                    onClick={() => {
-                                        setScanMode((prev) => {
-                                            const next = !prev
-                                            setScanStatus(next ? 'ready' : 'idle')
-                                            setScanStatusMessage(next ? 'Ready for scanner input' : 'Scanner off')
-                                            return next
-                                        })
-                                    }}
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-2 mr-2"
+                                    disabled={switchingDistributor}
+                                    onClick={handleSwitchDistributorAndRetry}
                                 >
-                                    <ScanLine className="mr-2 h-4 w-4" />
-                                    {scanMode ? 'Scanner ON' : 'Scan Mode'}
+                                    {switchingDistributor ? 'Switching...' : `Switch to ${linkedSuggestion.distributorName} and retry`}
                                 </Button>
-                                <Button type="button" variant="outline" onClick={openCamera}>
-                                    Use Camera
-                                </Button>
-                                <Button type="button" variant="ghost" onClick={closeScanModal}>
-                                    Stop
-                                </Button>
-                            </div>
-
-                            {scanMode && (
-                                <>
-                                    <input
-                                        ref={scanInputRef}
-                                        id={SCAN_CATCHER_ID}
-                                        type="text"
-                                        autoComplete="off"
-                                        autoCorrect="off"
-                                        autoCapitalize="off"
-                                        spellCheck={false}
-                                        className="sr-only"
-                                        tabIndex={-1}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') e.preventDefault()
-                                        }}
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => scanInputRef.current?.focus()}
-                                    >
-                                        Tap to focus scanner input
-                                    </Button>
-                                </>
                             )}
-
-                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</div>
-                                <div className="mt-1 text-sm text-slate-800">
-                                    {scanStatusMessage || (scanStatus === 'idle' ? 'Scanner idle' : 'Ready')}
-                                </div>
-                                {lastScannedCode && (
-                                    <div className="mt-2 text-xs text-slate-600">
-                                        Last code: <span className="font-mono">{lastScannedCode}</span>
-                                    </div>
-                                )}
-                                {lastAddedProductName && (
-                                    <div className="mt-3">
-                                        <Link href="/vendor/cart" onClick={closeScanModal}>
-                                            <Button type="button" size="sm" variant="outline">
-                                                Go to cart
-                                            </Button>
-                                        </Link>
-                                    </div>
-                                )}
-                            </div>
-
-                            {scanMatches.length > 1 && (
-                                <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                        Multiple Matches
-                                    </div>
-                                    <div className="space-y-2">
-                                        {scanMatches.map((match) => (
-                                            <div key={match.id} className="flex items-center justify-between rounded-md border border-slate-200 p-2">
-                                                <div>
-                                                    <p className="text-sm font-medium text-slate-900">{match.name}</p>
-                                                    {match.sku && <p className="text-xs text-slate-500">SKU: {match.sku}</p>}
-                                                </div>
-                                                <div className="flex gap-1">
-                                                    {match.allow_piece && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() => {
-                                                                const added = addScannedProductToCart(match, 'piece')
-                                                                if (!added) return
-                                                                setScanStatus('found')
-                                                                setScanStatusMessage(`Added: ${match.name}`)
-                                                            }}
-                                                        >
-                                                            + Unit
-                                                        </Button>
-                                                    )}
-                                                    {match.allow_case && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() => {
-                                                                const added = addScannedProductToCart(match, 'case')
-                                                                if (!added) return
-                                                                setScanStatus('found')
-                                                                setScanStatusMessage(`Added: ${match.name}`)
-                                                            }}
-                                                        >
-                                                            + Case
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {scanStatus === 'not_found' && (
-                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
-                                    <p className="text-sm font-medium">Not found in this distributor catalog.</p>
-                                    {linkedSuggestion && (
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="mt-2 mr-2"
-                                            disabled={switchingDistributor}
-                                            onClick={handleSwitchDistributorAndRetry}
-                                        >
-                                            {switchingDistributor ? 'Switching...' : `Switch to ${linkedSuggestion.distributorName} and retry`}
-                                        </Button>
-                                    )}
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="mt-2"
-                                        onClick={() => {
-                                            setSearchTerm(lastScannedCode)
-                                            closeScanModal()
-                                        }}
-                                    >
-                                        Search catalog
-                                    </Button>
-                                </div>
-                            )}
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="mt-2"
+                                onClick={() => {
+                                    setSearchTerm(lastScannedCode)
+                                    closeScanModal()
+                                }}
+                            >
+                                Search catalog
+                            </Button>
                         </div>
-                    </div>
+                    )}
                 </div>
-            )}
+            </BarcodeScanModal>
 
             <CameraBarcodeScannerModal
                 open={cameraOpen}
                 stream={cameraStream}
                 cameraError={cameraError}
                 onClose={closeCamera}
+                onUseManualInput={() => {
+                    closeCamera()
+                    setScanMode(true)
+                    setScanStatus('ready')
+                    setScanStatusMessage('Ready for scanner input')
+                    setTimeout(() => scanInputRef.current?.focus(), 60)
+                }}
                 onScan={(barcode: string) => {
                     closeCamera()
                     handleBarcodeDetected(barcode)

@@ -4,6 +4,7 @@ import { DistributorSwitcher } from "@/components/layout/distributor-switcher"
 import { createClient } from "@/lib/supabase/server"
 import { requireProfile } from "@/lib/auth"
 import { NotificationsBell } from "@/components/notifications-bell"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 interface HeaderProps {
     email: string
@@ -50,6 +51,7 @@ export async function Header({ email, role }: HeaderProps) {
                     />
                 )}
 
+                <ThemeToggle />
                 <NotificationsBell userId={profile.id} />
 
                 <div className="hidden text-right sm:block">

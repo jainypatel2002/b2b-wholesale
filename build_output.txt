@@ -1,0 +1,41 @@
+
+> distributor-vendor-portal@1.0.0 build
+> next build
+
+⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /Users/jainypatel/package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * /Users/jainypatel/Desktop/distributor-vendor-portal/package-lock.json
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  · optimizePackageImports
+
+  Creating an optimized production build ...
+
+> Build error occurred
+Error: Turbopack build failed with 1 errors:
+./Desktop/distributor-vendor-portal/src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: /Users/jainypatel/Desktop/distributor-vendor-portal/src/app/globals.css:16:5: The `shadow-[0_12px_30px_-22px_rgba(15,` class does not exist. If `shadow-[0_12px_30px_-22px_rgba(15,` is a custom class, make sure it is defined within a `@layer` directive.
+    at Input.error (Desktop/distributor-vendor-portal/node_modules/postcss/lib/input.js:135:16) [/Users/jainypatel/Desktop/distributor-vendor-portal/.next/build/chunks/35365_de5a2561._.js:4651:22]
+    at AtRule.error (Desktop/distributor-vendor-portal/node_modules/postcss/lib/node.js:146:32) [/Users/jainypatel/Desktop/distributor-vendor-portal/.next/build/chunks/35365_de5a2561._.js:928:38]
+    [at processApply (/Users/jainypatel/Desktop/distributor-vendor-portal/node_modules/tailwindcss/lib/lib/expandApplyAtRules.js:380:29)]
+    [at /Users/jainypatel/Desktop/distributor-vendor-portal/node_modules/tailwindcss/lib/lib/expandApplyAtRules.js:551:9]
+    [at /Users/jainypatel/Desktop/distributor-vendor-portal/node_modules/tailwindcss/lib/processTailwindFeatures.js:55:50]
+    [at async plugins (/Users/jainypatel/Desktop/distributor-vendor-portal/node_modules/tailwindcss/lib/plugin.js:38:17)]
+    at async LazyResult.runAsync (Desktop/distributor-vendor-portal/node_modules/postcss/lib/lazy-result.js:293:11) [/Users/jainypatel/Desktop/distributor-vendor-portal/.next/build/chunks/35365_de5a2561._.js:6206:21]
+    at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34) [/Users/jainypatel/Desktop/distributor-vendor-portal/.next/build/chunks/[root-of-the-server]__645297cb._.js:141:36]
+    at async run (turbopack:///[turbopack-node]/ipc/evaluate.ts:92:23) [/Users/jainypatel/Desktop/distributor-vendor-portal/.next/build/chunks/[root-of-the-server]__ebc0dc3e._.js:443:31]
+
+Import trace:
+  Client Component Browser:
+    ./Desktop/distributor-vendor-portal/src/app/globals.css [Client Component Browser]
+    ./Desktop/distributor-vendor-portal/src/app/layout.tsx [Server Component]
+
+
+    at async transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:34) [/Users/jainypatel/Desktop/distributor-vendor-portal/.next/build/chunks/[root-of-the-server]__645297cb._.js:141:36])
+    at async run (turbopack:///[turbopack-node]/ipc/evaluate.ts:92:23) [/Users/jainypatel/Desktop/distributor-vendor-portal/.next/build/chunks/[root-of-the-server]__ebc0dc3e._.js:443:31])

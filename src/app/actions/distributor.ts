@@ -232,7 +232,7 @@ export async function updateProduct(formData: FormData) {
     if (!id) return { error: 'Product ID required' }
     if (!name) return { error: 'Product name required' }
     if (sell_price === null || cost_price === null || stock_pieces === null) return { error: 'Invalid numeric input' }
-    if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
+    if (allow_case && units_per_case < 1) return { error: 'Units per case must be at least 1' }
     if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
 
     const { error } = await supabase

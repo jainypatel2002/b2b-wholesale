@@ -1,6 +1,8 @@
 'use client'
 
 import React, { useRef, useState, useCallback, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { acquireBodyScrollLock } from '@/lib/ui/scroll-lock'
 
 type CameraStatus = 'idle' | 'starting' | 'active' | 'scanning_success' | 'error' | 'permission_denied' | 'insecure_context' | 'no_camera_api'
 
@@ -12,6 +14,7 @@ interface CameraBarcodeScannerModalProps {
     open: boolean
     onClose: () => void
     onScan: (barcode: string) => void
+    onUseManualInput?: () => void
 }
 
 /**
@@ -30,13 +33,24 @@ export function CameraBarcodeScannerModal({
     open,
     onClose,
     onScan,
+    onUseManualInput,
 }: CameraBarcodeScannerModalProps) {
     const videoRef = useRef<HTMLVideoElement>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const scanLoopRef = useRef<number | null>(null)
     const hasScannedRef = useRef(false)
+    const [mounted, setMounted] = useState(false)
     const [status, setStatus] = useState<CameraStatus>('idle')
     const [errorMsg, setErrorMsg] = useState('')
+
+    useEffect(() => {
+        setMounted(true)
+    }, [])
+
+    useEffect(() => {
+        if (!mounted || !open) return
+        return acquireBodyScrollLock()
+    }, [mounted, open])
 
     // ── Stop scanning loop ──
     const stopScanLoop = useCallback(() => {
@@ -262,105 +276,136 @@ export function CameraBarcodeScannerModal({
         }
     }, [stopScanLoop])
 
-    if (!open) return null
+    useEffect(() => {
+        if (!open) return
 
-    return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b px-4 py-3">
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
-                        📸 Camera Scanner
-                    </h3>
-                    <button
-                        onClick={handleClose}
-                        className="text-slate-500 hover:text-slate-700 text-xl leading-none p-1"
-                    >
-                        ✕
-                    </button>
-                </div>
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') handleClose()
+        }
 
-                {/* Scanner Area */}
-                <div className="p-4">
-                    {/* Insecure context error */}
-                    {status === 'insecure_context' && (
-                        <div className="flex flex-col items-center gap-3 py-6">
-                            <div className="text-4xl">🔒</div>
-                            <p className="text-sm text-red-600 text-center font-medium">{errorMsg}</p>
-                            <div className="text-xs text-slate-500 text-center p-3 bg-slate-50 rounded-lg">
-                                <p>Camera API only works on:</p>
-                                <p className="font-mono mt-1">https://yourdomain.com</p>
-                                <p className="font-mono">http://localhost:3000</p>
-                            </div>
-                        </div>
-                    )}
+        document.addEventListener('keydown', onKeyDown)
+        return () => document.removeEventListener('keydown', onKeyDown)
+    }, [handleClose, open])
 
-                    {/* Starting / waiting */}
-                    {status === 'starting' && (
-                        <div className="flex flex-col items-center gap-3 py-8">
-                            <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-200 border-t-blue-600" />
-                            <p className="text-sm text-slate-600">Starting camera…</p>
-                        </div>
-                    )}
+    if (!mounted || !open) return null
 
-                    {/* Permission denied */}
-                    {status === 'permission_denied' && (
-                        <div className="flex flex-col items-center gap-3 py-6">
-                            <div className="text-4xl">🚫</div>
-                            <p className="text-sm text-red-600 text-center font-medium">{errorMsg}</p>
-                            <div className="text-xs text-slate-500 text-center space-y-1">
-                                <p><strong>iPhone:</strong> Settings → Safari → Camera → Allow</p>
-                                <p><strong>Android:</strong> Tap lock icon in URL bar → Permissions → Camera</p>
-                                <p><strong>Desktop:</strong> Click camera icon in the address bar</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Generic error */}
-                    {status === 'error' && (
-                        <div className="flex flex-col items-center gap-3 py-6">
-                            <div className="text-4xl">⚠️</div>
-                            <p className="text-sm text-red-600 text-center">{errorMsg}</p>
-                        </div>
-                    )}
-
-                    {/* Video element — always rendered so srcObject can be set immediately */}
-                    <div className={(status === 'active' || status === 'scanning_success') ? '' : 'hidden'}>
-                        <div className="relative rounded-lg overflow-hidden bg-black" style={{ minHeight: '320px' }}>
-                            <video
-                                ref={videoRef}
-                                playsInline
-                                muted
-                                autoPlay
-                                className="w-full h-auto rounded-lg"
-                                style={{ minHeight: '320px', objectFit: 'cover' }}
-                            />
-                            {/* Scan overlay guide */}
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="border-2 border-white/60 rounded-lg" style={{ width: '70%', height: '35%' }} />
-                            </div>
-                        </div>
-                        <p className="text-xs text-slate-500 text-center mt-3">
-                            Point camera at a barcode. It will scan automatically.
-                        </p>
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[130] bg-black/70 p-3 backdrop-blur-sm sm:p-4"
+            onMouseDown={(event) => {
+                if (event.target === event.currentTarget) handleClose()
+            }}
+        >
+            <div className="mx-auto flex h-full w-full items-start justify-center overflow-y-auto pt-2 sm:pt-6">
+                <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b px-4 py-3">
+                        <h3 className="text-lg font-semibold">Camera Scanner</h3>
+                        <button
+                            onClick={handleClose}
+                            className="p-1 text-xl leading-none text-slate-500 hover:text-slate-700"
+                            aria-label="Close camera scanner"
+                        >
+                            ✕
+                        </button>
                     </div>
 
-                    {/* Hidden canvas for barcode detection */}
-                    <canvas ref={canvasRef} className="hidden" />
-                    {/* Hidden div for html5-qrcode fallback decoder */}
-                    <div id="html5qr-hidden" className="hidden" />
-                </div>
+                    {/* Scanner Area */}
+                    <div className="p-4">
+                        {/* Insecure context error */}
+                        {status === 'insecure_context' && (
+                            <div className="flex flex-col items-center gap-3 py-6">
+                                <div className="text-4xl">🔒</div>
+                                <p className="text-center text-sm font-medium text-red-600">{errorMsg}</p>
+                                <div className="rounded-lg bg-slate-50 p-3 text-center text-xs text-slate-500">
+                                    <p>Camera API only works on:</p>
+                                    <p className="mt-1 font-mono">https://yourdomain.com</p>
+                                    <p className="font-mono">http://localhost:3000</p>
+                                </div>
+                            </div>
+                        )}
 
-                {/* Footer */}
-                <div className="border-t px-4 py-3 flex justify-end">
-                    <button
-                        onClick={handleClose}
-                        className="px-4 py-1.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                        Cancel
-                    </button>
+                        {/* Starting / waiting */}
+                        {status === 'starting' && (
+                            <div className="flex flex-col items-center gap-3 py-8">
+                                <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+                                <p className="text-sm text-slate-600">Starting camera…</p>
+                            </div>
+                        )}
+
+                        {/* Permission denied */}
+                        {status === 'permission_denied' && (
+                            <div className="flex flex-col items-center gap-3 py-6">
+                                <div className="text-4xl">🚫</div>
+                                <p className="text-center text-sm font-medium text-red-600">{errorMsg}</p>
+                                <div className="space-y-1 text-center text-xs text-slate-500">
+                                    <p><strong>iPhone:</strong> Settings → Safari → Camera → Allow</p>
+                                    <p><strong>Android:</strong> Tap lock icon in URL bar → Permissions → Camera</p>
+                                    <p><strong>Desktop:</strong> Click camera icon in the address bar</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Generic error */}
+                        {status === 'error' && (
+                            <div className="flex flex-col items-center gap-3 py-6">
+                                <div className="text-4xl">⚠️</div>
+                                <p className="text-center text-sm text-red-600">{errorMsg}</p>
+                            </div>
+                        )}
+
+                        {/* Video element — always rendered so srcObject can be set immediately */}
+                        <div className={(status === 'active' || status === 'scanning_success') ? '' : 'hidden'}>
+                            <div className="relative overflow-hidden rounded-lg bg-black" style={{ minHeight: '320px' }}>
+                                <video
+                                    ref={videoRef}
+                                    playsInline
+                                    muted
+                                    autoPlay
+                                    className="h-auto w-full rounded-lg"
+                                    style={{ minHeight: '320px', objectFit: 'cover' }}
+                                />
+                                {/* Scan overlay guide */}
+                                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                                    <div className="rounded-lg border-2 border-white/60" style={{ width: '70%', height: '35%' }} />
+                                </div>
+                            </div>
+                            <p className="mt-3 text-center text-xs text-slate-500">
+                                Point camera at a barcode. It will scan automatically.
+                            </p>
+                        </div>
+
+                        {/* Hidden canvas for barcode detection */}
+                        <canvas ref={canvasRef} className="hidden" />
+                        {/* Hidden div for html5-qrcode fallback decoder */}
+                        <div id="html5qr-hidden" className="hidden" />
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex justify-between border-t px-4 py-3">
+                        {onUseManualInput ? (
+                            <button
+                                onClick={() => {
+                                    onUseManualInput()
+                                    handleClose()
+                                }}
+                                className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                                Use Manual Input
+                            </button>
+                        ) : (
+                            <span />
+                        )}
+                        <button
+                            onClick={handleClose}
+                            className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                            Close
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     )
 }

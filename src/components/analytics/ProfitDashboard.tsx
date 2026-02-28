@@ -22,7 +22,7 @@ import { SalesMixTab } from '@/components/analytics/SalesMixTab'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { AlertTriangle, Printer, RotateCcw, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, FileText, Printer, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { ProfitCenterReport } from '@/components/analytics/ProfitCenterReport'
 
 interface DashboardProps {
@@ -159,6 +159,22 @@ export function ProfitDashboard({
         }
     }, [isPreparingReport, prepareReportForPrint])
 
+    const handleSummaryPrint = useCallback(() => {
+        const params = new URLSearchParams()
+        params.set('from', dateRange.from.toISOString())
+        params.set('to', dateRange.to.toISOString())
+
+        const summaryWindow = window.open(
+            `/distributor/analytics/profit/print-summary?${params.toString()}`,
+            '_blank',
+            'noopener,noreferrer'
+        )
+
+        if (!summaryWindow) {
+            toast.error('Unable to open the summary export window. Please allow pop-ups and retry.')
+        }
+    }, [dateRange.from, dateRange.to])
+
     const openResetModal = () => {
         setResetConfirmation('')
         setShowResetModal(true)
@@ -255,6 +271,15 @@ export function ProfitDashboard({
                                 </Button>
                                 <Button
                                     type="button"
+                                    variant="outline"
+                                    onClick={handleSummaryPrint}
+                                    className="h-11 justify-center gap-2 whitespace-nowrap"
+                                >
+                                    <FileText className="h-4 w-4" />
+                                    Export 1-Page Summary (PDF)
+                                </Button>
+                                <Button
+                                    type="button"
                                     variant="destructive"
                                     onClick={openResetModal}
                                     className="h-11 justify-center gap-2 whitespace-nowrap"
@@ -299,6 +324,15 @@ export function ProfitDashboard({
                             >
                                 <Printer className="h-4 w-4" />
                                 {isPreparingReport ? 'Preparing report...' : 'Print / Save PDF'}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleSummaryPrint}
+                                className="h-11 justify-center gap-2 text-xs"
+                            >
+                                <FileText className="h-4 w-4" />
+                                Export 1-Page Summary (PDF)
                             </Button>
                             <Button type="button" variant="destructive" onClick={openResetModal} className="h-11 justify-center gap-2">
                                 <RotateCcw className="h-4 w-4" />

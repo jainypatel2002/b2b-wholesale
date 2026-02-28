@@ -10,15 +10,28 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { InvoicePrint } from '@/components/invoice-print'
 import { formatMoney } from '@/lib/pricing-engine'
+import { computeAmountDue } from '@/lib/credits/calc'
 
 export default async function VendorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { vendorId } = await getVendorContext()
   const supabase = await createClient()
 
-  const { data: invoice, error: invoiceErr } = await supabase
-    .from('invoices')
-    .select(`
+  const selectWithCredit = `
+        id, distributor_id, invoice_number, subtotal, tax, total, credit_applied, created_at, payment_status, paid_at, terms, notes,
+        seller_profile, buyer_profile,
+        invoice_items(
+            qty, unit_price, unit_cost, item_code, upc,
+            effective_units, ext_amount, is_manual, product_name, 
+            order_unit, units_per_case_snapshot,
+            product_name_snapshot, category_name_snapshot, order_mode, 
+            quantity_snapshot, line_total_snapshot,
+            unit_price_snapshot, case_price_snapshot
+        ),
+        invoice_taxes(*),
+        distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone, location_address)
+    `
+  const selectWithoutCredit = `
         id, distributor_id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
         seller_profile, buyer_profile,
         invoice_items(
@@ -31,10 +44,26 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
         ),
         invoice_taxes(*),
         distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone, location_address)
-    `)
+    `
+
+  let invoiceResult = await supabase
+    .from('invoices')
+    .select(selectWithCredit)
     .eq('id', id)
     .eq('vendor_id', vendorId)
     .maybeSingle()
+
+  if (invoiceResult.error?.code === '42703') {
+    invoiceResult = await supabase
+      .from('invoices')
+      .select(selectWithoutCredit)
+      .eq('id', id)
+      .eq('vendor_id', vendorId)
+      .maybeSingle()
+  }
+
+  const invoice = invoiceResult.data ? { ...invoiceResult.data, credit_applied: (invoiceResult.data as any).credit_applied ?? 0 } : null
+  const invoiceErr = invoiceResult.error
 
   if (invoiceErr) {
     console.error('[VendorInvoiceDetailPage] Query Error raw:', invoiceErr)
@@ -69,6 +98,8 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
     phone: dist.phone,
     address_line1: dist.location_address
   } : undefined
+  const creditApplied = Number((invoice as any).credit_applied ?? 0)
+  const amountDue = computeAmountDue(Number(invoice.total ?? 0), creditApplied)
 
   return (
     <div className="space-y-6">
@@ -137,6 +168,14 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
                 <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
                   <span>Total</span>
                   <span>{formatMoney(invoice.total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Credit Applied</span>
+                  <span className="font-medium text-emerald-700">-{formatMoney(creditApplied)}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
+                  <span>Amount Due</span>
+                  <span>{formatMoney(amountDue)}</span>
                 </div>
               </div>
 

@@ -629,7 +629,7 @@ export async function createProductAction(
         if ((cost_case as any) !== null && !Number.isFinite(cost_case as number)) return { error: 'Invalid case cost' }
         if ((price_case as any) !== null && !Number.isFinite(price_case as number)) return { error: 'Invalid case price' }
         if (!Number.isFinite(units_per_case) || !Number.isFinite(low_stock_threshold)) return { error: 'Invalid numeric input' }
-        if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
+        if (allow_case && units_per_case < 1) return { error: 'Units per case must be at least 1' }
         if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
         if (cost_price < 0 || sell_price < 0) return { error: 'Prices must be 0 or greater' }
         if ((normalizedCostMode === 'case' || normalizedPriceMode === 'case') && safeUnitsPerCase(units_per_case) === null) {
@@ -809,7 +809,7 @@ export async function updateProductAction(
         if (stock_pieces === undefined) return { error: 'Stock quantity is required' }
         if (!Number.isFinite(sell_price) || !Number.isFinite(stock_pieces)) return { error: 'Invalid numeric input' }
         if (!Number.isFinite(units_per_case) || !Number.isFinite(low_stock_threshold)) return { error: 'Invalid numeric input' }
-        if (allow_case && units_per_case < 2) return { error: 'Units per case must be > 1' }
+        if (allow_case && units_per_case < 1) return { error: 'Units per case must be at least 1' }
         if (!allow_case && !allow_piece) return { error: 'Must allow at least cases or pieces' }
         if ((normalizedCostMode === 'case' || normalizedPriceMode === 'case') && safeUnitsPerCase(units_per_case) === null) {
             return { error: 'Set units per case to use case pricing.' }

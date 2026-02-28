@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useRef, useCallback, useEffect, useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Edit, Package, Plus, Search, Trash2, X } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Edit, Package, Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { BarcodeScannerPanel, SCAN_CATCHER_ID } from '@/components/scanner/BarcodeScannerPanel'
 import type { ScanStatus } from '@/components/scanner/BarcodeScannerPanel'
+import { BarcodeScanModal } from '@/components/scanner/BarcodeScanModal'
 import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeScannerModal'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { createClient } from '@/lib/supabase/client'
@@ -628,6 +629,16 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                 stream={cameraStream}
                 cameraError={cameraError}
                 onClose={closeCamera}
+                onUseManualInput={() => {
+                    closeCamera()
+                    setScanMode(true)
+                    setScanStatus('ready')
+                    setScanStatusMessage('Ready for scanner input')
+                    setTimeout(() => {
+                        const catcher = document.getElementById(SCAN_CATCHER_ID) as HTMLInputElement | null
+                        catcher?.focus()
+                    }, 60)
+                }}
                 onScan={handleCameraScan}
             />
         </div>
@@ -904,7 +915,6 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     const isEditMode = type === 'edit' && Boolean(defaultValues?.id)
     const [copiedBarcode, setCopiedBarcode] = useState<string | null>(null)
 
-    const barcodeScanModalRef = useRef<HTMLDialogElement>(null)
     const scannerCatcherRef = useRef<HTMLInputElement>(null)
     const scannerIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const scannerLastHandledRef = useRef<{ value: string; at: number }>({ value: '', at: 0 })
@@ -1129,9 +1139,6 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
         setBarcodeScanStatus('idle')
         setBarcodeScanMessage('Ready to scan a barcode.')
         setBarcodeScanSaving(false)
-        if (barcodeScanModalRef.current?.open) {
-            barcodeScanModalRef.current.close()
-        }
     }, [clearScannerIdleTimer, closeBarcodeCamera])
 
     const openBarcodeScanModal = useCallback(() => {
@@ -1141,9 +1148,6 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
         setBarcodeScanMessage('Scanner mode active. Scan a barcode now.')
         setBarcodeScanLastCode(null)
         setBarcodeScanSaving(false)
-        if (!barcodeScanModalRef.current?.open) {
-            barcodeScanModalRef.current?.showModal()
-        }
         focusScannerCatcher()
     }, [focusScannerCatcher])
 
@@ -1749,7 +1753,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
             <div className="space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
                 <p className="text-sm font-medium text-slate-700">Ordering Configuration</p>
                 <div className="grid gap-2">
-                    <label className="text-sm font-medium">Units Per Case</label>
+                    <label className="text-sm font-medium">Units Per Case (Case Pack Size)</label>
                     <div className="flex items-center gap-2">
                         <Input
                             type="number"
@@ -1762,12 +1766,14 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                         />
                         <span className="text-xs text-slate-500 whitespace-nowrap">items/case</span>
                     </div>
-
+                    <p className="text-xs text-slate-500">
+                        This is the pack size for 1 case. Value <strong>1</strong> is valid for case-only ordering.
+                    </p>
                 </div>
                 <div className="flex gap-6 pt-2">
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                         <input type="checkbox" name="allow_piece" checked={allowPiece} onChange={e => setAllowPiece(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40" />
-                        Allow Pieces
+                        Allow Units
                     </label>
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                         <input type="checkbox" name="allow_case" checked={allowCase} onChange={e => setAllowCase(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40" />
@@ -1923,7 +1929,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                 )}
 
                 <div className={`flex items-center justify-between transition-opacity ${stockLocked ? 'opacity-40 pointer-events-none' : ''}`}>
-                    <label className="text-sm font-medium">Current Stock</label>
+                    <label className="text-sm font-medium">Current Stock (Inventory Units)</label>
                     <div className="flex rounded-lg bg-slate-200 p-0.5">
                         <button
                             type="button"
@@ -1987,144 +1993,131 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                 value={stockMode === 'cases' ? Number(stockInput || 0) * unitsPerCase : Number(stockInput || 0)}
             />
 
-            <dialog
-                ref={barcodeScanModalRef}
-                className="modal bg-transparent"
-                onClose={() => {
-                    setBarcodeScanOpen(false)
-                    clearScannerIdleTimer()
-                    closeBarcodeCamera()
-                }}
+            <BarcodeScanModal
+                open={barcodeScanOpen}
+                onClose={closeBarcodeScanModal}
+                title="Add Barcode"
+                description={
+                    isEditMode
+                        ? 'Scanned barcodes save immediately to this product.'
+                        : 'Scanned barcodes are queued and saved when you create the product.'
+                }
+                maxWidthClassName="max-w-xl"
             >
-                <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-xl rounded-2xl border border-white/70 bg-white/95 shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                            <div>
-                                <h3 className="text-base font-semibold text-slate-900">Add Barcode</h3>
-                                <p className="text-xs text-slate-500">
-                                    {isEditMode
-                                        ? 'Scanned barcodes save immediately to this product.'
-                                        : 'Scanned barcodes are queued and saved when you create the product.'}
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={closeBarcodeScanModal}
-                                className="rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                            >
-                                <X className="h-4 w-4" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-3 p-4">
-                            <div className="flex flex-wrap gap-2">
-                                <Button
-                                    type="button"
-                                    variant={barcodeScanMode === 'scanner' ? 'default' : 'outline'}
-                                    onClick={() => {
-                                        closeBarcodeCamera()
-                                        setBarcodeScanMode('scanner')
-                                        setBarcodeScanStatus('idle')
-                                        setBarcodeScanMessage('Scanner mode active. Scan a barcode now.')
-                                        focusScannerCatcher()
-                                    }}
-                                >
-                                    Scanner ON
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant={barcodeScanMode === 'camera' ? 'default' : 'outline'}
-                                    onClick={() => {
-                                        void openBarcodeCamera()
-                                    }}
-                                >
-                                    Use Camera
-                                </Button>
-                                <Button type="button" variant="outline" onClick={closeBarcodeScanModal}>
-                                    Stop
-                                </Button>
-                            </div>
-
-                            <div
-                                className={`rounded-lg border px-3 py-2 text-xs ${
-                                    barcodeScanStatus === 'error'
-                                        ? 'border-red-200 bg-red-50 text-red-700'
-                                        : barcodeScanStatus === 'success'
-                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                            : barcodeScanStatus === 'saving'
-                                                ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                                : 'border-slate-200 bg-slate-50 text-slate-700'
-                                }`}
-                            >
-                                <p className="font-medium">{barcodeScanMessage}</p>
-                                {barcodeScanLastCode && (
-                                    <p className="mt-1 font-mono text-[11px]">Last scanned: {barcodeScanLastCode}</p>
-                                )}
-                            </div>
-
-                            {barcodeScanMode === 'scanner' && (
-                                <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                    <p className="text-xs text-slate-600">
-                                        Keep this modal open and scan with your wireless scanner.
-                                    </p>
-                                    <input
-                                        ref={scannerCatcherRef}
-                                        type="text"
-                                        autoComplete="off"
-                                        autoCorrect="off"
-                                        autoCapitalize="off"
-                                        spellCheck={false}
-                                        inputMode="none"
-                                        tabIndex={-1}
-                                        className="sr-only"
-                                        aria-label="Scanner catcher input"
-                                        onInput={() => {
-                                            if (!barcodeScanSaving) {
-                                                setBarcodeScanStatus('idle')
-                                                setBarcodeScanMessage('Receiving scanner input…')
-                                            }
-                                            queueScannerCommit()
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' || e.key === 'Tab') {
-                                                e.preventDefault()
-                                                commitScannerInput()
-                                            }
-                                        }}
-                                        onBlur={() => {
-                                            if (barcodeScanOpen && barcodeScanMode === 'scanner') {
-                                                focusScannerCatcher()
-                                            }
-                                        }}
-                                    />
-                                    <div className="mt-2 flex justify-end">
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={focusScannerCatcher}
-                                        >
-                                            Refocus Scanner
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {barcodeScanMode === 'camera' && (
-                                <p className="text-xs text-slate-600">
-                                    Camera scanner opens above this modal. Close the camera view to return here.
-                                </p>
-                            )}
-                        </div>
+                <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            type="button"
+                            variant={barcodeScanMode === 'scanner' ? 'default' : 'outline'}
+                            onClick={() => {
+                                closeBarcodeCamera()
+                                setBarcodeScanMode('scanner')
+                                setBarcodeScanStatus('idle')
+                                setBarcodeScanMessage('Scanner mode active. Scan a barcode now.')
+                                focusScannerCatcher()
+                            }}
+                        >
+                            Scanner ON
+                        </Button>
+                        <Button
+                            type="button"
+                            variant={barcodeScanMode === 'camera' ? 'default' : 'outline'}
+                            onClick={() => {
+                                void openBarcodeCamera()
+                            }}
+                        >
+                            Use Camera
+                        </Button>
+                        <Button type="button" variant="outline" onClick={closeBarcodeScanModal}>
+                            Stop
+                        </Button>
                     </div>
+
+                    <div
+                        className={`rounded-lg border px-3 py-2 text-xs ${
+                            barcodeScanStatus === 'error'
+                                ? 'border-red-200 bg-red-50 text-red-700'
+                                : barcodeScanStatus === 'success'
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : barcodeScanStatus === 'saving'
+                                        ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                        : 'border-slate-200 bg-slate-50 text-slate-700'
+                        }`}
+                    >
+                        <p className="font-medium">{barcodeScanMessage}</p>
+                        {barcodeScanLastCode && (
+                            <p className="mt-1 font-mono text-[11px]">Last scanned: {barcodeScanLastCode}</p>
+                        )}
+                    </div>
+
+                    {barcodeScanMode === 'scanner' && (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                            <p className="text-xs text-slate-600">
+                                Keep this modal open and scan with your wireless scanner.
+                            </p>
+                            <input
+                                ref={scannerCatcherRef}
+                                type="text"
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                                inputMode="none"
+                                tabIndex={-1}
+                                className="sr-only"
+                                aria-label="Scanner catcher input"
+                                onInput={() => {
+                                    if (!barcodeScanSaving) {
+                                        setBarcodeScanStatus('idle')
+                                        setBarcodeScanMessage('Receiving scanner input…')
+                                    }
+                                    queueScannerCommit()
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === 'Tab') {
+                                        e.preventDefault()
+                                        commitScannerInput()
+                                    }
+                                }}
+                                onBlur={() => {
+                                    if (barcodeScanOpen && barcodeScanMode === 'scanner') {
+                                        focusScannerCatcher()
+                                    }
+                                }}
+                            />
+                            <div className="mt-2 flex justify-end">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={focusScannerCatcher}
+                                >
+                                    Refocus Scanner
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {barcodeScanMode === 'camera' && (
+                        <p className="text-xs text-slate-600">
+                            Camera scanner opens above this modal. Close the camera view to return here.
+                        </p>
+                    )}
                 </div>
-            </dialog>
+            </BarcodeScanModal>
 
             <CameraBarcodeScannerModal
                 open={barcodeCameraOpen}
                 stream={barcodeCameraStream}
                 cameraError={barcodeCameraError}
                 onClose={closeBarcodeCamera}
+                onUseManualInput={() => {
+                    closeBarcodeCamera()
+                    setBarcodeScanMode('scanner')
+                    setBarcodeScanStatus('idle')
+                    setBarcodeScanMessage('Scanner mode active. Scan a barcode now.')
+                    focusScannerCatcher()
+                }}
                 onScan={(scannedBarcode: string) => {
                     closeBarcodeCamera()
                     void handleScannedBarcode(scannedBarcode)

@@ -12,6 +12,8 @@ import { ArrowLeft, Check, X } from 'lucide-react'
 import { GenerateInvoiceButton } from '@/components/generate-invoice-button'
 import { OrderItemsEditor } from '@/components/order-items-editor'
 import { computeInvoiceSubtotal } from '@/lib/pricing-engine'
+import { computeAmountDue, computeOrderTotal, computeVendorCreditBalance } from '@/lib/credits/calc'
+import { OrderCreditApplyCard } from '@/components/credits/order-credit-apply-card'
 
 export default async function DistributorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -89,11 +91,56 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
   }
 
   const vendor = Array.isArray(order.vendor) ? order.vendor[0] : order.vendor
-  const { data: invoice } = await supabase.from('invoices').select('id,invoice_number,payment_status,total').eq('order_id', order.id).maybeSingle()
 
   // Compute subtotal using centralized canonical logic
   const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
   const subtotal = computeInvoiceSubtotal(activeItems)
+  const adjustmentTotal = (order.order_adjustments ?? []).reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
+  const orderTotalBeforeCredit = computeOrderTotal({
+    subtotal,
+    adjustmentTotal,
+    taxes: order.order_taxes ?? [],
+  })
+
+  const [
+    { data: invoice },
+    orderCreditResult,
+    vendorLedgerResult,
+  ] = await Promise.all([
+    supabase
+      .from('invoices')
+      .select('id,invoice_number,payment_status,total,credit_applied')
+      .eq('order_id', order.id)
+      .maybeSingle(),
+    supabase
+      .from('order_credit_applications')
+      .select('applied_amount')
+      .eq('order_id', order.id)
+      .eq('distributor_id', distributorId)
+      .eq('vendor_id', order.vendor_id)
+      .maybeSingle(),
+    supabase
+      .from('vendor_credit_ledger')
+      .select('type,amount')
+      .eq('distributor_id', distributorId)
+      .eq('vendor_id', order.vendor_id),
+  ])
+
+  const creditFeatureUnavailable = (
+    (orderCreditResult.error && orderCreditResult.error.code === '42P01')
+    || (vendorLedgerResult.error && vendorLedgerResult.error.code === '42P01')
+  )
+
+  const currentCreditApplied = Number(
+    (orderCreditResult.data as any)?.applied_amount
+    ?? (invoice as any)?.credit_applied
+    ?? 0
+  )
+
+  const availableCreditBalance = computeVendorCreditBalance(
+    ((vendorLedgerResult.error?.code === '42P01') ? [] : (vendorLedgerResult.data ?? [])) as any[]
+  )
+  const amountDueAfterCredit = computeAmountDue(orderTotalBeforeCredit, currentCreditApplied)
 
   // Actions
   async function transitionStatus(newStatus: string) {
@@ -221,6 +268,43 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
                   )
                 )}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Credit Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium uppercase text-slate-500">Vendor Credit</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Order Total</span>
+                  <span className="font-medium">${orderTotalBeforeCredit.toFixed(2)}</span>
+                </div>
+                <div className="mt-1 flex justify-between">
+                  <span className="text-slate-600">Credit Applied</span>
+                  <span className="font-medium">${currentCreditApplied.toFixed(2)}</span>
+                </div>
+                <div className="mt-2 flex justify-between border-t border-slate-200 pt-2">
+                  <span className="font-semibold text-slate-800">Amount Due</span>
+                  <span className="text-base font-bold text-slate-900">${amountDueAfterCredit.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {creditFeatureUnavailable ? (
+                <p className="text-xs text-amber-700">
+                  Credit system is not available yet in this environment. Apply the latest migration to enable it.
+                </p>
+              ) : (
+                <OrderCreditApplyCard
+                  vendorId={order.vendor_id}
+                  orderId={order.id}
+                  availableBalance={availableCreditBalance}
+                  currentApplied={currentCreditApplied}
+                  orderTotal={orderTotalBeforeCredit}
+                />
+              )}
             </CardContent>
           </Card>
 

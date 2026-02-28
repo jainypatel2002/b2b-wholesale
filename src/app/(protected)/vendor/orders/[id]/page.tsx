@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText } from 'lucide-react'
 import { normalizeInvoiceItem, computeInvoiceSubtotal, formatMoney } from '@/lib/pricing-engine'
+import { computeAmountDue, computeOrderTotal } from '@/lib/credits/calc'
 
 export default async function VendorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -21,7 +22,9 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
       id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
       products(name),
       edited_name, edited_unit_price, edited_qty, removed
-    )
+    ),
+    order_adjustments(id, name, amount),
+    order_taxes(id, name, type, rate_percent)
   `
   const fallbackSelect = `
     id, status, created_at,
@@ -29,7 +32,9 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
       id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
       products(name),
       edited_name, edited_unit_price, edited_qty, removed
-    )
+    ),
+    order_adjustments(id, name, amount),
+    order_taxes(id, name, type, rate_percent)
   `
 
   let order: any = null
@@ -80,8 +85,31 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
   // Use centralized canonical logic for subtotal
   const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
   const subtotal = computeInvoiceSubtotal(activeItems)
+  const adjustmentTotal = (order.order_adjustments ?? []).reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
+  const orderTotalBeforeCredit = computeOrderTotal({
+    subtotal,
+    adjustmentTotal,
+    taxes: order.order_taxes ?? [],
+  })
 
-  const { data: invoice } = await supabase.from('invoices').select('id,invoice_number,payment_status,total').eq('order_id', order.id).maybeSingle()
+  const [invoiceResult, creditResult] = await Promise.all([
+    supabase
+      .from('invoices')
+      .select('id,invoice_number,payment_status,total,credit_applied')
+      .eq('order_id', order.id)
+      .maybeSingle(),
+    supabase
+      .from('order_credit_applications')
+      .select('applied_amount')
+      .eq('order_id', order.id)
+      .eq('vendor_id', vendorId)
+      .maybeSingle(),
+  ])
+
+  const invoice = invoiceResult.data
+  const creditFeatureUnavailable = creditResult.error?.code === '42P01'
+  const currentCreditApplied = Number((creditResult.data as any)?.applied_amount ?? (invoice as any)?.credit_applied ?? 0)
+  const amountDueAfterCredit = computeAmountDue(orderTotalBeforeCredit, currentCreditApplied)
 
   return (
     <div className="space-y-6">
@@ -184,6 +212,29 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
               <div className="text-xs text-slate-400 font-mono break-all pt-2">
                 ID: {order.id}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium uppercase text-slate-500">Credit</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-600">Order Total</span>
+                <span className="font-medium">{formatMoney(orderTotalBeforeCredit)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600">Credit Applied</span>
+                <span className="font-medium">{formatMoney(currentCreditApplied)}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-100 pt-2">
+                <span className="font-semibold text-slate-800">Amount Due</span>
+                <span className="text-base font-bold text-slate-900">{formatMoney(amountDueAfterCredit)}</span>
+              </div>
+              {creditFeatureUnavailable && (
+                <p className="text-xs text-amber-700">Credit details will appear once your distributor enables the credit ledger migration.</p>
+              )}
             </CardContent>
           </Card>
 

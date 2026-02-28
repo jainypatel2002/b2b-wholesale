@@ -10,16 +10,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { InvoicePrint } from '@/components/invoice-print'
 import { formatMoney } from '@/lib/pricing-engine'
+import { computeAmountDue, computeVendorCreditBalance } from '@/lib/credits/calc'
+import { OrderCreditApplyCard } from '@/components/credits/order-credit-apply-card'
 
 export default async function DistributorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { distributorId } = await getDistributorContext()
   const supabase = await createClient()
 
-  const { data: invoice, error: invoiceErr } = await supabase
-    .from('invoices')
-    .select(`
-            id, vendor_id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+  const selectWithCredit = `
+            id, order_id, vendor_id, invoice_number, subtotal, tax, total, credit_applied, created_at, payment_status, paid_at, terms, notes,
             seller_profile, buyer_profile,
             invoice_items(
                 qty, unit_price, unit_cost, item_code, upc,
@@ -29,10 +29,38 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
                 unit_price_snapshot, case_price_snapshot, units_per_case_snapshot
             ),
             invoice_taxes(*)
-        `)
+        `
+  const selectWithoutCredit = `
+            id, order_id, vendor_id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+            seller_profile, buyer_profile,
+            invoice_items(
+                qty, unit_price, unit_cost, item_code, upc,
+                effective_units, ext_amount, is_manual, product_name,
+                product_name_snapshot, category_name_snapshot, order_mode, 
+                quantity_snapshot, line_total_snapshot,
+                unit_price_snapshot, case_price_snapshot, units_per_case_snapshot
+            ),
+            invoice_taxes(*)
+        `
+
+  let invoiceResult = await supabase
+    .from('invoices')
+    .select(selectWithCredit)
     .eq('id', id)
     .eq('distributor_id', distributorId)
     .maybeSingle()
+
+  if (invoiceResult.error?.code === '42703') {
+    invoiceResult = await supabase
+      .from('invoices')
+      .select(selectWithoutCredit)
+      .eq('id', id)
+      .eq('distributor_id', distributorId)
+      .maybeSingle()
+  }
+
+  const invoice = invoiceResult.data ? { ...invoiceResult.data, credit_applied: (invoiceResult.data as any).credit_applied ?? 0 } : null
+  const invoiceErr = invoiceResult.error
 
   if (invoiceErr) {
     console.error('[DistributorInvoiceDetailPage] Query Error raw:', invoiceErr)
@@ -64,6 +92,21 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
     getVendorBusinessProfileForInvoice(invoice.vendor_id, { distributorId, invoiceId: id })
   ])
 
+  const [orderCreditResult, vendorLedgerResult] = await Promise.all([
+    supabase
+      .from('order_credit_applications')
+      .select('applied_amount')
+      .eq('order_id', invoice.order_id)
+      .eq('distributor_id', distributorId)
+      .eq('vendor_id', invoice.vendor_id)
+      .maybeSingle(),
+    supabase
+      .from('vendor_credit_ledger')
+      .select('type,amount')
+      .eq('distributor_id', distributorId)
+      .eq('vendor_id', invoice.vendor_id),
+  ])
+
   const profit = (invoice.invoice_items ?? []).reduce((sum: number, it: any) => {
     // We still use unit_price and unit_cost for profit estimation
     // But we favor unit_price_snapshot if available
@@ -76,6 +119,15 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
 
     return sum + (effectivePrice - effectiveCost) * totalPieces
   }, 0)
+  const creditFeatureUnavailable = (
+    (orderCreditResult.error && orderCreditResult.error.code === '42P01')
+    || (vendorLedgerResult.error && vendorLedgerResult.error.code === '42P01')
+  )
+  const creditApplied = Number((orderCreditResult.data as any)?.applied_amount ?? (invoice as any).credit_applied ?? 0)
+  const availableCreditBalance = computeVendorCreditBalance(
+    ((vendorLedgerResult.error?.code === '42P01') ? [] : (vendorLedgerResult.data ?? [])) as any[]
+  )
+  const amountDue = computeAmountDue(Number(invoice.total ?? 0), creditApplied)
 
   return (
     <div className="space-y-6">
@@ -145,11 +197,40 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
                   <span>Total</span>
                   <span>{formatMoney(invoice.total)}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Credit Applied</span>
+                  <span className="font-medium text-emerald-700">-{formatMoney(creditApplied)}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
+                  <span>Amount Due</span>
+                  <span>{formatMoney(amountDue)}</span>
+                </div>
                 <div className="flex justify-between pt-2 text-xs text-emerald-600">
                   <span>Profit (est)</span>
                   <span>{formatMoney(profit)}</span>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium uppercase text-slate-500">Apply Credit</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {creditFeatureUnavailable ? (
+                <p className="text-xs text-amber-700">
+                  Credit system is not available yet in this environment. Apply the latest migration to enable it.
+                </p>
+              ) : (
+                <OrderCreditApplyCard
+                  vendorId={invoice.vendor_id}
+                  orderId={invoice.order_id}
+                  availableBalance={availableCreditBalance}
+                  currentApplied={creditApplied}
+                  orderTotal={Number(invoice.total ?? 0)}
+                />
+              )}
             </CardContent>
           </Card>
         </div>

@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react'
 import { normalizeInvoiceItem, formatMoney } from '@/lib/pricing-engine'
+import { computeAmountDue } from '@/lib/credits/calc'
 
 interface InvoicePartyProfile {
     business_name?: string | null
@@ -95,6 +96,8 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
 
     const items = invoice.invoice_items || []
     const taxes = invoice.invoice_taxes || []
+    const creditApplied = Number(invoice?.credit_applied ?? 0)
+    const amountDue = computeAmountDue(Number(invoice?.total ?? 0), creditApplied)
     const sellerProfile = normalizePartyProfile(invoice?.seller_profile, distributor)
     const buyerProfile = normalizePartyProfile(invoice?.buyer_profile, vendor)
     const sellerAddressLines = getAddressLines(sellerProfile)
@@ -245,6 +248,15 @@ export function InvoicePrint({ invoice, distributor, vendor, isEmbedded = false 
                             <tr className="border-t-2 border-slate-900">
                                 <td className="py-3 font-bold text-slate-900 uppercase">Total</td>
                                 <td className="py-3 text-right font-bold text-lg text-slate-900">{formatMoney(invoice.total)}</td>
+                            </tr>
+
+                            <tr>
+                                <td className="py-2 text-slate-600">Credit Applied</td>
+                                <td className="py-2 text-right text-emerald-700">-{formatMoney(creditApplied)}</td>
+                            </tr>
+                            <tr className="border-t border-slate-300">
+                                <td className="py-3 font-bold text-slate-900 uppercase">Amount Due</td>
+                                <td className="py-3 text-right font-bold text-lg text-slate-900">{formatMoney(amountDue)}</td>
                             </tr>
 
                             {/* Payment Status Ribbon */}
