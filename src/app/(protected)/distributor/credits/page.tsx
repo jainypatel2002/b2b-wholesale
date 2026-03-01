@@ -1,101 +1,285 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext, getLinkedVendors } from '@/lib/data'
-import { DistributorCreditsPanel } from '@/components/credits/distributor-credits-panel'
-import { computeVendorCreditBalance } from '@/lib/credits/calc'
+import { computeInvoiceSubtotal } from '@/lib/pricing-engine'
+import { computeOrderTotal } from '@/lib/credits/calc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { StatusBadge } from '@/components/status-badge'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DistributorCreditsPage({
-    searchParams,
+type OrderAmountRow = {
+  id: string
+  status: string
+  created_at: string
+  total_amount: number
+  amount_paid: number
+  amount_due: number
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number.isFinite(value) ? value : 0)
+}
+
+export default async function DistributorAmountDuePage({
+  searchParams,
 }: {
-    searchParams: Promise<{ vendor?: string }>
+  searchParams: Promise<{ vendor?: string }>
 }) {
-    const { distributorId } = await getDistributorContext()
-    const supabase = await createClient()
-    const { vendor: vendorParam } = await searchParams
-    const vendors = await getLinkedVendors(distributorId)
+  const { distributorId } = await getDistributorContext()
+  const supabase = await createClient()
+  const { vendor: vendorParam } = await searchParams
+  const vendors = await getLinkedVendors(distributorId)
 
-    const selectedVendorId = vendors.some((vendor) => vendor.id === vendorParam)
-        ? String(vendorParam)
-        : (vendors[0]?.id || '')
-    const selectedVendor = vendors.find((vendor) => vendor.id === selectedVendorId)
+  const selectedVendorId = vendors.some((vendor) => vendor.id === vendorParam)
+    ? String(vendorParam)
+    : (vendors[0]?.id || '')
+  const selectedVendor = vendors.find((vendor) => vendor.id === selectedVendorId)
 
-    if (!selectedVendorId) {
-        return (
-            <Card>
-                <CardHeader>
-                    <CardTitle>Vendor Credits</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <p className="text-sm text-slate-600">No linked vendors found. Link a vendor first to manage credit.</p>
-                </CardContent>
-            </Card>
-        )
-    }
-
-    const { data: ledgerRows, error: ledgerError } = await supabase
-        .from('vendor_credit_ledger')
-        .select('id,type,amount,note,order_id,invoice_id,created_at')
-        .eq('distributor_id', distributorId)
-        .eq('vendor_id', selectedVendorId)
-        .order('created_at', { ascending: false })
-        .limit(200)
-
-    if (ledgerError) {
-        return (
-            <Card className="border-red-200 bg-red-50">
-                <CardHeader>
-                    <CardTitle>Vendor Credits</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                    <p className="text-sm text-red-700">Unable to load credits: {ledgerError.message}</p>
-                    <p className="text-xs text-red-600">Apply the latest migration and refresh this page.</p>
-                </CardContent>
-            </Card>
-        )
-    }
-
-    const balance = computeVendorCreditBalance((ledgerRows ?? []).map((row) => ({
-        type: row.type,
-        amount: row.amount,
-    })))
-
+  if (!selectedVendorId) {
     return (
-        <div className="space-y-6">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Vendor Credits</h1>
-                    <p className="text-sm text-slate-500">Manual credit ledger and adjustments by vendor.</p>
-                </div>
-                <form action="/distributor/credits" className="flex items-end gap-2">
-                    <div>
-                        <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Vendor</label>
-                        <select name="vendor" defaultValue={selectedVendorId} className="form-select min-w-[220px]">
-                            {vendors.map((vendor) => (
-                                <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <Button type="submit" variant="outline">Load</Button>
-                </form>
-            </div>
-
-            <DistributorCreditsPanel
-                vendorId={selectedVendorId}
-                vendorName={selectedVendor?.name || 'Vendor'}
-                balance={balance}
-                ledger={(ledgerRows ?? []).map((row) => ({
-                    id: String(row.id),
-                    type: String(row.type),
-                    amount: Number(row.amount ?? 0),
-                    note: row.note == null ? null : String(row.note),
-                    order_id: row.order_id == null ? null : String(row.order_id),
-                    invoice_id: row.invoice_id == null ? null : String(row.invoice_id),
-                    created_at: String(row.created_at),
-                }))}
-            />
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Amount Due</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-slate-600">No linked vendors found. Link a vendor first.</p>
+        </CardContent>
+      </Card>
     )
+  }
+
+  const [summaryResult, ordersResult, lastPaymentResult] = await Promise.all([
+    supabase.rpc('get_vendor_amount_due', {
+      p_distributor_id: distributorId,
+      p_vendor_id: selectedVendorId,
+    }),
+    supabase
+      .from('orders')
+      .select('id,status,created_at,total_amount,amount_paid,amount_due')
+      .eq('distributor_id', distributorId)
+      .eq('vendor_id', selectedVendorId)
+      .gt('amount_due', 0)
+      .order('created_at', { ascending: false })
+      .limit(200),
+    supabase
+      .from('order_payments')
+      .select('paid_at')
+      .eq('distributor_id', distributorId)
+      .eq('vendor_id', selectedVendorId)
+      .order('paid_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  let unpaidOrders: OrderAmountRow[] = []
+  let usedFallbackTotals = false
+
+  if (ordersResult.error?.code === '42703') {
+    usedFallbackTotals = true
+    const fallbackOrders = await supabase
+      .from('orders')
+      .select(`
+        id,
+        status,
+        created_at,
+        amount_paid,
+        order_items(qty,unit_price,edited_qty,edited_unit_price,removed),
+        order_adjustments(amount),
+        order_taxes(type,rate_percent)
+      `)
+      .eq('distributor_id', distributorId)
+      .eq('vendor_id', selectedVendorId)
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    unpaidOrders = (fallbackOrders.data ?? [])
+      .map((row: any) => {
+        const activeItems = (row.order_items ?? []).filter((it: any) => !it.removed)
+        const subtotal = computeInvoiceSubtotal(activeItems)
+        const adjustmentTotal = (row.order_adjustments ?? []).reduce((sum: number, r: any) => sum + Number(r.amount ?? 0), 0)
+        const totalAmount = computeOrderTotal({
+          subtotal,
+          adjustmentTotal,
+          taxes: row.order_taxes ?? [],
+        })
+        const amountPaid = Number(row.amount_paid ?? 0)
+        const amountDue = Math.max(Number(totalAmount - amountPaid), 0)
+
+        return {
+          id: String(row.id),
+          status: String(row.status),
+          created_at: String(row.created_at),
+          total_amount: Number(totalAmount),
+          amount_paid: amountPaid,
+          amount_due: amountDue,
+        }
+      })
+      .filter((row) => row.amount_due > 0)
+  } else {
+    unpaidOrders = (ordersResult.data ?? []).map((row: any) => ({
+      id: String(row.id),
+      status: String(row.status),
+      created_at: String(row.created_at),
+      total_amount: Number(row.total_amount ?? 0),
+      amount_paid: Number(row.amount_paid ?? 0),
+      amount_due: Math.max(Number(row.amount_due ?? 0), 0),
+    }))
+  }
+
+  const summaryRow = Array.isArray(summaryResult.data) ? summaryResult.data[0] : null
+  const computedTotalDue = unpaidOrders.reduce((sum, order) => sum + order.amount_due, 0)
+  const totalAmountDue = Number(summaryRow?.vendor_total_due ?? computedTotalDue)
+  const unpaidOrdersCount = Number(summaryRow?.count_unpaid_orders ?? unpaidOrders.length)
+  const lastPaymentDate = summaryRow?.last_payment_date ?? lastPaymentResult.data?.paid_at ?? null
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Amount Due</h1>
+          <p className="text-sm text-slate-500">Order-linked receivables for each vendor.</p>
+        </div>
+        <form action="/distributor/credits" className="flex items-end gap-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Vendor</label>
+            <select name="vendor" defaultValue={selectedVendorId} className="form-select min-w-[220px]">
+              {vendors.map((vendor) => (
+                <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+              ))}
+            </select>
+          </div>
+          <Button type="submit" variant="outline">Load</Button>
+        </form>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium uppercase tracking-wide text-slate-500">Total Amount Due</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold tabular-nums text-amber-900">{formatCurrency(totalAmountDue)}</p>
+            <p className="mt-1 text-xs text-slate-500">{selectedVendor?.name || 'Vendor'}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium uppercase tracking-wide text-slate-500">Unpaid Orders</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold tabular-nums text-slate-900">{unpaidOrdersCount}</p>
+            <p className="mt-1 text-xs text-slate-500">Orders with remaining due</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium uppercase tracking-wide text-slate-500">Last Payment</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-base font-semibold text-slate-900">
+              {lastPaymentDate ? new Date(lastPaymentDate).toLocaleString() : 'No payments yet'}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Most recent recorded payment</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {usedFallbackTotals && (
+        <p className="text-xs text-amber-700">
+          Running in compatibility mode: stored order receivable columns are unavailable, so totals are computed from order items.
+        </p>
+      )}
+
+      <Card className="hidden md:block">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium uppercase text-slate-500">Unpaid / Partially Paid Orders</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 text-left">Order</th>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-right">Total</th>
+                  <th className="px-4 py-3 text-right">Paid</th>
+                  <th className="px-4 py-3 text-right">Due</th>
+                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unpaidOrders.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>No unpaid orders for this vendor.</td>
+                  </tr>
+                ) : (
+                  unpaidOrders.map((order) => (
+                    <tr key={order.id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-600">{order.id.slice(0, 8)}...</td>
+                      <td className="px-4 py-3 text-slate-600">{new Date(order.created_at).toLocaleDateString()}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(order.total_amount)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatCurrency(order.amount_paid)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-semibold text-amber-800">{formatCurrency(order.amount_due)}</td>
+                      <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
+                      <td className="px-4 py-3 text-right">
+                        <Link href={`/distributor/orders/${order.id}`}>
+                          <Button variant="outline" size="sm">Manage</Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-4 md:hidden">
+        {unpaidOrders.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center text-slate-500">
+            No unpaid orders for this vendor.
+          </div>
+        ) : (
+          unpaidOrders.map((order) => (
+            <Card key={order.id}>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-mono text-sm text-primary">{order.id.slice(0, 8)}...</p>
+                    <p className="text-xs text-slate-500">{new Date(order.created_at).toLocaleDateString()}</p>
+                  </div>
+                  <StatusBadge status={order.status} />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="rounded-lg bg-slate-50 p-2">
+                    <p className="uppercase tracking-wide text-slate-500">Total</p>
+                    <p className="font-semibold tabular-nums text-slate-900">{formatCurrency(order.total_amount)}</p>
+                  </div>
+                  <div className="rounded-lg bg-emerald-50 p-2">
+                    <p className="uppercase tracking-wide text-emerald-700">Paid</p>
+                    <p className="font-semibold tabular-nums text-emerald-800">{formatCurrency(order.amount_paid)}</p>
+                  </div>
+                  <div className="rounded-lg bg-amber-50 p-2">
+                    <p className="uppercase tracking-wide text-amber-700">Due</p>
+                    <p className="font-semibold tabular-nums text-amber-900">{formatCurrency(order.amount_due)}</p>
+                  </div>
+                </div>
+
+                <Link href={`/distributor/orders/${order.id}`}>
+                  <Button variant="outline" className="w-full">Manage Order</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+    </div>
+  )
 }

@@ -12,8 +12,8 @@ import { ArrowLeft, Check, X } from 'lucide-react'
 import { GenerateInvoiceButton } from '@/components/generate-invoice-button'
 import { OrderItemsEditor } from '@/components/order-items-editor'
 import { computeInvoiceSubtotal } from '@/lib/pricing-engine'
-import { computeAmountDue, computeOrderTotal, computeVendorCreditBalance } from '@/lib/credits/calc'
-import { OrderCreditApplyCard } from '@/components/credits/order-credit-apply-card'
+import { computeOrderTotal } from '@/lib/credits/calc'
+import { OrderPaymentPanel } from '@/components/orders/order-payment-panel'
 
 export default async function DistributorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -22,6 +22,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
 
   const fullSelect = `
     id, status, created_at, vendor_id, vendor_note, created_by_role, created_source,
+    total_amount, amount_paid, amount_due,
     vendor:profiles!orders_vendor_id_fkey(display_name, email),
     order_items(
       id, qty, unit_price, unit_cost, product_name, order_unit, units_per_case_snapshot,
@@ -33,7 +34,7 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
   `
 
   const fallbackSelect = `
-    id, status, created_at, vendor_id,
+    id, status, created_at, vendor_id, vendor_note, created_by_role, created_source,
     vendor:profiles!orders_vendor_id_fkey(display_name, email),
     order_items(
       id, qty, unit_price, unit_cost, product_name, order_unit, units_per_case_snapshot,
@@ -92,57 +93,51 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
 
   const vendor = Array.isArray(order.vendor) ? order.vendor[0] : order.vendor
 
-  // Compute subtotal using centralized canonical logic
   const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
   const subtotal = computeInvoiceSubtotal(activeItems)
   const adjustmentTotal = (order.order_adjustments ?? []).reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
-  const orderTotalBeforeCredit = computeOrderTotal({
+  const computedTotal = computeOrderTotal({
     subtotal,
     adjustmentTotal,
     taxes: order.order_taxes ?? [],
   })
 
+  const totalAmount = Number(order.total_amount ?? computedTotal ?? 0)
+  const amountPaid = Number(order.amount_paid ?? 0)
+  const amountDue = Math.max(Number(order.amount_due ?? (totalAmount - amountPaid) ?? 0), 0)
+
   const [
     { data: invoice },
-    orderCreditResult,
-    vendorLedgerResult,
+    paymentsResult,
   ] = await Promise.all([
     supabase
       .from('invoices')
-      .select('id,invoice_number,payment_status,total,credit_applied')
+      .select('id,invoice_number,payment_status,total')
       .eq('order_id', order.id)
       .maybeSingle(),
     supabase
-      .from('order_credit_applications')
-      .select('applied_amount')
+      .from('order_payments')
+      .select('id,amount,method,note,paid_at,created_at,created_by')
       .eq('order_id', order.id)
       .eq('distributor_id', distributorId)
-      .eq('vendor_id', order.vendor_id)
-      .maybeSingle(),
-    supabase
-      .from('vendor_credit_ledger')
-      .select('type,amount')
-      .eq('distributor_id', distributorId)
-      .eq('vendor_id', order.vendor_id),
+      .order('paid_at', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(200),
   ])
 
-  const creditFeatureUnavailable = (
-    (orderCreditResult.error && orderCreditResult.error.code === '42P01')
-    || (vendorLedgerResult.error && vendorLedgerResult.error.code === '42P01')
-  )
+  const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
+  const payments = (
+    paymentsFeatureUnavailable
+      ? []
+      : (paymentsResult.data ?? [])
+  ).map((row: any) => ({
+    id: String(row.id),
+    amount: Number(row.amount ?? 0),
+    method: row.method == null ? null : String(row.method),
+    note: row.note == null ? null : String(row.note),
+    paid_at: String(row.paid_at || row.created_at),
+  }))
 
-  const currentCreditApplied = Number(
-    (orderCreditResult.data as any)?.applied_amount
-    ?? (invoice as any)?.credit_applied
-    ?? 0
-  )
-
-  const availableCreditBalance = computeVendorCreditBalance(
-    ((vendorLedgerResult.error?.code === '42P01') ? [] : (vendorLedgerResult.data ?? [])) as any[]
-  )
-  const amountDueAfterCredit = computeAmountDue(orderTotalBeforeCredit, currentCreditApplied)
-
-  // Actions
   async function transitionStatus(newStatus: string) {
     'use server'
     await updateOrderStatus(id, newStatus)
@@ -171,7 +166,6 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Main Content: Order Items Editor */}
         <div className="md:col-span-2">
           <OrderItemsEditor
             orderId={order.id}
@@ -182,7 +176,6 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
           />
         </div>
 
-        {/* Sidebar: Info & Actions */}
         <div className="space-y-6">
           {order.vendor_note && (
             <Card>
@@ -195,7 +188,6 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
             </Card>
           )}
 
-          {/* Actions Card */}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium uppercase text-slate-500">Actions</CardTitle>
@@ -238,7 +230,6 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
                 )}
               </div>
 
-              {/* Invoice Actions */}
               <div className="pt-4 mt-4 border-t border-slate-100">
                 <span className="text-xs text-slate-500 block mb-2">Invoice</span>
                 {invoice ? (
@@ -271,44 +262,28 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
             </CardContent>
           </Card>
 
-          {/* Credit Card */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase text-slate-500">Vendor Credit</CardTitle>
+              <CardTitle className="text-sm font-medium uppercase text-slate-500">Order Payments</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Order Total</span>
-                  <span className="font-medium">${orderTotalBeforeCredit.toFixed(2)}</span>
-                </div>
-                <div className="mt-1 flex justify-between">
-                  <span className="text-slate-600">Credit Applied</span>
-                  <span className="font-medium">${currentCreditApplied.toFixed(2)}</span>
-                </div>
-                <div className="mt-2 flex justify-between border-t border-slate-200 pt-2">
-                  <span className="font-semibold text-slate-800">Amount Due</span>
-                  <span className="text-base font-bold text-slate-900">${amountDueAfterCredit.toFixed(2)}</span>
-                </div>
-              </div>
-
-              {creditFeatureUnavailable ? (
+            <CardContent>
+              {paymentsFeatureUnavailable ? (
                 <p className="text-xs text-amber-700">
-                  Credit system is not available yet in this environment. Apply the latest migration to enable it.
+                  Payments are unavailable in this environment. Apply the latest migration to enable order-linked amount due.
                 </p>
               ) : (
-                <OrderCreditApplyCard
-                  vendorId={order.vendor_id}
+                <OrderPaymentPanel
                   orderId={order.id}
-                  availableBalance={availableCreditBalance}
-                  currentApplied={currentCreditApplied}
-                  orderTotal={orderTotalBeforeCredit}
+                  totalAmount={totalAmount}
+                  amountPaid={amountPaid}
+                  amountDue={amountDue}
+                  payments={payments}
+                  canRecordPayment={true}
                 />
               )}
             </CardContent>
           </Card>
 
-          {/* Vendor Info */}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium uppercase text-slate-500">Vendor Information</CardTitle>

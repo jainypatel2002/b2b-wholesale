@@ -9,7 +9,8 @@ import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText } from 'lucide-react'
 import { normalizeInvoiceItem, computeInvoiceSubtotal, formatMoney } from '@/lib/pricing-engine'
-import { computeAmountDue, computeOrderTotal } from '@/lib/credits/calc'
+import { computeOrderTotal } from '@/lib/credits/calc'
+import { OrderPaymentPanel } from '@/components/orders/order-payment-panel'
 
 export default async function VendorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -18,6 +19,7 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
 
   const fullSelect = `
     id, status, created_at, vendor_note, created_by_role, created_source,
+    total_amount, amount_paid, amount_due,
     order_items(
       id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
       products(name),
@@ -28,6 +30,7 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
   `
   const fallbackSelect = `
     id, status, created_at,
+    vendor_note, created_by_role, created_source,
     order_items(
       id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
       products(name),
@@ -82,34 +85,48 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
     )
   }
 
-  // Use centralized canonical logic for subtotal
   const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
   const subtotal = computeInvoiceSubtotal(activeItems)
   const adjustmentTotal = (order.order_adjustments ?? []).reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
-  const orderTotalBeforeCredit = computeOrderTotal({
+  const computedTotal = computeOrderTotal({
     subtotal,
     adjustmentTotal,
     taxes: order.order_taxes ?? [],
   })
 
-  const [invoiceResult, creditResult] = await Promise.all([
+  const totalAmount = Number(order.total_amount ?? computedTotal ?? 0)
+  const amountPaid = Number(order.amount_paid ?? 0)
+  const amountDue = Math.max(Number(order.amount_due ?? (totalAmount - amountPaid) ?? 0), 0)
+
+  const [invoiceResult, paymentsResult] = await Promise.all([
     supabase
       .from('invoices')
-      .select('id,invoice_number,payment_status,total,credit_applied')
+      .select('id,invoice_number,payment_status,total')
       .eq('order_id', order.id)
       .maybeSingle(),
     supabase
-      .from('order_credit_applications')
-      .select('applied_amount')
+      .from('order_payments')
+      .select('id,amount,method,note,paid_at,created_at')
       .eq('order_id', order.id)
       .eq('vendor_id', vendorId)
-      .maybeSingle(),
+      .order('paid_at', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(200),
   ])
 
   const invoice = invoiceResult.data
-  const creditFeatureUnavailable = creditResult.error?.code === '42P01'
-  const currentCreditApplied = Number((creditResult.data as any)?.applied_amount ?? (invoice as any)?.credit_applied ?? 0)
-  const amountDueAfterCredit = computeAmountDue(orderTotalBeforeCredit, currentCreditApplied)
+  const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
+  const payments = (
+    paymentsFeatureUnavailable
+      ? []
+      : (paymentsResult.data ?? [])
+  ).map((row: any) => ({
+    id: String(row.id),
+    amount: Number(row.amount ?? 0),
+    method: row.method == null ? null : String(row.method),
+    note: row.note == null ? null : String(row.note),
+    paid_at: String(row.paid_at || row.created_at),
+  }))
 
   return (
     <div className="space-y-6">
@@ -123,7 +140,6 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Main Content: Items */}
         <div className="md:col-span-2 space-y-6">
           <Card>
             <CardHeader>
@@ -177,7 +193,6 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
           </Card>
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-6">
           {order.vendor_note && (
             <Card>
@@ -217,23 +232,22 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase text-slate-500">Credit</CardTitle>
+              <CardTitle className="text-sm font-medium uppercase text-slate-500">Balance</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-600">Order Total</span>
-                <span className="font-medium">{formatMoney(orderTotalBeforeCredit)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Credit Applied</span>
-                <span className="font-medium">{formatMoney(currentCreditApplied)}</span>
-              </div>
-              <div className="flex justify-between border-t border-slate-100 pt-2">
-                <span className="font-semibold text-slate-800">Amount Due</span>
-                <span className="text-base font-bold text-slate-900">{formatMoney(amountDueAfterCredit)}</span>
-              </div>
-              {creditFeatureUnavailable && (
-                <p className="text-xs text-amber-700">Credit details will appear once your distributor enables the credit ledger migration.</p>
+            <CardContent>
+              {paymentsFeatureUnavailable ? (
+                <p className="text-xs text-amber-700">
+                  Payment details are unavailable in this environment. Ask your distributor to apply the latest migration.
+                </p>
+              ) : (
+                <OrderPaymentPanel
+                  orderId={order.id}
+                  totalAmount={totalAmount}
+                  amountPaid={amountPaid}
+                  amountDue={amountDue}
+                  payments={payments}
+                  canRecordPayment={false}
+                />
               )}
             </CardContent>
           </Card>

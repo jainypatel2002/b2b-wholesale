@@ -37,8 +37,8 @@ export default async function DistributorHome() {
     },
     {
       href: '/distributor/credits',
-      label: 'Credits',
-      description: 'Manage vendor credit balances and ledger entries.',
+      label: 'Amount Due',
+      description: 'Track receivables and unpaid order balances.',
       icon: Wallet,
       color: 'text-violet-700 bg-violet-100'
     },
