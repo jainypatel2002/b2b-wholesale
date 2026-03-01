@@ -120,18 +120,22 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
   const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
 
   // Safety fallback if order is missing but invoice somehow isn't
-  const totalAmount = toNumber(orderData?.total_amount ?? invoice.total ?? 0, 0)
-  const amountPaid = toNumber(orderData?.amount_paid ?? 0, 0)
-  const amountDue = Math.max(toNumber(orderData?.amount_due ?? (totalAmount - amountPaid), 0), 0)
+  const rawTotal = toNumber(orderData?.total_amount ?? invoice.total ?? 0, 0)
+  const rawPaid = toNumber(orderData?.amount_paid ?? 0, 0)
+  const rawDue = Math.max(toNumber(orderData?.amount_due ?? (rawTotal - rawPaid), 0), 0)
+
+  const totalAmount = Number.isFinite(rawTotal) ? rawTotal : 0
+  const amountPaid = Number.isFinite(rawPaid) ? rawPaid : 0
+  const amountDue = Number.isFinite(rawDue) ? rawDue : 0
 
   const payments = (
     paymentsFeatureUnavailable ? [] : (paymentsResult.data ?? [])
   ).map((row: any) => ({
     id: String(row.id),
-    amount: toNumber(row.amount ?? 0, 0),
+    amount: toNumber(row.amount, 0),
     method: row.method == null ? null : String(row.method),
     note: row.note == null ? null : String(row.note),
-    paid_at: String(row.paid_at || row.created_at),
+    paid_at: String(row.paid_at || row.created_at || new Date().toISOString()),
   }))
 
   return (

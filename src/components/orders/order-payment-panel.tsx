@@ -8,7 +8,7 @@ import {
 } from '@/app/actions/order-payments'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { formatMoney } from '@/lib/pricing-engine'
+import { Money } from '@/components/ui/money'
 
 type PaymentHistoryRow = {
   id: string
@@ -34,6 +34,13 @@ function formatMethod(method: string | null): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ')
+}
+
+function SafeDateLabel({ iso }: { iso: string }) {
+  if (!iso || iso === 'undefined' || iso === 'null') return <span className="text-slate-400">—</span>
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return <span className="text-slate-400">—</span>
+  return <span>{d.toLocaleString('en-US')}</span>
 }
 
 export function OrderPaymentPanel({
@@ -66,32 +73,23 @@ export function OrderPaymentPanel({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 min-w-0">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 min-w-0 flex flex-col justify-center">
           <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 truncate">Total</p>
-          <p
-            className="mt-1 text-xl font-bold tabular-nums text-slate-900 sm:text-2xl truncate"
-            title={formatMoney(totalAmount)}
-          >
-            {formatMoney(totalAmount)}
-          </p>
+          <div className="mt-1 w-full min-w-0">
+            <Money amount={totalAmount} className="text-xl font-bold text-slate-900 sm:text-2xl block w-full" />
+          </div>
         </div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 min-w-0">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 min-w-0 flex flex-col justify-center">
           <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700 truncate">Paid</p>
-          <p
-            className="mt-1 text-xl font-bold tabular-nums text-emerald-800 sm:text-2xl truncate"
-            title={formatMoney(amountPaid)}
-          >
-            {formatMoney(amountPaid)}
-          </p>
+          <div className="mt-1 w-full min-w-0">
+            <Money amount={amountPaid} className="text-xl font-bold text-emerald-800 sm:text-2xl block w-full" />
+          </div>
         </div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 min-w-0">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 min-w-0 flex flex-col justify-center">
           <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700 truncate">Due</p>
-          <p
-            className="mt-1 text-xl font-bold tabular-nums text-amber-900 sm:text-2xl truncate"
-            title={formatMoney(amountDue)}
-          >
-            {formatMoney(amountDue)}
-          </p>
+          <div className="mt-1 w-full min-w-0">
+            <Money amount={amountDue} className="text-xl font-bold text-amber-900 sm:text-2xl block w-full" />
+          </div>
         </div>
       </div>
 
@@ -156,12 +154,12 @@ export function OrderPaymentPanel({
               ) : (
                 payments.map((row) => (
                   <tr key={row.id} className="border-t border-slate-100 align-top">
-                    <td className="px-4 py-3 text-slate-600">{new Date(row.paid_at).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-slate-600"><SafeDateLabel iso={row.paid_at} /></td>
                     <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-900">
-                      {formatMoney(row.amount)}
+                      <Money amount={row.amount} />
                     </td>
                     <td className="px-4 py-3 text-slate-700">{formatMethod(row.method)}</td>
-                    <td className="px-4 py-3 text-slate-600">{row.note || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate" title={row.note || ''}>{row.note || '—'}</td>
                   </tr>
                 ))
               )}
@@ -177,14 +175,16 @@ export function OrderPaymentPanel({
           ) : (
             payments.map((row) => (
               <div key={row.id} className="rounded-xl border border-slate-200 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">{formatMethod(row.method)}</p>
-                    <p className="text-xs text-slate-500">{new Date(row.paid_at).toLocaleString()}</p>
+                <div className="flex items-start justify-between gap-3 min-w-0">
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-wide text-slate-500 truncate">{formatMethod(row.method)}</p>
+                    <p className="text-xs text-slate-500 truncate"><SafeDateLabel iso={row.paid_at} /></p>
                   </div>
-                  <p className="text-base font-bold tabular-nums text-slate-900">{formatMoney(row.amount)}</p>
+                  <div className="flex-shrink-0">
+                    <Money amount={row.amount} className="text-base font-bold text-slate-900" />
+                  </div>
                 </div>
-                {row.note && <p className="mt-2 text-sm text-slate-600">{row.note}</p>}
+                {row.note && <p className="mt-2 text-sm text-slate-600 break-words line-clamp-2" title={row.note}>{row.note}</p>}
               </div>
             ))
           )}

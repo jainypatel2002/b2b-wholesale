@@ -93,15 +93,15 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
 
   const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
   const subtotal = computeInvoiceSubtotal(activeItems)
-  const adjustmentTotal = (order.order_adjustments ?? []).reduce((sum: number, row: any) => sum + Number(row.amount ?? 0), 0)
+  const adjustmentTotal = (order.order_adjustments ?? []).reduce((sum: number, row: any) => sum + toNumber(row.amount, 0), 0)
   const computedTotal = computeOrderTotal({
     subtotal,
     adjustmentTotal,
     taxes: order.order_taxes ?? [],
   })
 
-  const totalAmount = toNumber(order?.total_amount ?? computedTotal ?? 0, 0)
-  const amountPaid = toNumber(order?.amount_paid ?? 0, 0)
+  const totalAmount = toNumber(order?.total_amount ?? computedTotal, 0)
+  const amountPaid = toNumber(order?.amount_paid, 0)
 
   const dueCandidate =
     order?.amount_due !== null && order?.amount_due !== undefined
@@ -109,6 +109,11 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
       : (totalAmount - amountPaid)
 
   const amountDue = Math.max(toNumber(dueCandidate, 0), 0)
+
+  // Ensure these numbers are strictly finite before passing to Client Components to avoid RSC crash
+  const safeTotal = Number.isFinite(totalAmount) ? totalAmount : 0
+  const safePaid = Number.isFinite(amountPaid) ? amountPaid : 0
+  const safeDue = Number.isFinite(amountDue) ? amountDue : 0
 
   let invoiceResult: any = { data: null, error: null }
   let paymentsResult: any = { data: null, error: null }
@@ -145,10 +150,10 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
       : (paymentsResult.data ?? [])
   ).map((row: any) => ({
     id: String(row.id),
-    amount: Number(row.amount ?? 0),
+    amount: toNumber(row.amount, 0),
     method: row.method == null ? null : String(row.method),
     note: row.note == null ? null : String(row.note),
-    paid_at: String(row.paid_at || row.created_at),
+    paid_at: String(row.paid_at || row.created_at || new Date().toISOString()),
   }))
 
   return (
@@ -265,9 +270,9 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
               ) : (
                 <OrderPaymentPanel
                   orderId={order.id}
-                  totalAmount={totalAmount}
-                  amountPaid={amountPaid}
-                  amountDue={amountDue}
+                  totalAmount={safeTotal}
+                  amountPaid={safePaid}
+                  amountDue={safeDue}
                   payments={payments}
                   canRecordPayment={false}
                 />

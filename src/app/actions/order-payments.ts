@@ -51,7 +51,7 @@ export async function recordOrderPaymentAction(
     if (!orderId) return { ...initialOrderPaymentActionState, error: 'Order is required.' }
     if (amount == null) return { ...initialOrderPaymentActionState, error: 'Enter an amount greater than 0.' }
 
-    const { data, error } = await supabase.rpc('add_order_payment', {
+    const { data, error } = await supabase.rpc('record_order_payment', {
       p_order_id: orderId,
       p_amount: amount,
       p_method: method,
