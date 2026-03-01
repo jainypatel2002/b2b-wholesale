@@ -66,28 +66,28 @@ export function OrderPaymentPanel({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Total</p>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 truncate">Total</p>
           <p
-            className="mt-1 text-xl font-bold tabular-nums text-slate-900 sm:text-2xl"
+            className="mt-1 text-xl font-bold tabular-nums text-slate-900 sm:text-2xl truncate"
             title={formatMoney(totalAmount)}
           >
             {formatMoney(totalAmount)}
           </p>
         </div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700">Paid</p>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-700 truncate">Paid</p>
           <p
-            className="mt-1 text-xl font-bold tabular-nums text-emerald-800 sm:text-2xl"
+            className="mt-1 text-xl font-bold tabular-nums text-emerald-800 sm:text-2xl truncate"
             title={formatMoney(amountPaid)}
           >
             {formatMoney(amountPaid)}
           </p>
         </div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Due</p>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700 truncate">Due</p>
           <p
-            className="mt-1 text-xl font-bold tabular-nums text-amber-900 sm:text-2xl"
+            className="mt-1 text-xl font-bold tabular-nums text-amber-900 sm:text-2xl truncate"
             title={formatMoney(amountDue)}
           >
             {formatMoney(amountDue)}

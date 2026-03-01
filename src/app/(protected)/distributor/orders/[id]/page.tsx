@@ -49,26 +49,31 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
   let order: any = null
   let error: any = null
 
-  const fullResult = await supabase
-    .from('orders')
-    .select(fullSelect)
-    .eq('id', id)
-    .eq('distributor_id', distributorId)
-    .single()
-
-  order = fullResult.data
-  error = fullResult.error
-
-  if (error && error.code === '42703') {
-    const fallback = await supabase
+  try {
+    const fullResult = await supabase
       .from('orders')
-      .select(fallbackSelect)
+      .select(fullSelect)
       .eq('id', id)
       .eq('distributor_id', distributorId)
       .single()
 
-    order = fallback.data
-    error = fallback.error
+    order = fullResult.data
+    error = fullResult.error
+
+    if (error && error.code === '42703') {
+      const fallback = await supabase
+        .from('orders')
+        .select(fallbackSelect)
+        .eq('id', id)
+        .eq('distributor_id', distributorId)
+        .single()
+
+      order = fallback.data
+      error = fallback.error
+    }
+  } catch (err: any) {
+    console.error('Exception fetching order (distributor):', err)
+    error = err
   }
 
   if (error) {
@@ -113,24 +118,32 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
 
   const amountDue = Math.max(toNumber(dueCandidate, 0), 0)
 
-  const [
-    { data: invoice },
-    paymentsResult,
-  ] = await Promise.all([
-    supabase
-      .from('invoices')
-      .select('id,invoice_number,payment_status,total')
-      .eq('order_id', order.id)
-      .maybeSingle(),
-    supabase
-      .from('order_payments')
-      .select('id,amount,method,note,paid_at,created_at,created_by')
-      .eq('order_id', order.id)
-      .eq('distributor_id', distributorId)
-      .order('paid_at', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(200),
-  ])
+  let invoice: any = null
+  let paymentsResult: any = { data: null, error: null }
+
+  if (order) {
+    try {
+      const [invRes, payRes] = await Promise.all([
+        supabase
+          .from('invoices')
+          .select('id,invoice_number,payment_status,total')
+          .eq('order_id', order.id)
+          .maybeSingle(),
+        supabase
+          .from('order_payments')
+          .select('id,amount,method,note,paid_at,created_at,created_by')
+          .eq('order_id', order.id)
+          .eq('distributor_id', distributorId)
+          .order('paid_at', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(200),
+      ])
+      invoice = invRes.data
+      paymentsResult = payRes
+    } catch (err) {
+      console.error('Exception fetching invoice/payments (distributor):', err)
+    }
+  }
 
   const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
   const payments = (

@@ -10,8 +10,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { InvoicePrint } from '@/components/invoice-print'
 import { formatMoney } from '@/lib/pricing-engine'
-import { computeAmountDue, computeVendorCreditBalance } from '@/lib/credits/calc'
-import { OrderCreditApplyCard } from '@/components/credits/order-credit-apply-card'
+import { computeAmountDue } from '@/lib/credits/calc'
+import { toNumber } from '@/lib/number'
+import { OrderPaymentPanel } from '@/components/orders/order-payment-panel'
 
 export default async function DistributorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -92,42 +93,51 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
     getVendorBusinessProfileForInvoice(invoice.vendor_id, { distributorId, invoiceId: id })
   ])
 
-  const [orderCreditResult, vendorLedgerResult] = await Promise.all([
-    supabase
-      .from('order_credit_applications')
-      .select('applied_amount')
-      .eq('order_id', invoice.order_id)
-      .eq('distributor_id', distributorId)
-      .eq('vendor_id', invoice.vendor_id)
-      .maybeSingle(),
-    supabase
-      .from('vendor_credit_ledger')
-      .select('type,amount')
-      .eq('distributor_id', distributorId)
-      .eq('vendor_id', invoice.vendor_id),
-  ])
+  // --- ADDED: Fetch order amounts & payments since we need to show Amount Due Panel ---
+  const orderResult = await supabase
+    .from('orders')
+    .select('id, total_amount, amount_paid, amount_due')
+    .eq('id', invoice.order_id)
+    .maybeSingle()
+
+  const paymentsResult = await supabase
+    .from('order_payments')
+    .select('id, amount, method, note, paid_at, created_at')
+    .eq('order_id', invoice.order_id)
+    .order('paid_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  const orderData = orderResult.data
+  const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
+
+  // Safety fallback if order is missing but invoice somehow isn't
+  const totalAmount = toNumber(orderData?.total_amount ?? invoice.total ?? 0, 0)
+  const amountPaid = toNumber(orderData?.amount_paid ?? 0, 0)
+  const amountDue = Math.max(toNumber(orderData?.amount_due ?? (totalAmount - amountPaid), 0), 0)
+
+  const payments = (
+    paymentsFeatureUnavailable ? [] : (paymentsResult.data ?? [])
+  ).map((row: any) => ({
+    id: String(row.id),
+    amount: toNumber(row.amount ?? 0, 0),
+    method: row.method == null ? null : String(row.method),
+    note: row.note == null ? null : String(row.note),
+    paid_at: String(row.paid_at || row.created_at),
+  }))
 
   const profit = (invoice.invoice_items ?? []).reduce((sum: number, it: any) => {
     // We still use unit_price and unit_cost for profit estimation
     // But we favor unit_price_snapshot if available
-    const effectivePrice = Number(it.unit_price_snapshot ?? it.unit_price ?? 0)
-    const effectiveCost = Number(it.unit_cost ?? 0)
+    const effectivePrice = toNumber(it.unit_price_snapshot ?? it.unit_price ?? 0, 0)
+    const effectiveCost = toNumber(it.unit_cost ?? 0, 0)
     const isCase = (it.order_mode || it.order_unit) === 'case'
 
     // Total pieces for profit calculation
-    const totalPieces = Number(it.total_pieces ?? (isCase ? (it.cases_qty * it.units_per_case_snapshot) : it.pieces_qty) ?? it.qty ?? 0)
+    const totalPieces = toNumber(it.total_pieces ?? (isCase ? (it.cases_qty * it.units_per_case_snapshot) : it.pieces_qty) ?? it.qty ?? 0, 0)
 
     return sum + (effectivePrice - effectiveCost) * totalPieces
   }, 0)
-  const creditFeatureUnavailable = (
-    (orderCreditResult.error && orderCreditResult.error.code === '42P01')
-    || (vendorLedgerResult.error && vendorLedgerResult.error.code === '42P01')
-  )
-  const creditApplied = Number((orderCreditResult.data as any)?.applied_amount ?? (invoice as any).credit_applied ?? 0)
-  const availableCreditBalance = computeVendorCreditBalance(
-    ((vendorLedgerResult.error?.code === '42P01') ? [] : (vendorLedgerResult.data ?? [])) as any[]
-  )
-  const amountDue = computeAmountDue(Number(invoice.total ?? 0), creditApplied)
 
   return (
     <div className="space-y-6">
@@ -195,40 +205,42 @@ export default async function DistributorInvoiceDetailPage({ params }: { params:
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
                   <span>Total</span>
-                  <span>{formatMoney(invoice.total)}</span>
+                  <span className="truncate ml-4">{formatMoney(totalAmount)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Credit Applied</span>
-                  <span className="font-medium text-emerald-700">-{formatMoney(creditApplied)}</span>
+                <div className="flex justify-between font-medium text-emerald-700">
+                  <span>Paid</span>
+                  <span className="truncate ml-4">{formatMoney(amountPaid)}</span>
                 </div>
-                <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
+                <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold text-amber-900">
                   <span>Amount Due</span>
-                  <span>{formatMoney(amountDue)}</span>
+                  <span className="truncate ml-4">{formatMoney(amountDue)}</span>
                 </div>
                 <div className="flex justify-between pt-2 text-xs text-emerald-600">
                   <span>Profit (est)</span>
-                  <span>{formatMoney(profit)}</span>
+                  <span className="truncate ml-4">{formatMoney(profit)}</span>
                 </div>
               </div>
             </CardContent>
           </Card>
 
+          {/* New Panel strictly for Amount Due Payments */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase text-slate-500">Apply Credit</CardTitle>
+              <CardTitle className="text-sm font-medium uppercase text-slate-500">Order Payments</CardTitle>
             </CardHeader>
             <CardContent>
-              {creditFeatureUnavailable ? (
+              {paymentsFeatureUnavailable ? (
                 <p className="text-xs text-amber-700">
-                  Credit system is not available yet in this environment. Apply the latest migration to enable it.
+                  Payments are unavailable in this environment. Apply the latest migration to enable order-linked amount due.
                 </p>
               ) : (
-                <OrderCreditApplyCard
-                  vendorId={invoice.vendor_id}
+                <OrderPaymentPanel
                   orderId={invoice.order_id}
-                  availableBalance={availableCreditBalance}
-                  currentApplied={creditApplied}
-                  orderTotal={Number(invoice.total ?? 0)}
+                  totalAmount={totalAmount}
+                  amountPaid={amountPaid}
+                  amountDue={amountDue}
+                  payments={payments}
+                  canRecordPayment={true}
                 />
               )}
             </CardContent>

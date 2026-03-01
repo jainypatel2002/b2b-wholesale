@@ -11,6 +11,8 @@ import { ArrowLeft, Printer } from 'lucide-react'
 import { InvoicePrint } from '@/components/invoice-print'
 import { formatMoney } from '@/lib/pricing-engine'
 import { computeAmountDue } from '@/lib/credits/calc'
+import { toNumber } from '@/lib/number'
+import { OrderPaymentPanel } from '@/components/orders/order-payment-panel'
 
 export default async function VendorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -18,7 +20,7 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
   const supabase = await createClient()
 
   const selectWithCredit = `
-        id, distributor_id, invoice_number, subtotal, tax, total, credit_applied, created_at, payment_status, paid_at, terms, notes,
+        id, order_id, distributor_id, invoice_number, subtotal, tax, total, credit_applied, created_at, payment_status, paid_at, terms, notes,
         seller_profile, buyer_profile,
         invoice_items(
             qty, unit_price, unit_cost, item_code, upc,
@@ -32,7 +34,7 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
         distributor:profiles!invoices_distributor_id_fkey(display_name, email, phone, location_address)
     `
   const selectWithoutCredit = `
-        id, distributor_id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
+        id, order_id, distributor_id, invoice_number, subtotal, tax, total, created_at, payment_status, paid_at, terms, notes,
         seller_profile, buyer_profile,
         invoice_items(
             qty, unit_price, unit_cost, item_code, upc,
@@ -98,8 +100,39 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
     phone: dist.phone,
     address_line1: dist.location_address
   } : undefined
-  const creditApplied = Number((invoice as any).credit_applied ?? 0)
-  const amountDue = computeAmountDue(Number(invoice.total ?? 0), creditApplied)
+
+  // --- ADDED: Fetch order amounts & payments since we need to show Amount Due Panel ---
+  const orderResult = await supabase
+    .from('orders')
+    .select('id, total_amount, amount_paid, amount_due')
+    .eq('id', invoice.order_id)
+    .maybeSingle()
+
+  const paymentsResult = await supabase
+    .from('order_payments')
+    .select('id, amount, method, note, paid_at, created_at')
+    .eq('order_id', invoice.order_id)
+    .order('paid_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  const orderData = orderResult.data
+  const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
+
+  // Safety fallback if order is missing but invoice somehow isn't
+  const totalAmount = toNumber(orderData?.total_amount ?? invoice.total ?? 0, 0)
+  const amountPaid = toNumber(orderData?.amount_paid ?? 0, 0)
+  const amountDue = Math.max(toNumber(orderData?.amount_due ?? (totalAmount - amountPaid), 0), 0)
+
+  const payments = (
+    paymentsFeatureUnavailable ? [] : (paymentsResult.data ?? [])
+  ).map((row: any) => ({
+    id: String(row.id),
+    amount: toNumber(row.amount ?? 0, 0),
+    method: row.method == null ? null : String(row.method),
+    note: row.note == null ? null : String(row.note),
+    paid_at: String(row.paid_at || row.created_at),
+  }))
 
   return (
     <div className="space-y-6">
@@ -167,19 +200,40 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
                   <span>Total</span>
-                  <span>{formatMoney(invoice.total)}</span>
+                  <span className="truncate ml-4">{formatMoney(totalAmount)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Credit Applied</span>
-                  <span className="font-medium text-emerald-700">-{formatMoney(creditApplied)}</span>
+                <div className="flex justify-between font-medium text-emerald-700">
+                  <span>Paid</span>
+                  <span className="truncate ml-4">{formatMoney(amountPaid)}</span>
                 </div>
-                <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
+                <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold text-amber-900">
                   <span>Amount Due</span>
-                  <span>{formatMoney(amountDue)}</span>
+                  <span className="truncate ml-4">{formatMoney(amountDue)}</span>
                 </div>
               </div>
+            </CardContent>
+          </Card>
 
-              <p className="text-xs text-slate-400 pt-2">Payment method: cash</p>
+          {/* New Panel strictly for Amount Due Payments */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium uppercase text-slate-500">Payments</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {paymentsFeatureUnavailable ? (
+                <p className="text-xs text-amber-700">
+                  Payments are unavailable in this environment. Order-linked amount due system pending migration.
+                </p>
+              ) : (
+                <OrderPaymentPanel
+                  orderId={invoice.order_id}
+                  totalAmount={totalAmount}
+                  amountPaid={amountPaid}
+                  amountDue={amountDue}
+                  payments={payments}
+                  canRecordPayment={false}
+                />
+              )}
             </CardContent>
           </Card>
         </div>

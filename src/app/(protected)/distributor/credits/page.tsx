@@ -51,73 +51,90 @@ export default async function DistributorAmountDuePage({
     )
   }
 
-  const [summaryResult, ordersResult, lastPaymentResult] = await Promise.all([
-    supabase.rpc('get_vendor_amount_due', {
-      p_distributor_id: distributorId,
-      p_vendor_id: selectedVendorId,
-    }),
-    supabase
-      .from('orders')
-      .select('id,status,created_at,total_amount,amount_paid,amount_due')
-      .eq('distributor_id', distributorId)
-      .eq('vendor_id', selectedVendorId)
-      .gt('amount_due', 0)
-      .order('created_at', { ascending: false })
-      .limit(200),
-    supabase
-      .from('order_payments')
-      .select('paid_at')
-      .eq('distributor_id', distributorId)
-      .eq('vendor_id', selectedVendorId)
-      .order('paid_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ])
+  let summaryResult: any = { data: null, error: null }
+  let ordersResult: any = { data: null, error: null }
+  let lastPaymentResult: any = { data: null, error: null }
+
+  try {
+    const [sRes, oRes, pRes] = await Promise.all([
+      supabase.rpc('get_vendor_amount_due', {
+        p_distributor_id: distributorId,
+        p_vendor_id: selectedVendorId,
+      }),
+      supabase
+        .from('orders')
+        .select('id,status,created_at,total_amount,amount_paid,amount_due')
+        .eq('distributor_id', distributorId)
+        .eq('vendor_id', selectedVendorId)
+        .gt('amount_due', 0)
+        .order('created_at', { ascending: false })
+        .limit(200),
+      supabase
+        .from('order_payments')
+        .select('paid_at')
+        .eq('distributor_id', distributorId)
+        .eq('vendor_id', selectedVendorId)
+        .order('paid_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+    summaryResult = sRes
+    ordersResult = oRes
+    lastPaymentResult = pRes
+  } catch (err) {
+    console.error('SSR Exception in Amount Due page (distributor):', err)
+  }
 
   let unpaidOrders: OrderAmountRow[] = []
   let usedFallbackTotals = false
 
   if (ordersResult.error?.code === '42703') {
     usedFallbackTotals = true
-    const fallbackOrders = await supabase
-      .from('orders')
-      .select(`
-        id,
-        status,
-        created_at,
-        amount_paid,
-        order_items(qty,unit_price,edited_qty,edited_unit_price,removed),
-        order_adjustments(amount),
-        order_taxes(type,rate_percent)
-      `)
-      .eq('distributor_id', distributorId)
-      .eq('vendor_id', selectedVendorId)
-      .order('created_at', { ascending: false })
-      .limit(200)
+    // If first query errored on 42703 or other fallback, we wrap this in another try
+    try {
+      const fallbackOrders = await supabase
+        .from('orders')
+        .select(`
+          id,
+          status,
+          created_at,
+          amount_paid,
+          order_items(qty,unit_price,edited_qty,edited_unit_price,removed),
+          order_adjustments(amount),
+          order_taxes(type,rate_percent)
+        `)
+        .eq('distributor_id', distributorId)
+        .eq('vendor_id', selectedVendorId)
+        .order('created_at', { ascending: false })
+        .limit(200)
 
-    unpaidOrders = (fallbackOrders.data ?? [])
-      .map((row: any) => {
-        const activeItems = (row.order_items ?? []).filter((it: any) => !it.removed)
-        const subtotal = computeInvoiceSubtotal(activeItems)
-        const adjustmentTotal = (row.order_adjustments ?? []).reduce((sum: number, r: any) => sum + Number(r.amount ?? 0), 0)
-        const totalAmount = computeOrderTotal({
-          subtotal,
-          adjustmentTotal,
-          taxes: row.order_taxes ?? [],
+      unpaidOrders = (fallbackOrders.data ?? [])
+        .map((row: any) => {
+          const activeItems = (row.order_items ?? []).filter((it: any) => !it.removed)
+          const subtotal = computeInvoiceSubtotal(activeItems)
+          const adjustmentTotal = (row.order_adjustments ?? []).reduce((sum: number, r: any) => sum + Number(r.amount ?? 0), 0)
+          const totalAmount = computeOrderTotal({
+            subtotal,
+            adjustmentTotal,
+            taxes: row.order_taxes ?? [],
+          })
+          const amountPaid = Number(row.amount_paid ?? 0)
+          const amountDue = Math.max(Number(totalAmount - amountPaid), 0)
+
+          return {
+            id: String(row.id),
+            status: String(row.status),
+            created_at: String(row.created_at),
+            total_amount: Number(totalAmount),
+            amount_paid: amountPaid,
+            amount_due: amountDue,
+          }
         })
-        const amountPaid = Number(row.amount_paid ?? 0)
-        const amountDue = Math.max(Number(totalAmount - amountPaid), 0)
-
-        return {
-          id: String(row.id),
-          status: String(row.status),
-          created_at: String(row.created_at),
-          total_amount: Number(totalAmount),
-          amount_paid: amountPaid,
-          amount_due: amountDue,
-        }
-      })
-      .filter((row) => row.amount_due > 0)
+        .filter((row) => row.amount_due > 0)
+    } catch (err) {
+      console.error('SSR Exception in Amount Due fallback (distributor):', err)
+      unpaidOrders = []
+    }
   } else {
     unpaidOrders = (ordersResult.data ?? []).map((row: any) => ({
       id: String(row.id),
@@ -160,8 +177,8 @@ export default async function DistributorAmountDuePage({
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-slate-500">Total Amount Due</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold tabular-nums text-amber-900">{formatCurrency(totalAmountDue)}</p>
+          <CardContent className="min-w-0">
+            <p className="text-2xl font-bold tabular-nums text-amber-900 truncate" title={formatCurrency(totalAmountDue)}>{formatCurrency(totalAmountDue)}</p>
             <p className="mt-1 text-xs text-slate-500">{selectedVendor?.name || 'Vendor'}</p>
           </CardContent>
         </Card>
@@ -259,17 +276,17 @@ export default async function DistributorAmountDuePage({
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="rounded-lg bg-slate-50 p-2">
-                    <p className="uppercase tracking-wide text-slate-500">Total</p>
-                    <p className="font-semibold tabular-nums text-slate-900">{formatCurrency(order.total_amount)}</p>
+                  <div className="rounded-lg bg-slate-50 p-2 min-w-0">
+                    <p className="uppercase tracking-wide text-slate-500 text-xs truncate">Total</p>
+                    <p className="font-semibold tabular-nums text-slate-900 truncate" title={formatCurrency(order.total_amount)}>{formatCurrency(order.total_amount)}</p>
                   </div>
-                  <div className="rounded-lg bg-emerald-50 p-2">
-                    <p className="uppercase tracking-wide text-emerald-700">Paid</p>
-                    <p className="font-semibold tabular-nums text-emerald-800">{formatCurrency(order.amount_paid)}</p>
+                  <div className="rounded-lg bg-emerald-50 p-2 min-w-0">
+                    <p className="uppercase tracking-wide text-emerald-700 text-xs truncate">Paid</p>
+                    <p className="font-semibold tabular-nums text-emerald-800 truncate" title={formatCurrency(order.amount_paid)}>{formatCurrency(order.amount_paid)}</p>
                   </div>
-                  <div className="rounded-lg bg-amber-50 p-2">
-                    <p className="uppercase tracking-wide text-amber-700">Due</p>
-                    <p className="font-semibold tabular-nums text-amber-900">{formatCurrency(order.amount_due)}</p>
+                  <div className="rounded-lg bg-amber-50 p-2 min-w-0">
+                    <p className="uppercase tracking-wide text-amber-700 text-xs truncate">Due</p>
+                    <p className="font-semibold tabular-nums text-amber-900 truncate" title={formatCurrency(order.amount_due)}>{formatCurrency(order.amount_due)}</p>
                   </div>
                 </div>
 
