@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { getDistributorContext } from '@/lib/data'
 import { createClient } from '@/lib/supabase/server'
 import { VendorCreditActionState, initialVendorCreditActionState } from '@/lib/credits/types'
+import { toNumber } from '@/lib/number'
 
 function parseMoneyInput(raw: FormDataEntryValue | null, allowZero = false): number | null {
     if (raw == null) return null
@@ -156,9 +157,9 @@ export async function applyVendorCreditToOrderAction(
             error: null,
             message: 'Credit applied.',
             newBalance: Number(payload?.new_balance ?? 0),
-            appliedAmount: Number(payload?.applied_amount ?? 0),
-            orderTotal: Number(payload?.order_total ?? 0),
-            amountDue: Number(payload?.amount_due ?? 0),
+            appliedAmount: toNumber(payload?.applied_amount ?? 0, 0),
+            orderTotal: toNumber(payload?.order_total ?? 0, 0),
+            amountDue: toNumber(payload?.amount_due ?? 0, 0),
             invoiceId,
         }
     } catch (error: any) {

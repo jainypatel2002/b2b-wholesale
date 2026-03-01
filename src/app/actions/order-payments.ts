@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDistributorContext } from '@/lib/data'
+import { toNumber } from '@/lib/number'
 import { createClient } from '@/lib/supabase/server'
 
 export type OrderPaymentActionState = {
@@ -79,9 +80,9 @@ export async function recordOrderPaymentAction(
       success: true,
       error: null,
       message: 'Payment recorded.',
-      totalAmount: Number(payload?.total_amount ?? 0),
-      amountPaid: Number(payload?.amount_paid ?? 0),
-      amountDue: Number(payload?.amount_due ?? 0),
+      totalAmount: toNumber(payload?.total_amount ?? 0, 0),
+      amountPaid: toNumber(payload?.amount_paid ?? 0, 0),
+      amountDue: toNumber(payload?.amount_due ?? 0, 0),
     }
   } catch (error: any) {
     return {

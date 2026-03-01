@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText } from 'lucide-react'
 import { normalizeInvoiceItem, computeInvoiceSubtotal, formatMoney } from '@/lib/pricing-engine'
 import { computeOrderTotal } from '@/lib/credits/calc'
+import { toNumber } from '@/lib/number'
 import { OrderPaymentPanel } from '@/components/orders/order-payment-panel'
 
 export default async function VendorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -94,9 +95,15 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
     taxes: order.order_taxes ?? [],
   })
 
-  const totalAmount = Number(order.total_amount ?? computedTotal ?? 0)
-  const amountPaid = Number(order.amount_paid ?? 0)
-  const amountDue = Math.max(Number(order.amount_due ?? (totalAmount - amountPaid) ?? 0), 0)
+  const totalAmount = toNumber(order?.total_amount ?? computedTotal ?? 0, 0)
+  const amountPaid = toNumber(order?.amount_paid ?? 0, 0)
+
+  const dueCandidate =
+    order?.amount_due !== null && order?.amount_due !== undefined
+      ? toNumber(order.amount_due, totalAmount - amountPaid)
+      : (totalAmount - amountPaid)
+
+  const amountDue = Math.max(toNumber(dueCandidate, 0), 0)
 
   const [invoiceResult, paymentsResult] = await Promise.all([
     supabase

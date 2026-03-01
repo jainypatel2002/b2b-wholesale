@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getVendorContext } from '@/lib/data'
 import { computeInvoiceSubtotal } from '@/lib/pricing-engine'
 import { computeOrderTotal } from '@/lib/credits/calc'
+import { toNumber } from '@/lib/number'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/status-badge'
@@ -117,9 +118,9 @@ export default async function VendorBalanceDuePage() {
       id: String(row.id),
       status: String(row.status),
       created_at: String(row.created_at),
-      total_amount: Number(row.total_amount ?? 0),
-      amount_paid: Number(row.amount_paid ?? 0),
-      amount_due: Math.max(Number(row.amount_due ?? 0), 0),
+      total_amount: toNumber(row.total_amount ?? 0, 0),
+      amount_paid: toNumber(row.amount_paid ?? 0, 0),
+      amount_due: Math.max(toNumber(row.amount_due ?? 0, 0), 0),
     }))
   }
 
