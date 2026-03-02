@@ -10,9 +10,6 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { InvoicePrint } from '@/components/invoice-print'
 import { formatMoney } from '@/lib/pricing-engine'
-import { computeAmountDue } from '@/lib/credits/calc'
-import { toNumber } from '@/lib/number'
-import { OrderPaymentPanel } from '@/components/orders/order-payment-panel'
 
 export default async function VendorInvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -101,43 +98,6 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
     address_line1: dist.location_address
   } : undefined
 
-  // --- ADDED: Fetch order amounts & payments since we need to show Amount Due Panel ---
-  const orderResult = await supabase
-    .from('orders')
-    .select('id, total_amount, amount_paid, amount_due')
-    .eq('id', invoice.order_id)
-    .maybeSingle()
-
-  const paymentsResult = await supabase
-    .from('order_payments')
-    .select('id, amount, method, note, paid_at, created_at')
-    .eq('order_id', invoice.order_id)
-    .order('paid_at', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(200)
-
-  const orderData = orderResult.data
-  const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
-
-  // Safety fallback if order is missing but invoice somehow isn't
-  const rawTotal = toNumber(orderData?.total_amount ?? invoice.total ?? 0, 0)
-  const rawPaid = toNumber(orderData?.amount_paid ?? 0, 0)
-  const rawDue = Math.max(toNumber(orderData?.amount_due ?? (rawTotal - rawPaid), 0), 0)
-
-  const totalAmount = Number.isFinite(rawTotal) ? rawTotal : 0
-  const amountPaid = Number.isFinite(rawPaid) ? rawPaid : 0
-  const amountDue = Number.isFinite(rawDue) ? rawDue : 0
-
-  const payments = (
-    paymentsFeatureUnavailable ? [] : (paymentsResult.data ?? [])
-  ).map((row: any) => ({
-    id: String(row.id),
-    amount: toNumber(row.amount, 0),
-    method: row.method == null ? null : String(row.method),
-    note: row.note == null ? null : String(row.note),
-    paid_at: String(row.paid_at || row.created_at || new Date().toISOString()),
-  }))
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -204,40 +164,9 @@ export default async function VendorInvoiceDetailPage({ params }: { params: Prom
                 </div>
                 <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold">
                   <span>Total</span>
-                  <span className="truncate ml-4">{formatMoney(totalAmount)}</span>
-                </div>
-                <div className="flex justify-between font-medium text-emerald-700">
-                  <span>Paid</span>
-                  <span className="truncate ml-4">{formatMoney(amountPaid)}</span>
-                </div>
-                <div className="flex justify-between pt-2 border-t border-slate-100 text-base font-bold text-amber-900">
-                  <span>Amount Due</span>
-                  <span className="truncate ml-4">{formatMoney(amountDue)}</span>
+                  <span className="truncate ml-4">{formatMoney(invoice.total)}</span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* New Panel strictly for Amount Due Payments */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase text-slate-500">Payments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {paymentsFeatureUnavailable ? (
-                <p className="text-xs text-amber-700">
-                  Payments are unavailable in this environment. Order-linked amount due system pending migration.
-                </p>
-              ) : (
-                <OrderPaymentPanel
-                  orderId={invoice.order_id}
-                  totalAmount={totalAmount}
-                  amountPaid={amountPaid}
-                  amountDue={amountDue}
-                  payments={payments}
-                  canRecordPayment={false}
-                />
-              )}
             </CardContent>
           </Card>
         </div>

@@ -4,17 +4,14 @@ import { getDistributorContext } from '@/lib/data'
 
 export const dynamic = 'force-dynamic'
 import { StatusBadge } from '@/components/status-badge'
-import { updateOrderStatus, createInvoiceAction, markInvoicePaid } from '@/app/actions/distributor'
+import { updateOrderStatus, createInvoiceAction } from '@/app/actions/distributor'
 import { FulfillButton } from '@/components/fulfill-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import { GenerateInvoiceButton } from '@/components/generate-invoice-button'
 import { OrderItemsEditor } from '@/components/order-items-editor'
-import { computeInvoiceSubtotal } from '@/lib/pricing-engine'
-import { computeOrderTotal } from '@/lib/credits/calc'
-import { toNumber } from '@/lib/number'
-import { OrderPaymentPanel } from '@/components/orders/order-payment-panel'
+import { MarkAsPaidButton } from '@/components/payments/mark-as-paid-button'
 
 export default async function DistributorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   try {
@@ -37,7 +34,7 @@ async function renderOrderDetails(params: Promise<{ id: string }>) {
 
   const fullSelect = `
     id, status, created_at, vendor_id, vendor_note, created_by_role, created_source,
-    total_amount, amount_paid, amount_due,
+    payment_status, paid_at,
     vendor:profiles!orders_vendor_id_fkey(display_name, email),
     order_items(
       id, qty, unit_price, unit_cost, product_name, order_unit, units_per_case_snapshot,
@@ -112,95 +109,27 @@ async function renderOrderDetails(params: Promise<{ id: string }>) {
   }
 
   const vendor = Array.isArray(order.vendor) ? order.vendor[0] : order.vendor
-
   const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
-  const subtotal = computeInvoiceSubtotal(activeItems)
-  const adjustmentTotal = (order.order_adjustments ?? []).reduce((sum: number, row: any) => sum + toNumber(row.amount, 0), 0)
-  const computedTotal = computeOrderTotal({
-    subtotal,
-    adjustmentTotal,
-    taxes: order.order_taxes ?? [],
-  })
-
-  const fallbackTotalAmount = toNumber(order?.total_amount ?? computedTotal, 0)
-  const fallbackAmountPaid = toNumber(order?.amount_paid, 0)
-
-  const dueCandidate =
-    order?.amount_due !== null && order?.amount_due !== undefined
-      ? toNumber(order.amount_due, fallbackTotalAmount - fallbackAmountPaid)
-      : (fallbackTotalAmount - fallbackAmountPaid)
-
-  const fallbackAmountDue = Math.max(toNumber(dueCandidate, 0), 0)
 
   let invoice: any = null
-  let paymentsResult: any = { data: null, error: null }
-  let paymentSummaryResult: any = { data: null, error: null }
 
   if (order) {
     try {
-      const [invRes, payRes, summaryRes] = await Promise.all([
+      const [invRes] = await Promise.all([
         supabase
           .from('invoices')
-          .select('id,invoice_number,payment_status,total')
+          .select('id,invoice_number,payment_status,total,paid_at')
           .eq('order_id', order.id)
-          .maybeSingle(),
-        supabase
-          .from('order_payments')
-          .select('id,amount,method,note,paid_at,created_at,created_by')
-          .eq('order_id', order.id)
-          .eq('distributor_id', distributorId)
-          .order('paid_at', { ascending: false })
-          .order('created_at', { ascending: false })
-          .limit(200),
-        supabase
-          .from('order_payment_summary')
-          .select('order_total,paid_total,due_total')
-          .eq('order_id', order.id)
-          .eq('distributor_id', distributorId)
-          .eq('vendor_id', order.vendor_id)
           .maybeSingle(),
       ])
       invoice = invRes.data
-      paymentsResult = payRes
-      paymentSummaryResult = summaryRes
     } catch (err) {
-      console.error('Exception fetching invoice/payments (distributor):', err)
+      console.error('Exception fetching invoice (distributor):', err)
     }
   }
 
-  const paymentSummary = paymentSummaryResult.data ?? null
-  const paymentSummaryError =
-    paymentSummaryResult.error && paymentSummaryResult.error.code !== 'PGRST116'
-      ? (paymentSummaryResult.error.message || 'Unable to load payment summary.')
-      : null
-
-  const totalAmount = paymentSummary
-    ? Math.max(toNumber(paymentSummary.order_total, fallbackTotalAmount), 0)
-    : fallbackTotalAmount
-  const amountPaid = paymentSummary
-    ? Math.max(toNumber(paymentSummary.paid_total, fallbackAmountPaid), 0)
-    : fallbackAmountPaid
-  const amountDue = paymentSummary
-    ? Math.max(toNumber(paymentSummary.due_total, fallbackAmountDue), 0)
-    : fallbackAmountDue
-
-  // Ensure these numbers are absolutely safe to pass to Client Components. NaN will throw RSC Error.
-  const safeTotal = Number.isFinite(totalAmount) ? totalAmount : 0
-  const safePaid = Number.isFinite(amountPaid) ? amountPaid : 0
-  const safeDue = Number.isFinite(amountDue) ? amountDue : 0
-
-  const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
-  const payments = (
-    paymentsFeatureUnavailable
-      ? []
-      : (paymentsResult.data ?? [])
-  ).map((row: any) => ({
-    id: String(row.id),
-    amount: toNumber(row.amount, 0),
-    method: row.method == null ? null : String(row.method),
-    note: row.note == null ? null : String(row.note),
-    paid_at: String(row.paid_at || row.created_at || new Date().toISOString()),
-  }))
+  const resolvedPaymentStatus = String(invoice?.payment_status || order.payment_status || 'unpaid')
+  const isOrderPaid = resolvedPaymentStatus.toLowerCase() === 'paid'
 
   async function transitionStatus(newStatus: string) {
     'use server'
@@ -215,18 +144,18 @@ async function renderOrderDetails(params: Promise<{ id: string }>) {
     }
   }
 
-  async function markPaid(invoiceId: string) {
-    'use server'
-    await markInvoicePaid(invoiceId)
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/distributor/orders">
-          <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight">Order Details</h1>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-4">
+          <Link href="/distributor/orders">
+            <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
+          </Link>
+          <h1 className="text-2xl font-bold tracking-tight">Order Details</h1>
+        </div>
+        {!isOrderPaid && (
+          <MarkAsPaidButton target="order" id={order.id} />
+        )}
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -305,9 +234,7 @@ async function renderOrderDetails(params: Promise<{ id: string }>) {
                       <StatusBadge status={invoice.payment_status} type="payment" />
                     </div>
                     {invoice.payment_status !== 'paid' && (
-                      <form action={markPaid.bind(null, invoice.id)}>
-                        <Button size="sm" className="w-full">Mark Paid (Cash)</Button>
-                      </form>
+                      <MarkAsPaidButton target="invoice" id={invoice.id} fullWidth />
                     )}
                   </div>
                 ) : (
@@ -323,35 +250,6 @@ async function renderOrderDetails(params: Promise<{ id: string }>) {
                   )
                 )}
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase text-slate-500">Order Payments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {paymentsFeatureUnavailable ? (
-                <p className="text-xs text-amber-700">
-                  Payments are unavailable in this environment. Apply the latest migration to enable order-linked amount due.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {paymentSummaryError && (
-                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      {paymentSummaryError}
-                    </p>
-                  )}
-                  <OrderPaymentPanel
-                    orderId={order.id}
-                    totalAmount={safeTotal}
-                    amountPaid={safePaid}
-                    amountDue={safeDue}
-                    payments={payments}
-                    canRecordPayment={true}
-                  />
-                </div>
-              )}
             </CardContent>
           </Card>
 

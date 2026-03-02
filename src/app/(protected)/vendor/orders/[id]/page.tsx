@@ -9,9 +9,6 @@ import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, FileText } from 'lucide-react'
 import { normalizeInvoiceItem, computeInvoiceSubtotal, formatMoney } from '@/lib/pricing-engine'
-import { computeOrderTotal } from '@/lib/credits/calc'
-import { toNumber } from '@/lib/number'
-import { OrderPaymentPanel } from '@/components/orders/order-payment-panel'
 
 export default async function VendorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -20,14 +17,11 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
 
   const fullSelect = `
     id, status, created_at, vendor_note, created_by_role, created_source,
-    total_amount, amount_paid, amount_due,
     order_items(
       id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
       products(name),
       edited_name, edited_unit_price, edited_qty, removed
-    ),
-    order_adjustments(id, name, amount),
-    order_taxes(id, name, type, rate_percent)
+    )
   `
   const fallbackSelect = `
     id, status, created_at,
@@ -36,9 +30,7 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
       id, qty, unit_price, product_name, order_unit, units_per_case_snapshot,
       products(name),
       edited_name, edited_unit_price, edited_qty, removed
-    ),
-    order_adjustments(id, name, amount),
-    order_taxes(id, name, type, rate_percent)
+    )
   `
 
   let order: any = null
@@ -93,68 +85,25 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
 
   const activeItems = (order.order_items ?? []).filter((it: any) => !it.removed)
   const subtotal = computeInvoiceSubtotal(activeItems)
-  const adjustmentTotal = (order.order_adjustments ?? []).reduce((sum: number, row: any) => sum + toNumber(row.amount, 0), 0)
-  const computedTotal = computeOrderTotal({
-    subtotal,
-    adjustmentTotal,
-    taxes: order.order_taxes ?? [],
-  })
-
-  const totalAmount = toNumber(order?.total_amount ?? computedTotal, 0)
-  const amountPaid = toNumber(order?.amount_paid, 0)
-
-  const dueCandidate =
-    order?.amount_due !== null && order?.amount_due !== undefined
-      ? toNumber(order.amount_due, totalAmount - amountPaid)
-      : (totalAmount - amountPaid)
-
-  const amountDue = Math.max(toNumber(dueCandidate, 0), 0)
-
-  // Ensure these numbers are strictly finite before passing to Client Components to avoid RSC crash
-  const safeTotal = Number.isFinite(totalAmount) ? totalAmount : 0
-  const safePaid = Number.isFinite(amountPaid) ? amountPaid : 0
-  const safeDue = Number.isFinite(amountDue) ? amountDue : 0
 
   let invoiceResult: any = { data: null, error: null }
-  let paymentsResult: any = { data: null, error: null }
 
   if (order) {
     try {
-      const [invRes, payRes] = await Promise.all([
+      const [invRes] = await Promise.all([
         supabase
           .from('invoices')
-          .select('id,invoice_number,payment_status,total')
+          .select('id,invoice_number,payment_status,total,paid_at')
           .eq('order_id', order.id)
           .maybeSingle(),
-        supabase
-          .from('order_payments')
-          .select('id,amount,method,note,paid_at,created_at')
-          .eq('order_id', order.id)
-          .eq('vendor_id', vendorId)
-          .order('paid_at', { ascending: false })
-          .order('created_at', { ascending: false })
-          .limit(200),
       ])
       invoiceResult = invRes
-      paymentsResult = payRes
     } catch (err) {
-      console.error('Exception fetching invoice/payments (vendor):', err)
+      console.error('Exception fetching invoice (vendor):', err)
     }
   }
 
   const invoice = invoiceResult.data
-  const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
-  const payments = (
-    paymentsFeatureUnavailable
-      ? []
-      : (paymentsResult.data ?? [])
-  ).map((row: any) => ({
-    id: String(row.id),
-    amount: toNumber(row.amount, 0),
-    method: row.method == null ? null : String(row.method),
-    note: row.note == null ? null : String(row.note),
-    paid_at: String(row.paid_at || row.created_at || new Date().toISOString()),
-  }))
 
   return (
     <div className="space-y-6">
@@ -260,22 +209,20 @@ export default async function VendorOrderDetailPage({ params }: { params: Promis
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase text-slate-500">Balance</CardTitle>
+              <CardTitle className="text-sm font-medium uppercase text-slate-500">Payment</CardTitle>
             </CardHeader>
-            <CardContent>
-              {paymentsFeatureUnavailable ? (
-                <p className="text-xs text-amber-700">
-                  Payment details are unavailable in this environment. Ask your distributor to apply the latest migration.
-                </p>
+            <CardContent className="space-y-2">
+              {invoice?.id ? (
+                <>
+                  <StatusBadge status={invoice.payment_status} type="payment" />
+                  {invoice.paid_at && (
+                    <p className="text-xs text-slate-500">
+                      Paid: {new Date(invoice.paid_at).toLocaleDateString()}
+                    </p>
+                  )}
+                </>
               ) : (
-                <OrderPaymentPanel
-                  orderId={order.id}
-                  totalAmount={safeTotal}
-                  amountPaid={safePaid}
-                  amountDue={safeDue}
-                  payments={payments}
-                  canRecordPayment={false}
-                />
+                <p className="text-sm text-slate-500">Payment status will appear after an invoice is generated.</p>
               )}
             </CardContent>
           </Card>
