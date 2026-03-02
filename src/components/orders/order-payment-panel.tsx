@@ -152,7 +152,7 @@ function OrderPaymentPanelInner({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 min-w-0 flex flex-col justify-center">
           <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 truncate">Total</p>
           <div className="mt-1 w-full min-w-0">
@@ -176,7 +176,7 @@ function OrderPaymentPanelInner({
       {canRecordPayment && (
         <form
           action={formAction}
-          className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+          className="space-y-4 rounded-xl border border-slate-200 bg-white p-4"
           onSubmit={(event) => {
             setTouchedAmount(true)
             const validationError = validatePaymentAmount(amountInput, amountDue)
@@ -196,7 +196,7 @@ function OrderPaymentPanelInner({
           <input type="hidden" name="order_id" value={orderId} />
           <h3 className="text-sm font-semibold text-slate-900">Record Payment</h3>
 
-          <div className="grid gap-3 md:grid-cols-[1fr_180px]">
+          <div className="flex flex-col gap-3">
             <div className="space-y-1">
               <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Amount</label>
               <Input
@@ -212,7 +212,7 @@ function OrderPaymentPanelInner({
                 }}
                 autoComplete="off"
                 required
-                className="w-full"
+                className="h-12 w-full"
               />
               {amountError && <p className="text-xs text-red-600">{amountError}</p>}
             </div>
@@ -223,7 +223,7 @@ function OrderPaymentPanelInner({
                 name="method"
                 value={methodInput}
                 onChange={(event) => setMethodInput(event.target.value)}
-                className="form-select w-full"
+                className="form-select h-12 w-full"
               >
                 <option value="unspecified">Unspecified</option>
                 <option value="cash">Cash</option>
@@ -245,7 +245,7 @@ function OrderPaymentPanelInner({
                 setNoteInput(event.target.value)
                 if (clientError) setClientError(null)
               }}
-              className="w-full"
+              className="h-12 w-full"
               maxLength={500}
             />
             {noteError && <p className="text-xs text-red-600">{noteError}</p>}
@@ -260,7 +260,7 @@ function OrderPaymentPanelInner({
           {(clientError || state.error) && <p className="text-sm text-red-600">{clientError || state.error}</p>}
           {state.success && state.message && <p className="text-sm text-emerald-700">{state.message}</p>}
 
-          <Button type="submit" className="w-full sm:w-auto" disabled={submitBlocked}>
+          <Button type="submit" className="w-full" disabled={submitBlocked}>
             {isPending ? 'Saving...' : 'Add Payment'}
           </Button>
         </form>
