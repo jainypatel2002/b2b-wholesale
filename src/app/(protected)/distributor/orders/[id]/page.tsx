@@ -17,6 +17,20 @@ import { toNumber } from '@/lib/number'
 import { OrderPaymentPanel } from '@/components/orders/order-payment-panel'
 
 export default async function DistributorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  try {
+    return await renderOrderDetails(params)
+  } catch (err: any) {
+    console.error('FATAL SSR ERROR IN ORDERS PAGE:', err)
+    return (
+      <div className="p-8 text-red-600 bg-red-50 rounded-lg">
+        <h2 className="text-xl font-bold mb-4">Failed to load order (diagnostics)</h2>
+        <p className="font-mono text-sm whitespace-pre-wrap">{err?.stack || err?.message || String(err)}</p>
+      </div>
+    )
+  }
+}
+
+async function renderOrderDetails(params: Promise<{ id: string }>) {
   const { id } = await params
   const { distributorId } = await getDistributorContext()
   const supabase = await createClient()
@@ -108,27 +122,23 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
     taxes: order.order_taxes ?? [],
   })
 
-  const totalAmount = toNumber(order?.total_amount ?? computedTotal, 0)
-  const amountPaid = toNumber(order?.amount_paid, 0)
+  const fallbackTotalAmount = toNumber(order?.total_amount ?? computedTotal, 0)
+  const fallbackAmountPaid = toNumber(order?.amount_paid, 0)
 
   const dueCandidate =
     order?.amount_due !== null && order?.amount_due !== undefined
-      ? toNumber(order.amount_due, totalAmount - amountPaid)
-      : (totalAmount - amountPaid)
+      ? toNumber(order.amount_due, fallbackTotalAmount - fallbackAmountPaid)
+      : (fallbackTotalAmount - fallbackAmountPaid)
 
-  const amountDue = Math.max(toNumber(dueCandidate, 0), 0)
-
-  // Ensure these numbers are absolutely safe to pass to Client Components. NaN will throw RSC Error.
-  const safeTotal = Number.isFinite(totalAmount) ? totalAmount : 0
-  const safePaid = Number.isFinite(amountPaid) ? amountPaid : 0
-  const safeDue = Number.isFinite(amountDue) ? amountDue : 0
+  const fallbackAmountDue = Math.max(toNumber(dueCandidate, 0), 0)
 
   let invoice: any = null
   let paymentsResult: any = { data: null, error: null }
+  let paymentSummaryResult: any = { data: null, error: null }
 
   if (order) {
     try {
-      const [invRes, payRes] = await Promise.all([
+      const [invRes, payRes, summaryRes] = await Promise.all([
         supabase
           .from('invoices')
           .select('id,invoice_number,payment_status,total')
@@ -142,13 +152,42 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
           .order('paid_at', { ascending: false })
           .order('created_at', { ascending: false })
           .limit(200),
+        supabase
+          .from('order_payment_summary')
+          .select('order_total,paid_total,due_total')
+          .eq('order_id', order.id)
+          .eq('distributor_id', distributorId)
+          .eq('vendor_id', order.vendor_id)
+          .maybeSingle(),
       ])
       invoice = invRes.data
       paymentsResult = payRes
+      paymentSummaryResult = summaryRes
     } catch (err) {
       console.error('Exception fetching invoice/payments (distributor):', err)
     }
   }
+
+  const paymentSummary = paymentSummaryResult.data ?? null
+  const paymentSummaryError =
+    paymentSummaryResult.error && paymentSummaryResult.error.code !== 'PGRST116'
+      ? (paymentSummaryResult.error.message || 'Unable to load payment summary.')
+      : null
+
+  const totalAmount = paymentSummary
+    ? Math.max(toNumber(paymentSummary.order_total, fallbackTotalAmount), 0)
+    : fallbackTotalAmount
+  const amountPaid = paymentSummary
+    ? Math.max(toNumber(paymentSummary.paid_total, fallbackAmountPaid), 0)
+    : fallbackAmountPaid
+  const amountDue = paymentSummary
+    ? Math.max(toNumber(paymentSummary.due_total, fallbackAmountDue), 0)
+    : fallbackAmountDue
+
+  // Ensure these numbers are absolutely safe to pass to Client Components. NaN will throw RSC Error.
+  const safeTotal = Number.isFinite(totalAmount) ? totalAmount : 0
+  const safePaid = Number.isFinite(amountPaid) ? amountPaid : 0
+  const safeDue = Number.isFinite(amountDue) ? amountDue : 0
 
   const paymentsFeatureUnavailable = paymentsResult.error?.code === '42P01'
   const payments = (
@@ -297,14 +336,21 @@ export default async function DistributorOrderDetailPage({ params }: { params: P
                   Payments are unavailable in this environment. Apply the latest migration to enable order-linked amount due.
                 </p>
               ) : (
-                <OrderPaymentPanel
-                  orderId={order.id}
-                  totalAmount={safeTotal}
-                  amountPaid={safePaid}
-                  amountDue={safeDue}
-                  payments={payments}
-                  canRecordPayment={true}
-                />
+                <div className="space-y-3">
+                  {paymentSummaryError && (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      {paymentSummaryError}
+                    </p>
+                  )}
+                  <OrderPaymentPanel
+                    orderId={order.id}
+                    totalAmount={safeTotal}
+                    amountPaid={safePaid}
+                    amountDue={safeDue}
+                    payments={payments}
+                    canRecordPayment={true}
+                  />
+                </div>
               )}
             </CardContent>
           </Card>

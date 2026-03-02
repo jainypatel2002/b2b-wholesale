@@ -1,6 +1,14 @@
 'use client'
 
-import { useActionState, useEffect, useRef } from 'react'
+import {
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { useRouter } from 'next/navigation'
 import {
   initialOrderPaymentActionState,
@@ -27,6 +35,16 @@ interface OrderPaymentPanelProps {
   canRecordPayment?: boolean
 }
 
+const MAX_PAYMENT_AMOUNT = 1_000_000
+const PAYMENT_AMOUNT_INPUT_REGEX = /^(?:\d+)(?:\.\d{0,2})?$/
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(Number.isFinite(amount) ? amount : 0)
+}
+
 function formatMethod(method: string | null): string {
   if (!method) return 'Unspecified'
   return method
@@ -36,6 +54,54 @@ function formatMethod(method: string | null): string {
     .join(' ')
 }
 
+function validatePaymentAmount(rawValue: string, dueAmount: number): string | null {
+  const value = rawValue.trim()
+  if (!value) return 'Amount is required.'
+  if (!PAYMENT_AMOUNT_INPUT_REGEX.test(value)) {
+    return 'Enter a valid amount with up to 2 decimals.'
+  }
+
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return 'Enter a valid amount.'
+  if (amount <= 0) return 'Amount must be greater than 0.'
+  if (amount > MAX_PAYMENT_AMOUNT) {
+    return `Amount must be ${formatCurrency(MAX_PAYMENT_AMOUNT)} or less.`
+  }
+  if (dueAmount <= 0) return 'This order is already fully paid.'
+  if (amount > dueAmount + 0.01) {
+    return `Amount cannot exceed current due (${formatCurrency(dueAmount)}).`
+  }
+
+  return null
+}
+
+class OrderPaymentErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo): void {
+    console.error('Order payment panel render failure:', error, info)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Payment widget failed to render. Refresh the page and try again.
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 function SafeDateLabel({ iso }: { iso: string }) {
   if (!iso || iso === 'undefined' || iso === 'null') return <span className="text-slate-400">—</span>
   const d = new Date(iso)
@@ -43,7 +109,7 @@ function SafeDateLabel({ iso }: { iso: string }) {
   return <span>{d.toLocaleString('en-US')}</span>
 }
 
-export function OrderPaymentPanel({
+function OrderPaymentPanelInner({
   orderId,
   totalAmount,
   amountPaid,
@@ -52,17 +118,31 @@ export function OrderPaymentPanel({
   canRecordPayment = false,
 }: OrderPaymentPanelProps) {
   const router = useRouter()
-  const formRef = useRef<HTMLFormElement>(null)
   const refreshHandledRef = useRef(false)
+  const [amountInput, setAmountInput] = useState('')
+  const [methodInput, setMethodInput] = useState('unspecified')
+  const [noteInput, setNoteInput] = useState('')
+  const [clientError, setClientError] = useState<string | null>(null)
+  const [touchedAmount, setTouchedAmount] = useState(false)
   const [state, formAction, isPending] = useActionState(
     recordOrderPaymentAction,
     initialOrderPaymentActionState,
   )
 
+  const amountError = (touchedAmount || amountInput.trim() !== '')
+    ? validatePaymentAmount(amountInput, amountDue)
+    : null
+  const noteError = noteInput.length > 500 ? 'Note cannot exceed 500 characters.' : null
+  const submitBlocked = isPending || amountDue <= 0 || !!amountError || !!noteError
+
   useEffect(() => {
     if (state.success && !refreshHandledRef.current) {
       refreshHandledRef.current = true
-      formRef.current?.reset()
+      setAmountInput('')
+      setMethodInput('unspecified')
+      setNoteInput('')
+      setClientError(null)
+      setTouchedAmount(false)
       router.refresh()
       return
     }
@@ -94,20 +174,58 @@ export function OrderPaymentPanel({
       </div>
 
       {canRecordPayment && (
-        <form ref={formRef} action={formAction} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+        <form
+          action={formAction}
+          className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+          onSubmit={(event) => {
+            setTouchedAmount(true)
+            const validationError = validatePaymentAmount(amountInput, amountDue)
+            if (validationError) {
+              event.preventDefault()
+              setClientError(validationError)
+              return
+            }
+            if (noteInput.length > 500) {
+              event.preventDefault()
+              setClientError('Note cannot exceed 500 characters.')
+              return
+            }
+            setClientError(null)
+          }}
+        >
           <input type="hidden" name="order_id" value={orderId} />
           <h3 className="text-sm font-semibold text-slate-900">Record Payment</h3>
 
           <div className="grid gap-3 md:grid-cols-[1fr_180px]">
             <div className="space-y-1">
               <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Amount</label>
-              <Input name="amount" type="number" min="0.01" step="0.01" required className="w-full" />
+              <Input
+                name="amount"
+                type="text"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={amountInput}
+                onChange={(event) => {
+                  setTouchedAmount(true)
+                  setAmountInput(event.target.value)
+                  if (clientError) setClientError(null)
+                }}
+                autoComplete="off"
+                required
+                className="w-full"
+              />
+              {amountError && <p className="text-xs text-red-600">{amountError}</p>}
             </div>
 
             <div className="space-y-1">
               <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Method</label>
-              <select name="method" defaultValue="" className="form-select w-full">
-                <option value="">Unspecified</option>
+              <select
+                name="method"
+                value={methodInput}
+                onChange={(event) => setMethodInput(event.target.value)}
+                className="form-select w-full"
+              >
+                <option value="unspecified">Unspecified</option>
                 <option value="cash">Cash</option>
                 <option value="check">Check</option>
                 <option value="card">Card</option>
@@ -119,13 +237,30 @@ export function OrderPaymentPanel({
 
           <div className="space-y-1">
             <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Note (optional)</label>
-            <Input name="note" placeholder="Reference number or memo" className="w-full" />
+            <Input
+              name="note"
+              placeholder="Reference number or memo"
+              value={noteInput}
+              onChange={(event) => {
+                setNoteInput(event.target.value)
+                if (clientError) setClientError(null)
+              }}
+              className="w-full"
+              maxLength={500}
+            />
+            {noteError && <p className="text-xs text-red-600">{noteError}</p>}
           </div>
 
-          {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+          {amountDue <= 0 && (
+            <p className="text-xs text-slate-500">
+              This order is already fully paid.
+            </p>
+          )}
+
+          {(clientError || state.error) && <p className="text-sm text-red-600">{clientError || state.error}</p>}
           {state.success && state.message && <p className="text-sm text-emerald-700">{state.message}</p>}
 
-          <Button type="submit" className="w-full sm:w-auto" disabled={isPending}>
+          <Button type="submit" className="w-full sm:w-auto" disabled={submitBlocked}>
             {isPending ? 'Saving...' : 'Add Payment'}
           </Button>
         </form>
@@ -191,5 +326,13 @@ export function OrderPaymentPanel({
         </div>
       </div>
     </div>
+  )
+}
+
+export function OrderPaymentPanel(props: OrderPaymentPanelProps) {
+  return (
+    <OrderPaymentErrorBoundary>
+      <OrderPaymentPanelInner {...props} />
+    </OrderPaymentErrorBoundary>
   )
 }
