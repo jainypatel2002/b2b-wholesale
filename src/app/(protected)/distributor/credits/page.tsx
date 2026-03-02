@@ -1,8 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext, getLinkedVendors } from '@/lib/data'
-import { computeInvoiceSubtotal } from '@/lib/pricing-engine'
-import { computeOrderTotal } from '@/lib/credits/calc'
 import { toNumber } from '@/lib/number'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,6 +15,7 @@ type OrderAmountRow = {
   total_amount: number
   amount_paid: number
   amount_due: number
+  last_payment_at: string | null
 }
 
 function formatCurrency(value: number): string {
@@ -51,106 +50,63 @@ export default async function DistributorAmountDuePage({
     )
   }
 
-  let summaryResult: any = { data: null, error: null }
-  let ordersResult: any = { data: null, error: null }
+  let summaryRowsResult: any = { data: null, error: null }
   let lastPaymentResult: any = { data: null, error: null }
+  let summaryLoadError: string | null = null
 
   try {
-    const [sRes, oRes, pRes] = await Promise.all([
-      supabase.rpc('get_vendor_amount_due', {
-        p_distributor_id: distributorId,
-        p_vendor_id: selectedVendorId,
-      }),
+    const [summaryRes, pRes] = await Promise.all([
       supabase
-        .from('orders')
-        .select('id,status,created_at,total_amount,amount_paid,amount_due')
+        .from('order_payment_summary')
+        .select('order_id,order_status,order_created_at,order_total,paid_total,due_total,last_payment_at,payment_count')
         .eq('distributor_id', distributorId)
         .eq('vendor_id', selectedVendorId)
-        .gt('amount_due', 0)
-        .order('created_at', { ascending: false })
-        .limit(200),
+        .order('order_created_at', { ascending: false }),
       supabase
-        .from('order_payments')
-        .select('paid_at')
+        .from('order_payment_summary')
+        .select('last_payment_at')
         .eq('distributor_id', distributorId)
         .eq('vendor_id', selectedVendorId)
-        .order('paid_at', { ascending: false })
+        .not('last_payment_at', 'is', null)
+        .order('last_payment_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
     ])
-    summaryResult = sRes
-    ordersResult = oRes
+    summaryRowsResult = summaryRes
     lastPaymentResult = pRes
   } catch (err) {
     console.error('SSR Exception in Amount Due page (distributor):', err)
+    summaryLoadError = 'Failed to load amount due summary. Please refresh and try again.'
   }
 
-  let unpaidOrders: OrderAmountRow[] = []
-  let usedFallbackTotals = false
-
-  if (ordersResult.error?.code === '42703') {
-    usedFallbackTotals = true
-    // If first query errored on 42703 or other fallback, we wrap this in another try
-    try {
-      const fallbackOrders = await supabase
-        .from('orders')
-        .select(`
-          id,
-          status,
-          created_at,
-          amount_paid,
-          order_items(qty,unit_price,edited_qty,edited_unit_price,removed),
-          order_adjustments(amount),
-          order_taxes(type,rate_percent)
-        `)
-        .eq('distributor_id', distributorId)
-        .eq('vendor_id', selectedVendorId)
-        .order('created_at', { ascending: false })
-        .limit(200)
-
-      unpaidOrders = (fallbackOrders.data ?? [])
-        .map((row: any) => {
-          const activeItems = (row.order_items ?? []).filter((it: any) => !it.removed)
-          const subtotal = computeInvoiceSubtotal(activeItems)
-          const adjustmentTotal = (row.order_adjustments ?? []).reduce((sum: number, r: any) => sum + Number(r.amount ?? 0), 0)
-          const totalAmount = computeOrderTotal({
-            subtotal,
-            adjustmentTotal,
-            taxes: row.order_taxes ?? [],
-          })
-          const amountPaid = Number(row.amount_paid ?? 0)
-          const amountDue = Math.max(Number(totalAmount - amountPaid), 0)
-
-          return {
-            id: String(row.id),
-            status: String(row.status),
-            created_at: String(row.created_at),
-            total_amount: Number(totalAmount),
-            amount_paid: amountPaid,
-            amount_due: amountDue,
-          }
-        })
-        .filter((row) => row.amount_due > 0)
-    } catch (err) {
-      console.error('SSR Exception in Amount Due fallback (distributor):', err)
-      unpaidOrders = []
-    }
-  } else {
-    unpaidOrders = (ordersResult.data ?? []).map((row: any) => ({
-      id: String(row.id),
-      status: String(row.status),
-      created_at: String(row.created_at),
-      total_amount: toNumber(row.total_amount ?? 0, 0),
-      amount_paid: toNumber(row.amount_paid ?? 0, 0),
-      amount_due: Math.max(toNumber(row.amount_due ?? 0, 0), 0),
-    }))
+  if (summaryRowsResult.error) {
+    console.error('Amount due summary query error (distributor):', summaryRowsResult.error)
+    summaryLoadError = summaryLoadError || summaryRowsResult.error.message || 'Failed to load amount due summary.'
   }
 
-  const summaryRow = Array.isArray(summaryResult.data) ? summaryResult.data[0] : null
-  const computedTotalDue = unpaidOrders.reduce((sum, order) => sum + order.amount_due, 0)
-  const totalAmountDue = Number(summaryRow?.vendor_total_due ?? computedTotalDue)
-  const unpaidOrdersCount = Number(summaryRow?.count_unpaid_orders ?? unpaidOrders.length)
-  const lastPaymentDate = summaryRow?.last_payment_date ?? lastPaymentResult.data?.paid_at ?? null
+  const summaryRows: Array<Record<string, unknown>> = Array.isArray(summaryRowsResult.data)
+    ? summaryRowsResult.data as Array<Record<string, unknown>>
+    : []
+
+  const allOrders: OrderAmountRow[] = summaryRows.map((row) => ({
+    id: String(row.order_id),
+    status: String(row.order_status ?? 'placed'),
+    created_at: String(row.order_created_at ?? ''),
+    total_amount: Math.max(toNumber(row.order_total, 0), 0),
+    amount_paid: Math.max(toNumber(row.paid_total, 0), 0),
+    amount_due: Math.max(toNumber(row.due_total, 0), 0),
+    last_payment_at: row.last_payment_at == null ? null : String(row.last_payment_at),
+  }))
+
+  const unpaidOrders: OrderAmountRow[] = allOrders.filter((row) => row.amount_due > 0)
+  const totalAmountDue = unpaidOrders.reduce((sum, order) => sum + order.amount_due, 0)
+  const unpaidOrdersCount = unpaidOrders.length
+  const derivedLastPayment = allOrders.reduce<string | null>((latest, row) => {
+    if (!row.last_payment_at) return latest
+    if (!latest) return row.last_payment_at
+    return new Date(row.last_payment_at).getTime() > new Date(latest).getTime() ? row.last_payment_at : latest
+  }, null)
+  const lastPaymentDate = lastPaymentResult.data?.last_payment_at ?? derivedLastPayment
 
   return (
     <div className="space-y-6">
@@ -206,9 +162,9 @@ export default async function DistributorAmountDuePage({
         </Card>
       </div>
 
-      {usedFallbackTotals && (
-        <p className="text-xs text-amber-700">
-          Running in compatibility mode: stored order receivable columns are unavailable, so totals are computed from order items.
+      {summaryLoadError && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {summaryLoadError}
         </p>
       )}
 
