@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo, useRef, useCallback, useEffect, useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Edit, Package, Plus, Search, Trash2 } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Edit, Loader2, Package, Plus, Search, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -566,6 +567,9 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                                     modalRef.current?.close()
                                     setEditingProduct(null)
                                 }}
+                                onSuccess={() => {
+                                    setPendingScannedBarcode(null)
+                                }}
                             />
                         )}
                     </div>
@@ -587,6 +591,9 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                             type="add"
                             onCancel={() => { addModalRef.current?.close(); setPendingScannedBarcode(null) }}
                             pendingScannedBarcode={pendingScannedBarcode}
+                            onSuccess={() => {
+                                setPendingScannedBarcode(null)
+                            }}
                         />
                     </div>
                 </div>
@@ -881,14 +888,15 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
 }
 
 // ProductForm Component using useActionState
-function ProductForm({ defaultValues, categories, categoryNodes, distributorId, type, onCancel, pendingScannedBarcode }: {
+function ProductForm({ defaultValues, categories, categoryNodes, distributorId, type, onCancel, pendingScannedBarcode, onSuccess }: {
     defaultValues?: Product,
     categories: Category[],
     categoryNodes: CategoryNode[],
     distributorId: string,
     type: 'add' | 'edit',
     onCancel: () => void,
-    pendingScannedBarcode?: string | null
+    pendingScannedBarcode?: string | null,
+    onSuccess?: () => void
 }) {
     /**
      * STABILIZATION LOGIC & TEST PLAN (DEV-ONLY):
@@ -905,6 +913,8 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
 
     // --- Form State ---
     // Use fully controlled inputs with string state to prevent jumping/incorrect resets
+    const router = useRouter()
+    const nameInputRef = useRef<HTMLInputElement>(null)
     const [name, setName] = useState(defaultValues?.name || '')
     const [sku, setSku] = useState(defaultValues?.sku || '')
     const [barcodeDrafts, setBarcodeDrafts] = useState<BarcodeDraft[]>(
@@ -1005,6 +1015,41 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     }, [defaultValues])
 
     const [stockInput, setStockInput] = useState<string>(initialStockInput)
+    const initialFormState = useMemo(() => ({
+        name: defaultValues?.name || '',
+        sku: defaultValues?.sku || '',
+        barcodeDrafts: buildInitialBarcodeDrafts(defaultValues, null),
+        barcodeInput: '',
+        lowStockThreshold: String(defaultValues?.low_stock_threshold ?? 5),
+        allowCase: defaultValues?.allow_case ?? false,
+        allowPiece: defaultValues?.allow_piece ?? true,
+        stockLocked: defaultValues?.stock_locked ?? false,
+        lockedStockQty: defaultValues?.locked_stock_qty != null ? String(defaultValues.locked_stock_qty) : '',
+        unitsPerCaseInput: String(defaultValues?.units_per_case ?? 1),
+        selectedCategory: String(defaultValues?.category_id ?? ''),
+        selectedSubcategory: String(defaultValues?.category_node_id ?? ''),
+        subcategoryCacheByCategory: (() => {
+            const initialCategoryId = String(defaultValues?.category_id ?? '').trim()
+            if (!initialCategoryId) return {}
+            return {
+                [initialCategoryId]: filterCategoryNodesForCategory(categoryNodes, initialCategoryId) as CategoryNode[],
+            }
+        })() as Record<string, CategoryNode[]>,
+        costMode: initialCostMode,
+        priceMode: initialPriceMode,
+        costInput: initialCostVal != null ? String(initialCostVal) : '',
+        sellInput: initialSellVal != null ? String(initialSellVal) : '',
+        stockMode: (defaultValues?.stock_mode || 'pieces') as 'pieces' | 'cases',
+        stockInput: initialStockInput,
+    }), [
+        categoryNodes,
+        defaultValues,
+        initialCostMode,
+        initialCostVal,
+        initialPriceMode,
+        initialSellVal,
+        initialStockInput,
+    ])
 
     const addBarcodeDraft = useCallback((rawBarcode: string, makePrimary = false) => {
         const normalized = normalizeBarcode(rawBarcode)
@@ -1553,14 +1598,56 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
         }
     }
 
+    const resetToInitialFormState = useCallback(() => {
+        closeBarcodeScanModal()
+        setName(initialFormState.name)
+        setSku(initialFormState.sku)
+        setBarcodeDrafts(initialFormState.barcodeDrafts)
+        setBarcodeInput(initialFormState.barcodeInput)
+        setCopiedBarcode(null)
+        setLowStockThreshold(initialFormState.lowStockThreshold)
+        setAllowCase(initialFormState.allowCase)
+        setAllowPiece(initialFormState.allowPiece)
+        setStockLocked(initialFormState.stockLocked)
+        setLockedStockQty(initialFormState.lockedStockQty)
+        setUnitsPerCaseInput(initialFormState.unitsPerCaseInput)
+        setSelectedCategory(initialFormState.selectedCategory)
+        setSelectedSubcategory(initialFormState.selectedSubcategory)
+        setSubcategoryCacheByCategory(initialFormState.subcategoryCacheByCategory)
+        fetchedSubcategoryCategoriesRef.current = new Set(Object.keys(initialFormState.subcategoryCacheByCategory))
+        setSubcategoryNotice(null)
+        setSubcategoryWarning(null)
+        setSubcategoryLoadError(null)
+        setIsSubcategoryLoading(Boolean(initialFormState.selectedCategory) && (initialFormState.subcategoryCacheByCategory[initialFormState.selectedCategory]?.length ?? 0) === 0)
+        setCostMode(initialFormState.costMode)
+        setPriceMode(initialFormState.priceMode)
+        setCostInput(initialFormState.costInput)
+        setSellInput(initialFormState.sellInput)
+        setStockMode(initialFormState.stockMode)
+        setStockInput(initialFormState.stockInput)
+        setClientFormError(null)
+        setTimeout(() => {
+            nameInputRef.current?.focus()
+        }, 0)
+    }, [closeBarcodeScanModal, initialFormState])
+
     const serverAction = type === 'edit' ? updateProductAction : createProductAction
     const [state, formAction] = useActionState(serverAction, { success: false, error: null })
 
     useEffect(() => {
-        if (state.success) {
+        if (!state.success) return
+
+        if (type === 'edit') {
+            onSuccess?.()
             onCancel()
+            router.refresh()
+            return
         }
-    }, [state.success, onCancel])
+
+        resetToInitialFormState()
+        onSuccess?.()
+        router.refresh()
+    }, [onCancel, onSuccess, resetToInitialFormState, router, state, type])
 
     return (
         <form action={formAction} onSubmit={handleSubmit} className="space-y-4 p-5">
@@ -1590,7 +1677,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
 
             <div className="grid gap-2">
                 <label className="text-sm font-medium">Name</label>
-                <Input name="name" value={name} onChange={e => setName(e.target.value)} required placeholder="Product Name" />
+                <Input ref={nameInputRef} name="name" value={name} onChange={e => setName(e.target.value)} required placeholder="Product Name" />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -2136,6 +2223,7 @@ function SubmitButton({ label }: { label: string }) {
     const { pending } = useFormStatus()
     return (
         <Button type="submit" disabled={pending}>
+            {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {pending ? 'Saving...' : label}
         </Button>
     )
