@@ -1,10 +1,43 @@
 import Link from 'next/link'
-import { requireRole } from '@/lib/auth'
+import { createClient } from '@/lib/supabase/server'
+import { getDistributorContext, getLinkedVendors } from '@/lib/data'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Package, Layers, ShoppingCart, FileText, BadgeDollarSign, Tag, Wallet } from 'lucide-react'
+import { Package, Layers, ShoppingCart, FileText, BadgeDollarSign, Tag } from 'lucide-react'
+import { ManualAmountDueCard } from '@/components/distributor/manual-amount-due-card'
 
 export default async function DistributorHome() {
-  const profile = await requireRole('distributor')
+  const { distributorId } = await getDistributorContext()
+  const supabase = await createClient()
+  const vendors = await getLinkedVendors(distributorId)
+
+  const manualDueByVendor: Record<string, { amount: number; updatedAt: string | null }> = {}
+  for (const vendor of vendors) {
+    manualDueByVendor[vendor.id] = { amount: 0, updatedAt: null }
+  }
+
+  if (vendors.length > 0) {
+    const vendorIds = vendors.map((vendor) => vendor.id)
+    const manualDueResult = await supabase
+      .from('distributor_vendors')
+      .select('vendor_id,manual_amount_due,manual_amount_due_updated_at')
+      .eq('distributor_id', distributorId)
+      .in('vendor_id', vendorIds)
+
+    if (!manualDueResult.error) {
+      for (const row of manualDueResult.data ?? []) {
+        const vendorId = String((row as any).vendor_id || '')
+        if (!vendorId || !manualDueByVendor[vendorId]) continue
+        manualDueByVendor[vendorId] = {
+          amount: Number((row as any).manual_amount_due ?? 0),
+          updatedAt: (row as any).manual_amount_due_updated_at
+            ? String((row as any).manual_amount_due_updated_at)
+            : null,
+        }
+      }
+    } else if (manualDueResult.error.code !== '42703') {
+      console.error('[DistributorHome] Failed to load manual amount due rows:', manualDueResult.error)
+    }
+  }
 
   const cards = [
     {
@@ -36,13 +69,6 @@ export default async function DistributorHome() {
       color: 'text-emerald-700 bg-emerald-100'
     },
     {
-      href: '/distributor/credits',
-      label: 'Amount Due',
-      description: 'Track receivables and unpaid order balances.',
-      icon: Wallet,
-      color: 'text-violet-700 bg-violet-100'
-    },
-    {
       href: '/distributor/analytics/profit',
       label: 'Profit Center',
       description: 'Track revenue and margins.',
@@ -63,6 +89,12 @@ export default async function DistributorHome() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>
       </div>
+
+      <ManualAmountDueCard
+        vendors={vendors}
+        initialSelectedVendorId={vendors[0]?.id ?? null}
+        manualDueByVendor={manualDueByVendor}
+      />
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => {
