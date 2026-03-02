@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { ArchiveButton } from '@/components/archive-button'
 import { VendorFilter } from '@/components/vendor-filter'
+import { MarkAsPaidButton } from '@/components/payments/mark-as-paid-button'
 
 const PAGE_SIZE = 50
 
@@ -29,7 +30,7 @@ export default async function DistributorOrdersPage({
   // ── Build orders query ──
   let ordersQuery = supabase
     .from('orders')
-    .select('id,status,created_at,deleted_at,vendor_id,created_by_role,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)', { count: 'exact' })
+    .select('id,status,payment_status,created_at,deleted_at,vendor_id,created_by_role,vendor:profiles!orders_vendor_id_fkey(display_name,email),order_items(qty,unit_price)', { count: 'exact' })
     .eq('distributor_id', distributorId)
     .order('created_at', { ascending: false })
     .range(from, to)
@@ -134,7 +135,8 @@ export default async function DistributorOrdersPage({
               {rows.length > 0 ? (
                 rows.map((o: any) => {
                   const isFulfilled = o.status === 'fulfilled' || o.status === 'completed'
-                  const isPaid = o.invoice?.payment_status === 'paid'
+                  const paymentStatus = o.invoice?.payment_status || o.payment_status || 'unpaid'
+                  const isPaid = String(paymentStatus).toLowerCase() === 'paid'
                   const isArchived = !!o.deleted_at
                   const canArchive = isFulfilled && isPaid && !isArchived
 
@@ -159,7 +161,7 @@ export default async function DistributorOrdersPage({
                         {o.invoice ? (
                           <StatusBadge status={o.invoice.payment_status} type="payment" />
                         ) : (
-                          <span className="text-slate-400 italic text-xs">No invoice</span>
+                          <StatusBadge status={paymentStatus} type="payment" />
                         )}
                       </TableCell>
                       <TableCell className="font-medium">${o.total.toFixed(2)}</TableCell>
@@ -173,6 +175,9 @@ export default async function DistributorOrdersPage({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {!isPaid && (
+                            <MarkAsPaidButton target="order" id={o.id} />
+                          )}
                           <Link href={`/distributor/orders/${o.id}`}>
                             <Button variant="outline" size="sm">Manage</Button>
                           </Link>
@@ -201,7 +206,8 @@ export default async function DistributorOrdersPage({
         {rows.length > 0 ? (
           rows.map((o: any) => {
             const isFulfilled = o.status === 'fulfilled' || o.status === 'completed'
-            const isPaid = o.invoice?.payment_status === 'paid'
+            const paymentStatus = o.invoice?.payment_status || o.payment_status || 'unpaid'
+            const isPaid = String(paymentStatus).toLowerCase() === 'paid'
             const isArchived = !!o.deleted_at
             const canArchive = isFulfilled && isPaid && !isArchived
 
@@ -233,11 +239,14 @@ export default async function DistributorOrdersPage({
                     {o.invoice ? (
                       <StatusBadge status={o.invoice.payment_status} type="payment" />
                     ) : (
-                      <span className="text-slate-400 italic text-xs">No invoice</span>
+                      <StatusBadge status={paymentStatus} type="payment" />
                     )}
                   </div>
                 </CardContent>
                 <CardFooter className="flex gap-2 border-t border-slate-100 bg-slate-50/70 p-3">
+                  {!isPaid && (
+                    <MarkAsPaidButton target="order" id={o.id} fullWidth />
+                  )}
                   <Link href={`/distributor/orders/${o.id}`} className="flex-1">
                     <Button variant="outline" className="w-full h-9">Manage</Button>
                   </Link>

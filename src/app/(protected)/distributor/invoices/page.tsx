@@ -10,21 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { ArchiveButton } from '@/components/archive-button'
 import { VendorFilter } from '@/components/vendor-filter'
+import { MarkAsPaidButton } from '@/components/payments/mark-as-paid-button'
 
 const PAGE_SIZE = 50
-
-async function markPaid(formData: FormData) {
-  'use server'
-  const { distributorId } = await getDistributorContext()
-  const invoice_id = String(formData.get('invoice_id') || '')
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from('invoices')
-    .update({ payment_status: 'paid', paid_at: new Date().toISOString() })
-    .eq('id', invoice_id)
-    .eq('distributor_id', distributorId)
-  if (error) throw error
-}
 
 async function markUnpaid(formData: FormData) {
   'use server'
@@ -171,12 +159,7 @@ export default async function DistributorInvoicesPage({
                             </Button>
                           </form>
                         ) : (
-                          <form action={markPaid} className="inline-block">
-                            <input type="hidden" name="invoice_id" value={inv.id} />
-                            <Button size="sm" type="submit">
-                              Mark Paid
-                            </Button>
-                          </form>
+                          <MarkAsPaidButton target="invoice" id={inv.id} />
                         )}
                       </TableCell>
                       <TableCell className="text-right">
@@ -236,12 +219,7 @@ export default async function DistributorInvoicesPage({
                         </Button>
                       </form>
                     ) : (
-                      <form action={markPaid} className="flex-1">
-                        <input type="hidden" name="invoice_id" value={inv.id} />
-                        <Button type="submit" className="w-full">
-                          Mark Paid
-                        </Button>
-                      </form>
+                      <MarkAsPaidButton target="invoice" id={inv.id} fullWidth className="flex-1" />
                     )}
                   </div>
                 </CardContent>

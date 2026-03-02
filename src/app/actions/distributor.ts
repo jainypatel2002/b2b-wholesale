@@ -187,22 +187,196 @@ export async function createInvoiceAction(orderId: string) {
 }
 
 export async function markInvoicePaid(invoiceId: string) {
-    const { distributorId } = await getDistributorContext()
-    const supabase = await createClient()
+    return markInvoiceAsPaidAction(invoiceId)
+}
 
-    const { error } = await supabase
-        .from('invoices')
-        .update({ payment_status: 'paid', paid_at: new Date().toISOString() })
-        .eq('id', invoiceId)
-        .eq('distributor_id', distributorId)
+type MarkAsPaidResult = {
+    success: boolean
+    alreadyPaid?: boolean
+    error?: string
+}
 
-    if (error) return { error: error.message }
+function normalizePaymentStatus(input: unknown): string {
+    const raw = String(input || '').trim().toLowerCase()
+    return raw || 'unpaid'
+}
 
-    revalidatePath('/distributor/invoices')
-    revalidatePath(`/distributor/invoices/${invoiceId}`)
-    // Also revalidate order pages since they might show payment status
-    revalidatePath('/distributor/orders')
-    return { success: true }
+export async function markInvoiceAsPaidAction(invoiceId: string): Promise<MarkAsPaidResult> {
+    try {
+        const { distributorId } = await getDistributorContext()
+        const supabase = await createClient()
+        const now = new Date().toISOString()
+        const normalizedInvoiceId = String(invoiceId || '').trim()
+
+        if (!normalizedInvoiceId) {
+            return { success: false, error: 'Invoice is required.' }
+        }
+
+        const existingResult = await supabase
+            .from('invoices')
+            .select('id,order_id,payment_status,paid_at')
+            .eq('id', normalizedInvoiceId)
+            .eq('distributor_id', distributorId)
+            .maybeSingle()
+
+        if (existingResult.error) {
+            return { success: false, error: existingResult.error.message || 'Failed to load invoice.' }
+        }
+
+        if (!existingResult.data) {
+            return { success: false, error: 'Invoice not found or access denied.' }
+        }
+
+        const alreadyPaid = normalizePaymentStatus(existingResult.data.payment_status) === 'paid'
+        const updatePayload: Record<string, unknown> = {
+            payment_status: 'paid',
+            paid_at: existingResult.data.paid_at || now,
+        }
+
+        let updateResult = await supabase
+            .from('invoices')
+            .update(updatePayload as any)
+            .eq('id', normalizedInvoiceId)
+            .eq('distributor_id', distributorId)
+
+        if (updateResult.error && updateResult.error.code === '42703') {
+            updateResult = await supabase
+                .from('invoices')
+                .update({ payment_status: 'paid' } as any)
+                .eq('id', normalizedInvoiceId)
+                .eq('distributor_id', distributorId)
+        }
+
+        if (updateResult.error) {
+            return { success: false, error: updateResult.error.message || 'Failed to mark invoice as paid.' }
+        }
+
+        if (existingResult.data.order_id) {
+            const orderUpdatePayload: Record<string, unknown> = {
+                payment_status: 'paid',
+                paid_at: now,
+            }
+            let orderUpdateResult = await supabase
+                .from('orders')
+                .update(orderUpdatePayload as any)
+                .eq('id', existingResult.data.order_id)
+                .eq('distributor_id', distributorId)
+
+            if (orderUpdateResult.error && orderUpdateResult.error.code === '42703') {
+                orderUpdateResult = await supabase
+                    .from('orders')
+                    .update({ payment_status: 'paid' } as any)
+                    .eq('id', existingResult.data.order_id)
+                    .eq('distributor_id', distributorId)
+            }
+
+            if (orderUpdateResult.error && process.env.NODE_ENV !== 'production') {
+                console.error('markInvoiceAsPaidAction: failed to sync order payment status', orderUpdateResult.error)
+            }
+        }
+
+        revalidatePath('/distributor/invoices')
+        revalidatePath(`/distributor/invoices/${normalizedInvoiceId}`)
+        revalidatePath('/distributor/orders')
+        if (existingResult.data.order_id) {
+            revalidatePath(`/distributor/orders/${existingResult.data.order_id}`)
+        }
+
+        return { success: true, alreadyPaid }
+    } catch (error: any) {
+        return { success: false, error: error?.message || 'Failed to mark invoice as paid.' }
+    }
+}
+
+export async function markOrderAsPaidAction(orderId: string): Promise<MarkAsPaidResult> {
+    try {
+        const { distributorId } = await getDistributorContext()
+        const supabase = await createClient()
+        const now = new Date().toISOString()
+        const normalizedOrderId = String(orderId || '').trim()
+
+        if (!normalizedOrderId) {
+            return { success: false, error: 'Order is required.' }
+        }
+
+        const existingOrderResult = await supabase
+            .from('orders')
+            .select('id,payment_status')
+            .eq('id', normalizedOrderId)
+            .eq('distributor_id', distributorId)
+            .maybeSingle()
+
+        if (existingOrderResult.error) {
+            return { success: false, error: existingOrderResult.error.message || 'Failed to load order.' }
+        }
+
+        if (!existingOrderResult.data) {
+            return { success: false, error: 'Order not found or access denied.' }
+        }
+
+        const alreadyPaid = normalizePaymentStatus(existingOrderResult.data.payment_status) === 'paid'
+
+        let orderUpdateResult = await supabase
+            .from('orders')
+            .update({ payment_status: 'paid', paid_at: now } as any)
+            .eq('id', normalizedOrderId)
+            .eq('distributor_id', distributorId)
+
+        if (orderUpdateResult.error && orderUpdateResult.error.code === '42703') {
+            orderUpdateResult = await supabase
+                .from('orders')
+                .update({ payment_status: 'paid' } as any)
+                .eq('id', normalizedOrderId)
+                .eq('distributor_id', distributorId)
+        }
+
+        if (orderUpdateResult.error) {
+            return { success: false, error: orderUpdateResult.error.message || 'Failed to mark order as paid.' }
+        }
+
+        const invoiceResult = await supabase
+            .from('invoices')
+            .select('id,payment_status,paid_at')
+            .eq('order_id', normalizedOrderId)
+            .eq('distributor_id', distributorId)
+            .maybeSingle()
+
+        if (!invoiceResult.error && invoiceResult.data?.id) {
+            const invoiceUpdatePayload: Record<string, unknown> = {
+                payment_status: 'paid',
+                paid_at: invoiceResult.data.paid_at || now,
+            }
+
+            let invoiceUpdateResult = await supabase
+                .from('invoices')
+                .update(invoiceUpdatePayload as any)
+                .eq('id', invoiceResult.data.id)
+                .eq('distributor_id', distributorId)
+
+            if (invoiceUpdateResult.error && invoiceUpdateResult.error.code === '42703') {
+                invoiceUpdateResult = await supabase
+                    .from('invoices')
+                    .update({ payment_status: 'paid' } as any)
+                    .eq('id', invoiceResult.data.id)
+                    .eq('distributor_id', distributorId)
+            }
+
+            if (invoiceUpdateResult.error && process.env.NODE_ENV !== 'production') {
+                console.error('markOrderAsPaidAction: failed to sync invoice payment status', invoiceUpdateResult.error)
+            }
+        }
+
+        revalidatePath('/distributor/orders')
+        revalidatePath(`/distributor/orders/${normalizedOrderId}`)
+        revalidatePath('/distributor/invoices')
+        if (invoiceResult.data?.id) {
+            revalidatePath(`/distributor/invoices/${invoiceResult.data.id}`)
+        }
+
+        return { success: true, alreadyPaid }
+    } catch (error: any) {
+        return { success: false, error: error?.message || 'Failed to mark order as paid.' }
+    }
 }
 
 export async function updateProduct(formData: FormData) {
