@@ -11,6 +11,42 @@ export type InventoryActionState = {
     success?: boolean
     error?: string | null
     details?: any
+    product?: {
+        id: string
+        name: string
+        sku: string | null
+        barcode: string | null
+        cost_price: number | null
+        sell_price: number | null
+        cost_per_unit: number | null
+        sell_per_unit: number | null
+        cost_case: number | null
+        price_case: number | null
+        cost_per_case: number | null
+        sell_per_case: number | null
+        stock_qty: number
+        stock_pieces: number
+        allow_case: boolean
+        allow_piece: boolean
+        units_per_case: number | null
+        low_stock_threshold: number
+        created_at?: string
+        category_id: string | null
+        category_node_id: string | null
+        cost_mode: 'unit' | 'case'
+        price_mode: 'unit' | 'case'
+        stock_mode: 'pieces' | 'cases'
+        stock_locked: boolean
+        locked_stock_qty: number | null
+        categories?: { name: string } | null
+        category_nodes?: { name: string } | null
+        barcodes: Array<{
+            id: string
+            barcode: string
+            is_primary: boolean
+            created_at?: string
+        }>
+    } | null
 }
 
 export type AddBarcodeToProductResult = {
@@ -561,6 +597,92 @@ async function validateCategoryNodeSelection({
     return null
 }
 
+async function fetchInventoryProductForClient(params: {
+    supabase: InventorySupabaseClient
+    distributorId: string
+    productId: string
+}): Promise<InventoryActionState['product']> {
+    const { supabase, distributorId, productId } = params
+
+    const selectCandidates = [
+        'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,product_barcodes(id,barcode,is_primary,created_at),categories(name),category_nodes(name)',
+        'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,stock_locked,locked_stock_qty,categories(name),category_nodes(name)',
+        'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,product_barcodes(id,barcode,is_primary,created_at),categories(name),category_nodes(name)',
+        'id,name,sku,barcode,cost_price,sell_price,cost_per_unit,sell_per_unit,cost_case,price_case,cost_per_case,sell_per_case,stock_qty,stock_pieces,allow_case,allow_piece,units_per_case,low_stock_threshold,created_at,category_id,category_node_id,cost_mode,price_mode,stock_mode,categories(name),category_nodes(name)'
+    ]
+
+    for (const selectColumns of selectCandidates) {
+        const result = await supabase
+            .from('products')
+            .select(selectColumns)
+            .eq('id', productId)
+            .eq('distributor_id', distributorId)
+            .limit(1)
+            .maybeSingle()
+
+        if (result.error) {
+            continue
+        }
+
+        if (!result.data) {
+            return null
+        }
+
+        const row: any = result.data
+        const mappedBarcodes = (
+            Array.isArray(row.product_barcodes) && row.product_barcodes.length > 0
+                ? row.product_barcodes
+                : (row.barcode ? [{ id: `legacy-${row.id}`, barcode: row.barcode, is_primary: true }] : [])
+        )
+            .map((entry: any) => ({
+                id: String(entry.id || ''),
+                barcode: String(entry.barcode || ''),
+                is_primary: entry.is_primary !== false,
+                created_at: entry.created_at ? String(entry.created_at) : undefined
+            }))
+            .filter((entry: { id: string; barcode: string }) => entry.id && entry.barcode)
+            .sort((a: { is_primary: boolean; barcode: string }, b: { is_primary: boolean; barcode: string }) => {
+                if (a.is_primary && !b.is_primary) return -1
+                if (!a.is_primary && b.is_primary) return 1
+                return a.barcode.localeCompare(b.barcode)
+            })
+
+        return {
+            id: String(row.id),
+            name: String(row.name || ''),
+            sku: row.sku == null ? null : String(row.sku),
+            barcode: row.barcode == null ? null : String(row.barcode),
+            cost_price: row.cost_price == null ? null : Number(row.cost_price),
+            sell_price: row.sell_price == null ? null : Number(row.sell_price),
+            cost_per_unit: row.cost_per_unit == null ? null : Number(row.cost_per_unit),
+            sell_per_unit: row.sell_per_unit == null ? null : Number(row.sell_per_unit),
+            cost_case: row.cost_case == null ? null : Number(row.cost_case),
+            price_case: row.price_case == null ? null : Number(row.price_case),
+            cost_per_case: row.cost_per_case == null ? null : Number(row.cost_per_case),
+            sell_per_case: row.sell_per_case == null ? null : Number(row.sell_per_case),
+            stock_qty: Number(row.stock_qty || 0),
+            stock_pieces: Number(row.stock_pieces || row.stock_qty || 0),
+            allow_case: row.allow_case !== false,
+            allow_piece: row.allow_piece !== false,
+            units_per_case: row.units_per_case == null ? null : Number(row.units_per_case),
+            low_stock_threshold: Number(row.low_stock_threshold || 5),
+            created_at: row.created_at ? String(row.created_at) : undefined,
+            category_id: row.category_id == null ? null : String(row.category_id),
+            category_node_id: row.category_node_id == null ? null : String(row.category_node_id),
+            cost_mode: row.cost_mode === 'case' ? 'case' : 'unit',
+            price_mode: row.price_mode === 'case' ? 'case' : 'unit',
+            stock_mode: row.stock_mode === 'cases' ? 'cases' : 'pieces',
+            stock_locked: row.stock_locked === true,
+            locked_stock_qty: row.locked_stock_qty == null ? null : Number(row.locked_stock_qty),
+            categories: Array.isArray(row.categories) ? (row.categories[0] ?? null) : (row.categories ?? null),
+            category_nodes: Array.isArray(row.category_nodes) ? (row.category_nodes[0] ?? null) : (row.category_nodes ?? null),
+            barcodes: mappedBarcodes
+        }
+    }
+
+    return null
+}
+
 export async function deleteProduct(productId: string) {
     const { distributorId } = await getDistributorContext()
     const supabase = await createClient()
@@ -746,8 +868,14 @@ export async function createProductAction(
             return { error: syncError?.message || 'Failed to save barcode aliases.' }
         }
 
+        const product = await fetchInventoryProductForClient({
+            supabase,
+            distributorId,
+            productId: String(inserted.id),
+        })
+
         revalidatePath('/distributor/inventory')
-        return { success: true, error: null }
+        return { success: true, error: null, product }
     } catch (e: any) {
         console.error('createProductAction Exception:', e)
         return { error: e.message || 'An unexpected error occurred' }
@@ -937,8 +1065,14 @@ export async function updateProductAction(
             return { error: syncError?.message || 'Failed to save barcode aliases.' }
         }
 
+        const product = await fetchInventoryProductForClient({
+            supabase,
+            distributorId,
+            productId: id,
+        })
+
         revalidatePath('/distributor/inventory')
-        return { success: true, error: null }
+        return { success: true, error: null, product }
     } catch (e: any) {
         console.error('updateProductAction Exception:', e)
         return { error: e.message || 'An unexpected error occurred' }

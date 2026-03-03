@@ -137,6 +137,26 @@ function buildInitialBarcodeDrafts(defaultValues?: Product, pendingScannedBarcod
     return drafts
 }
 
+const INITIAL_FORM = Object.freeze({
+    name: '',
+    sku: '',
+    barcodeInput: '',
+    lowStockThreshold: '5',
+    allowCase: false,
+    allowPiece: true,
+    stockLocked: false,
+    lockedStockQty: '',
+    unitsPerCaseInput: '1',
+    selectedCategory: '',
+    selectedSubcategory: '',
+    costMode: 'unit' as 'unit' | 'case',
+    priceMode: 'unit' as 'unit' | 'case',
+    costInput: '',
+    sellInput: '',
+    stockMode: 'pieces' as 'pieces' | 'cases',
+    stockInput: '0',
+})
+
 interface InventoryClientProps {
     initialProducts: Product[]
     categories: Category[]
@@ -145,9 +165,11 @@ interface InventoryClientProps {
 }
 
 export function InventoryClient({ initialProducts, categories, categoryNodes, distributorId }: InventoryClientProps) {
+    const [products, setProducts] = useState<Product[]>(initialProducts)
     const [searchTerm, setSearchTerm] = useState('')
     const [showLowStock, setShowLowStock] = useState(false)
     const [filterCategory, setFilterCategory] = useState<string>('all')
+    const [addFormVersion, setAddFormVersion] = useState(0)
 
     const [editingProduct, setEditingProduct] = useState<Product | null>(null)
     const [deletingProduct, setDeletingProduct] = useState<Product | null>(null)
@@ -171,9 +193,26 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
     const lastScanActivityRef = useRef<number>(0)
     const [showAutoFallbackPrompt, setShowAutoFallbackPrompt] = useState(false)
 
+    useEffect(() => {
+        setProducts(initialProducts)
+    }, [initialProducts])
+
+    const upsertProduct = useCallback((nextProduct?: Product | null) => {
+        if (!nextProduct?.id) return
+        setProducts((prev) => {
+            const existingIndex = prev.findIndex((row) => row.id === nextProduct.id)
+            if (existingIndex === -1) {
+                return [nextProduct, ...prev]
+            }
+            const next = [...prev]
+            next[existingIndex] = { ...next[existingIndex], ...nextProduct }
+            return next
+        })
+    }, [])
+
     // Filter products based on search term
     const filteredProducts = useMemo(() => {
-        let res = initialProducts
+        let res = products
 
         // ... (sorting logic if needed, or rely on created_at from server)
 
@@ -197,7 +236,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             )
         }
         return res
-    }, [initialProducts, searchTerm, showLowStock, filterCategory])
+    }, [products, searchTerm, showLowStock, filterCategory])
 
     // Group filtered products
     const groupedData = useMemo(() => {
@@ -241,7 +280,9 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
     const confirmDelete = async () => {
         if (!deletingProduct) return
         try {
-            await deleteProduct(deletingProduct.id)
+            const deletingId = deletingProduct.id
+            await deleteProduct(deletingId)
+            setProducts((prev) => prev.filter((row) => row.id !== deletingId))
             deleteModalRef.current?.close()
             setDeletingProduct(null)
         } catch (error) {
@@ -267,7 +308,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
 
         try {
             // First check in-memory (already loaded products)
-            const localMatch = initialProducts.find(
+            const localMatch = products.find(
                 p =>
                     p.barcode?.toLowerCase() === normalizedBarcode.toLowerCase()
                     || p.barcodes?.some((entry) => entry.barcode.toLowerCase() === normalizedBarcode.toLowerCase())
@@ -321,7 +362,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                 if (scanMode) { setScanStatus('ready'); setScanStatusMessage('') }
             }, 3000)
         }
-    }, [initialProducts, scanMode])
+    }, [products, scanMode])
 
     useBarcodeScanner({
         enabled: scanMode,
@@ -567,7 +608,8 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                                     modalRef.current?.close()
                                     setEditingProduct(null)
                                 }}
-                                onSuccess={() => {
+                                onSuccess={(nextProduct) => {
+                                    upsertProduct(nextProduct ?? null)
                                     setPendingScannedBarcode(null)
                                 }}
                             />
@@ -585,14 +627,17 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                             <button onClick={() => addModalRef.current?.close()} className="focus-ring-brand rounded-md p-1 text-slate-500 hover:text-slate-700">✕</button>
                         </div>
                         <ProductForm
+                            key={`add-form-${addFormVersion}`}
                             categories={categories}
                             categoryNodes={categoryNodes}
                             distributorId={distributorId}
                             type="add"
                             onCancel={() => { addModalRef.current?.close(); setPendingScannedBarcode(null) }}
                             pendingScannedBarcode={pendingScannedBarcode}
-                            onSuccess={() => {
+                            onSuccess={(nextProduct) => {
+                                upsertProduct(nextProduct ?? null)
                                 setPendingScannedBarcode(null)
+                                setAddFormVersion((prev) => prev + 1)
                             }}
                         />
                     </div>
@@ -896,7 +941,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     type: 'add' | 'edit',
     onCancel: () => void,
     pendingScannedBarcode?: string | null,
-    onSuccess?: () => void
+    onSuccess?: (product?: Product | null) => void
 }) {
     /**
      * STABILIZATION LOGIC & TEST PLAN (DEV-ONLY):
@@ -915,12 +960,12 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     // Use fully controlled inputs with string state to prevent jumping/incorrect resets
     const router = useRouter()
     const nameInputRef = useRef<HTMLInputElement>(null)
-    const [name, setName] = useState(defaultValues?.name || '')
-    const [sku, setSku] = useState(defaultValues?.sku || '')
+    const [name, setName] = useState(defaultValues?.name ?? INITIAL_FORM.name)
+    const [sku, setSku] = useState(defaultValues?.sku ?? INITIAL_FORM.sku)
     const [barcodeDrafts, setBarcodeDrafts] = useState<BarcodeDraft[]>(
         () => buildInitialBarcodeDrafts(defaultValues, type === 'add' ? pendingScannedBarcode : null)
     )
-    const [barcodeInput, setBarcodeInput] = useState('')
+    const [barcodeInput, setBarcodeInput] = useState<string>(INITIAL_FORM.barcodeInput)
     const barcodeInputRef = useRef<HTMLInputElement>(null)
     const isEditMode = type === 'edit' && Boolean(defaultValues?.id)
     const [copiedBarcode, setCopiedBarcode] = useState<string | null>(null)
@@ -940,26 +985,46 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     const barcodeCameraStreamRef = useRef<MediaStream | null>(null)
     const [barcodeCameraStream, setBarcodeCameraStream] = useState<MediaStream | null>(null)
 
-    const [lowStockThreshold, setLowStockThreshold] = useState(String(defaultValues?.low_stock_threshold ?? 5))
+    const [lowStockThreshold, setLowStockThreshold] = useState(
+        defaultValues?.low_stock_threshold != null
+            ? String(defaultValues.low_stock_threshold)
+            : INITIAL_FORM.lowStockThreshold
+    )
     const normalizedBarcodeEntries = useMemo(() => normalizeBarcodeDrafts(barcodeDrafts), [barcodeDrafts])
     const primaryBarcode = normalizedBarcodeEntries.find((entry) => entry.isPrimary)?.barcode ?? null
 
-    const [allowCase, setAllowCase] = useState(defaultValues?.allow_case ?? false)
-    const [allowPiece, setAllowPiece] = useState(defaultValues?.allow_piece ?? true)
+    const [allowCase, setAllowCase] = useState(defaultValues?.allow_case ?? INITIAL_FORM.allowCase)
+    const [allowPiece, setAllowPiece] = useState(defaultValues?.allow_piece ?? INITIAL_FORM.allowPiece)
 
     // Lock Stock Fields
-    const [stockLocked, setStockLocked] = useState(defaultValues?.stock_locked ?? false)
-    const [lockedStockQty, setLockedStockQty] = useState<string>(defaultValues?.locked_stock_qty != null ? String(defaultValues.locked_stock_qty) : '')
+    const [stockLocked, setStockLocked] = useState(defaultValues?.stock_locked ?? INITIAL_FORM.stockLocked)
+    const [lockedStockQty, setLockedStockQty] = useState<string>(
+        defaultValues?.locked_stock_qty != null
+            ? String(defaultValues.locked_stock_qty)
+            : INITIAL_FORM.lockedStockQty
+    )
 
     // Units per Case (Central to calculations) - String state to allow smooth typing
-    const [unitsPerCaseInput, setUnitsPerCaseInput] = useState<string>(String(defaultValues?.units_per_case ?? 1))
+    const [unitsPerCaseInput, setUnitsPerCaseInput] = useState<string>(
+        defaultValues?.units_per_case != null
+            ? String(defaultValues.units_per_case)
+            : INITIAL_FORM.unitsPerCaseInput
+    )
     const safeUnitsPerCaseValue = safeUnitsPerCase(unitsPerCaseInput)
     const hasValidUnitsPerCase = safeUnitsPerCaseValue !== null
     const unitsPerCase = safeUnitsPerCaseValue ?? 1
 
     // Subcategory logic
-    const [selectedCategory, setSelectedCategory] = useState(String(defaultValues?.category_id ?? ''))
-    const [selectedSubcategory, setSelectedSubcategory] = useState(String(defaultValues?.category_node_id ?? ''))
+    const [selectedCategory, setSelectedCategory] = useState(
+        defaultValues?.category_id != null
+            ? String(defaultValues.category_id)
+            : INITIAL_FORM.selectedCategory
+    )
+    const [selectedSubcategory, setSelectedSubcategory] = useState(
+        defaultValues?.category_node_id != null
+            ? String(defaultValues.category_node_id)
+            : INITIAL_FORM.selectedSubcategory
+    )
     const [subcategoryCacheByCategory, setSubcategoryCacheByCategory] = useState<Record<string, CategoryNode[]>>(() => {
         const initialCategoryId = String(defaultValues?.category_id ?? '').trim()
         if (!initialCategoryId) return {}
@@ -979,9 +1044,9 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
 
     const initialUnitsPerCase = safeUnitsPerCase(defaultValues?.units_per_case)
     const initialCostMode: 'unit' | 'case' =
-        defaultValues?.cost_mode === 'case' && initialUnitsPerCase !== null ? 'case' : 'unit'
+        defaultValues?.cost_mode === 'case' && initialUnitsPerCase !== null ? 'case' : INITIAL_FORM.costMode
     const initialPriceMode: 'unit' | 'case' =
-        defaultValues?.price_mode === 'case' && initialUnitsPerCase !== null ? 'case' : 'unit'
+        defaultValues?.price_mode === 'case' && initialUnitsPerCase !== null ? 'case' : INITIAL_FORM.priceMode
 
     const initialCostResolved = resolveCaseUnitPrices({
         casePrice: defaultValues?.cost_per_case ?? defaultValues?.cost_case,
@@ -1000,50 +1065,63 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     // Pricing Modes
     const [costMode, setCostMode] = useState<'unit' | 'case'>(initialCostMode)
     const [priceMode, setPriceMode] = useState<'unit' | 'case'>(initialPriceMode)
-    const [costInput, setCostInput] = useState<string>(initialCostVal != null ? String(initialCostVal) : '')
-    const [sellInput, setSellInput] = useState<string>(initialSellVal != null ? String(initialSellVal) : '')
+    const [costInput, setCostInput] = useState<string>(initialCostVal != null ? String(initialCostVal) : INITIAL_FORM.costInput)
+    const [sellInput, setSellInput] = useState<string>(initialSellVal != null ? String(initialSellVal) : INITIAL_FORM.sellInput)
 
     // Stock Logic
-    const [stockMode, setStockMode] = useState<'pieces' | 'cases'>(defaultValues?.stock_mode || 'pieces')
+    const [stockMode, setStockMode] = useState<'pieces' | 'cases'>(
+        defaultValues?.stock_mode === 'cases' ? 'cases' : INITIAL_FORM.stockMode
+    )
     // Derive initial stock input based on mode
     const initialCanonicalStock = defaultValues?.stock_pieces || defaultValues?.stock_qty || 0
     const initialStockInput = useMemo(() => {
         if (defaultValues?.stock_mode === 'cases' && (defaultValues.units_per_case ?? 0) > 1) {
             return String(initialCanonicalStock / (defaultValues.units_per_case ?? 1))
         }
-        return String(initialCanonicalStock)
+        return initialCanonicalStock ? String(initialCanonicalStock) : INITIAL_FORM.stockInput
     }, [defaultValues])
 
     const [stockInput, setStockInput] = useState<string>(initialStockInput)
-    const initialFormState = useMemo(() => ({
-        name: defaultValues?.name || '',
-        sku: defaultValues?.sku || '',
-        barcodeDrafts: buildInitialBarcodeDrafts(defaultValues, null),
-        barcodeInput: '',
-        lowStockThreshold: String(defaultValues?.low_stock_threshold ?? 5),
-        allowCase: defaultValues?.allow_case ?? false,
-        allowPiece: defaultValues?.allow_piece ?? true,
-        stockLocked: defaultValues?.stock_locked ?? false,
-        lockedStockQty: defaultValues?.locked_stock_qty != null ? String(defaultValues.locked_stock_qty) : '',
-        unitsPerCaseInput: String(defaultValues?.units_per_case ?? 1),
-        selectedCategory: String(defaultValues?.category_id ?? ''),
-        selectedSubcategory: String(defaultValues?.category_node_id ?? ''),
-        subcategoryCacheByCategory: (() => {
-            const initialCategoryId = String(defaultValues?.category_id ?? '').trim()
-            if (!initialCategoryId) return {}
+    const initialFormState = useMemo(() => {
+        if (type === 'add') {
             return {
-                [initialCategoryId]: filterCategoryNodesForCategory(categoryNodes, initialCategoryId) as CategoryNode[],
+                ...INITIAL_FORM,
+                barcodeDrafts: [] as BarcodeDraft[],
+                subcategoryCacheByCategory: {} as Record<string, CategoryNode[]>,
             }
-        })() as Record<string, CategoryNode[]>,
-        costMode: initialCostMode,
-        priceMode: initialPriceMode,
-        costInput: initialCostVal != null ? String(initialCostVal) : '',
-        sellInput: initialSellVal != null ? String(initialSellVal) : '',
-        stockMode: (defaultValues?.stock_mode || 'pieces') as 'pieces' | 'cases',
-        stockInput: initialStockInput,
-    }), [
+        }
+
+        return {
+            name: defaultValues?.name ?? INITIAL_FORM.name,
+            sku: defaultValues?.sku ?? INITIAL_FORM.sku,
+            barcodeDrafts: buildInitialBarcodeDrafts(defaultValues, null),
+            barcodeInput: INITIAL_FORM.barcodeInput,
+            lowStockThreshold: defaultValues?.low_stock_threshold != null ? String(defaultValues.low_stock_threshold) : INITIAL_FORM.lowStockThreshold,
+            allowCase: defaultValues?.allow_case ?? INITIAL_FORM.allowCase,
+            allowPiece: defaultValues?.allow_piece ?? INITIAL_FORM.allowPiece,
+            stockLocked: defaultValues?.stock_locked ?? INITIAL_FORM.stockLocked,
+            lockedStockQty: defaultValues?.locked_stock_qty != null ? String(defaultValues.locked_stock_qty) : INITIAL_FORM.lockedStockQty,
+            unitsPerCaseInput: defaultValues?.units_per_case != null ? String(defaultValues.units_per_case) : INITIAL_FORM.unitsPerCaseInput,
+            selectedCategory: defaultValues?.category_id != null ? String(defaultValues.category_id) : INITIAL_FORM.selectedCategory,
+            selectedSubcategory: defaultValues?.category_node_id != null ? String(defaultValues.category_node_id) : INITIAL_FORM.selectedSubcategory,
+            subcategoryCacheByCategory: (() => {
+                const initialCategoryId = String(defaultValues?.category_id ?? '').trim()
+                if (!initialCategoryId) return {}
+                return {
+                    [initialCategoryId]: filterCategoryNodesForCategory(categoryNodes, initialCategoryId) as CategoryNode[],
+                }
+            })() as Record<string, CategoryNode[]>,
+            costMode: initialCostMode,
+            priceMode: initialPriceMode,
+            costInput: initialCostVal != null ? String(initialCostVal) : INITIAL_FORM.costInput,
+            sellInput: initialSellVal != null ? String(initialSellVal) : INITIAL_FORM.sellInput,
+            stockMode: (defaultValues?.stock_mode === 'cases' ? 'cases' : INITIAL_FORM.stockMode) as 'pieces' | 'cases',
+            stockInput: initialStockInput,
+        }
+    }, [
         categoryNodes,
         defaultValues,
+        type,
         initialCostMode,
         initialCostVal,
         initialPriceMode,
@@ -1636,16 +1714,17 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
 
     useEffect(() => {
         if (!state.success) return
+        const resolvedProduct = (state.product ?? null) as Product | null
 
         if (type === 'edit') {
-            onSuccess?.()
+            onSuccess?.(resolvedProduct)
             onCancel()
             router.refresh()
             return
         }
 
         resetToInitialFormState()
-        onSuccess?.()
+        onSuccess?.(resolvedProduct)
         router.refresh()
     }, [onCancel, onSuccess, resetToInitialFormState, router, state, type])
 

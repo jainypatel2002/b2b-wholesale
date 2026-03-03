@@ -10,9 +10,10 @@ import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeSca
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { normalizeBarcode } from '@/lib/utils/barcode'
 import {
-    addProductToVendorCart
+    addProductToVendorCart,
+    readCartItemsFromStorage,
 } from '@/lib/vendor/cart-storage'
-import type { CartOrderUnit } from '@/lib/vendor/reorder'
+import type { CartOrderUnit, CartStorageItem } from '@/lib/vendor/reorder'
 import { switchDistributor } from '@/app/(protected)/vendor/actions'
 import { useRouter } from 'next/navigation'
 
@@ -35,6 +36,11 @@ type LinkedDistributorSuggestion = {
     distributorId: string
     distributorName: string
     matches: BarcodeMatch[]
+}
+
+type BarcodeLookupResult = {
+    matches: BarcodeMatch[]
+    linkedSuggestion: LinkedDistributorSuggestion | null
 }
 
 const SCAN_CATCHER_ID = 'vendor-catalog-scan-catcher'
@@ -64,20 +70,65 @@ export function CatalogScanControl({
     const [cameraOpen, setCameraOpen] = useState(false)
     const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
     const [cameraError, setCameraError] = useState<string | null>(null)
+    const [queuedScanCount, setQueuedScanCount] = useState(0)
 
     const scanInputRef = useRef<HTMLInputElement>(null)
-    const scanLockUntilRef = useRef<number>(0)
     const cameraStreamRef = useRef<MediaStream | null>(null)
+    const scanQueueRef = useRef<string[]>([])
+    const queueRunIdRef = useRef(0)
+    const isProcessingQueueRef = useRef(false)
+    const barcodeCacheRef = useRef<Map<string, BarcodeLookupResult>>(new Map())
+    const cartRef = useRef<CartStorageItem[]>([])
     const router = useRouter()
 
+    const focusScanInput = useCallback(() => {
+        setTimeout(() => {
+            scanInputRef.current?.focus()
+            scanInputRef.current?.select()
+        }, 60)
+    }, [])
+
+    const resetQueue = useCallback(() => {
+        queueRunIdRef.current += 1
+        scanQueueRef.current = []
+        setQueuedScanCount(0)
+        isProcessingQueueRef.current = false
+    }, [])
+
+    const hydrateCartRef = useCallback(() => {
+        cartRef.current = readCartItemsFromStorage(distributorId)
+    }, [distributorId])
+
+    useEffect(() => {
+        hydrateCartRef()
+        if (typeof window === 'undefined') return
+
+        window.addEventListener('cart-updated', hydrateCartRef)
+        window.addEventListener('storage', hydrateCartRef)
+
+        return () => {
+            window.removeEventListener('cart-updated', hydrateCartRef)
+            window.removeEventListener('storage', hydrateCartRef)
+        }
+    }, [hydrateCartRef])
+
+    useEffect(() => {
+        resetQueue()
+        barcodeCacheRef.current = new Map()
+        hydrateCartRef()
+    }, [distributorId, hydrateCartRef, resetQueue])
+
     const openScanModal = useCallback(() => {
+        resetQueue()
         setScanOpen(true)
         setScanMode(true)
         setScanStatus('ready')
         setScanStatusMessage('Ready for scanner input')
         setLastAddedProductName('')
         setLinkedSuggestion(null)
-    }, [])
+        setScanMatches([])
+        focusScanInput()
+    }, [focusScanInput, resetQueue])
 
     const closeCamera = useCallback(() => {
         if (cameraStreamRef.current) {
@@ -89,15 +140,17 @@ export function CatalogScanControl({
         setCameraOpen(false)
         if (scanOpen && scanMode) {
             setScanStatus('ready')
-            setScanStatusMessage('')
+            setScanStatusMessage('Ready for scanner input')
+            focusScanInput()
         } else {
             setScanStatus('idle')
             setScanStatusMessage('')
         }
-    }, [scanMode, scanOpen])
+    }, [focusScanInput, scanMode, scanOpen])
 
     const closeScanModal = useCallback(() => {
         closeCamera()
+        resetQueue()
         setScanOpen(false)
         setScanMode(false)
         setScanStatus('idle')
@@ -105,7 +158,7 @@ export function CatalogScanControl({
         setLastAddedProductName('')
         setScanMatches([])
         setLinkedSuggestion(null)
-    }, [closeCamera])
+    }, [closeCamera, resetQueue])
 
     const addScannedProductToCart = useCallback((
         match: BarcodeMatch,
@@ -113,12 +166,15 @@ export function CatalogScanControl({
         targetDistributorId?: string
     ) => {
         const effectiveDistributorId = targetDistributorId || distributorId
+        const existingItems = effectiveDistributorId === distributorId ? cartRef.current : undefined
         const result = addProductToVendorCart({
             distributorId: effectiveDistributorId,
             product: match,
             requestedUnit,
-            qty: 1
+            qty: 1,
+            existingItems,
         })
+
         if (!result.ok) {
             if (result.reason === 'invalid_distributor') {
                 toast.error('No distributor context found. Please refresh.')
@@ -139,18 +195,47 @@ export function CatalogScanControl({
             return false
         }
 
+        if (effectiveDistributorId === distributorId) {
+            cartRef.current = result.items
+        }
         setLastAddedProductName(match.name)
         toast.success(`Added: ${match.name}`)
         return true
     }, [distributorId])
 
-    const handleBarcodeDetected = useCallback(async (rawCode: string) => {
-        const barcode = normalizeBarcode(rawCode)
-        if (!barcode || barcode.length < 6) return
+    const lookupBarcode = useCallback(async (barcode: string): Promise<BarcodeLookupResult> => {
+        const cached = barcodeCacheRef.current.get(barcode)
+        if (cached) {
+            return cached
+        }
 
-        const now = Date.now()
-        if (now < scanLockUntilRef.current) return
-        scanLockUntilRef.current = now + 800
+        const response = await fetch(
+            `/api/vendor/catalog/barcode?distributorId=${encodeURIComponent(distributorId)}&barcode=${encodeURIComponent(barcode)}&searchLinked=1`,
+            {
+                method: 'GET',
+                cache: 'no-store',
+            }
+        )
+        const payload = await response.json().catch(() => ({}))
+
+        if (!response.ok) {
+            throw new Error(payload?.error || 'Lookup failed')
+        }
+
+        const result: BarcodeLookupResult = {
+            matches: Array.isArray(payload?.matches) ? payload.matches as BarcodeMatch[] : [],
+            linkedSuggestion: payload?.linkedSuggestion && typeof payload.linkedSuggestion === 'object'
+                ? payload.linkedSuggestion as LinkedDistributorSuggestion
+                : null
+        }
+
+        barcodeCacheRef.current.set(barcode, result)
+        return result
+    }, [distributorId])
+
+    const processSingleBarcode = useCallback(async (barcode: string, runId: number) => {
+        const isRunActive = () => runId === queueRunIdRef.current
+        if (!isRunActive()) return
 
         setLastScannedCode(barcode)
         setLastAddedProductName('')
@@ -160,23 +245,11 @@ export function CatalogScanControl({
         setScanStatusMessage(`Looking up ${barcode}...`)
 
         try {
-            const response = await fetch(
-                `/api/vendor/catalog/barcode?distributorId=${encodeURIComponent(distributorId)}&barcode=${encodeURIComponent(barcode)}&searchLinked=1`,
-                {
-                    method: 'GET',
-                    cache: 'no-store'
-                }
-            )
-            const payload = await response.json().catch(() => ({}))
+            const lookup = await lookupBarcode(barcode)
+            if (!isRunActive()) return
 
-            if (!response.ok) {
-                throw new Error(payload?.error || 'Lookup failed')
-            }
-
-            const matches = Array.isArray(payload?.matches) ? payload.matches as BarcodeMatch[] : []
-            const suggestion = payload?.linkedSuggestion && typeof payload.linkedSuggestion === 'object'
-                ? payload.linkedSuggestion as LinkedDistributorSuggestion
-                : null
+            const matches = lookup.matches
+            const suggestion = lookup.linkedSuggestion
             setScanMatches(matches)
             setLinkedSuggestion(suggestion)
 
@@ -200,10 +273,59 @@ export function CatalogScanControl({
             setScanStatus('found')
             setScanStatusMessage(`Found ${matches.length} products. Select one to add.`)
         } catch (error: any) {
+            if (!isRunActive()) return
             setScanStatus('error')
             setScanStatusMessage(error?.message || 'Lookup failed')
+            toast.error(error?.message || 'Lookup failed')
         }
-    }, [addScannedProductToCart, distributorId])
+    }, [addScannedProductToCart, lookupBarcode])
+
+    const processQueue = useCallback(async () => {
+        if (isProcessingQueueRef.current) return
+
+        const runId = queueRunIdRef.current
+        isProcessingQueueRef.current = true
+
+        try {
+            while (scanQueueRef.current.length > 0) {
+                if (runId !== queueRunIdRef.current) break
+                const nextBarcode = scanQueueRef.current.shift()
+                setQueuedScanCount(scanQueueRef.current.length)
+                if (!nextBarcode) continue
+                await processSingleBarcode(nextBarcode, runId)
+                if (scanOpen && scanMode && runId === queueRunIdRef.current) {
+                    focusScanInput()
+                }
+            }
+        } finally {
+            isProcessingQueueRef.current = false
+            if (scanOpen && scanMode && runId === queueRunIdRef.current) {
+                focusScanInput()
+                setScanStatusMessage((prev) => prev || 'Ready for scanner input')
+                setScanStatus((prev) => prev === 'idle' ? 'ready' : prev)
+            }
+        }
+    }, [focusScanInput, processSingleBarcode, scanMode, scanOpen])
+
+    const onBarcodeScanned = useCallback((rawCode: string) => {
+        const barcode = normalizeBarcode(rawCode)
+        if (!barcode || barcode.length < 6) {
+            setScanStatus('error')
+            setScanStatusMessage('Invalid barcode. Minimum length is 6.')
+            return
+        }
+
+        scanQueueRef.current.push(barcode)
+        setQueuedScanCount(scanQueueRef.current.length)
+        setLastScannedCode(barcode)
+
+        if (scanQueueRef.current.length > 1 || isProcessingQueueRef.current) {
+            setScanStatus('searching')
+            setScanStatusMessage(`Queued ${scanQueueRef.current.length} scan${scanQueueRef.current.length > 1 ? 's' : ''}...`)
+        }
+
+        void processQueue()
+    }, [processQueue])
 
     const handleSwitchDistributorAndRetry = useCallback(async () => {
         if (!linkedSuggestion) return
@@ -265,7 +387,7 @@ export function CatalogScanControl({
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: { ideal: 'environment' } },
-                audio: false
+                audio: false,
             })
             cameraStreamRef.current = stream
             setCameraStream(stream)
@@ -296,19 +418,16 @@ export function CatalogScanControl({
 
     useEffect(() => {
         if (!scanOpen || !scanMode) return
-        const t = setTimeout(() => {
-            scanInputRef.current?.focus()
-            setScanStatus('ready')
-            if (!scanStatusMessage) setScanStatusMessage('Ready for scanner input')
-        }, 80)
-        return () => clearTimeout(t)
-    }, [scanMode, scanOpen, scanStatusMessage])
+        focusScanInput()
+        setScanStatus('ready')
+        if (!scanStatusMessage) setScanStatusMessage('Ready for scanner input')
+    }, [focusScanInput, scanMode, scanOpen, scanStatusMessage])
 
     useBarcodeScanner({
         enabled: scanOpen && scanMode,
-        onScan: handleBarcodeDetected,
+        onScan: onBarcodeScanned,
         scanCatcherInputId: SCAN_CATCHER_ID,
-        dedupeMs: 800
+        dedupeMs: 0,
     })
 
     return (
@@ -338,8 +457,14 @@ export function CatalogScanControl({
                             onClick={() => {
                                 setScanMode((prev) => {
                                     const next = !prev
+                                    if (!next) {
+                                        resetQueue()
+                                    }
                                     setScanStatus(next ? 'ready' : 'idle')
                                     setScanStatusMessage(next ? 'Ready for scanner input' : 'Scanner off')
+                                    if (next) {
+                                        focusScanInput()
+                                    }
                                     return next
                                 })
                             }}
@@ -375,7 +500,7 @@ export function CatalogScanControl({
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => scanInputRef.current?.focus()}
+                                onClick={focusScanInput}
                             >
                                 Tap to focus scanner input
                             </Button>
@@ -390,6 +515,11 @@ export function CatalogScanControl({
                         {lastScannedCode && (
                             <div className="mt-2 text-xs text-slate-600">
                                 Last code: <span className="font-mono">{lastScannedCode}</span>
+                            </div>
+                        )}
+                        {queuedScanCount > 0 && (
+                            <div className="mt-1 text-xs text-slate-600">
+                                Queue: <span className="font-mono">{queuedScanCount}</span>
                             </div>
                         )}
                         {lastAddedProductName && (
@@ -495,11 +625,11 @@ export function CatalogScanControl({
                     setScanMode(true)
                     setScanStatus('ready')
                     setScanStatusMessage('Ready for scanner input')
-                    setTimeout(() => scanInputRef.current?.focus(), 60)
+                    focusScanInput()
                 }}
                 onScan={(barcode: string) => {
                     closeCamera()
-                    handleBarcodeDetected(barcode)
+                    onBarcodeScanned(barcode)
                 }}
             />
         </>

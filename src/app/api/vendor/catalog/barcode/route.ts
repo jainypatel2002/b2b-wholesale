@@ -58,7 +58,7 @@ function pickFirstNumber(...values: unknown[]): number | null {
   return null
 }
 
-function mapRpcRows(rows: any[]): CatalogProductMatch[] {
+export function mapRpcRows(rows: any[]): CatalogProductMatch[] {
   return (rows ?? [])
     .map((row: any) => {
       const unitsPerCase = Math.max(1, Math.floor(Number(row.units_per_case || 1)))
@@ -111,6 +111,31 @@ function mapRpcRows(rows: any[]): CatalogProductMatch[] {
       } satisfies CatalogProductMatch
     })
     .filter((row) => isUuid(row.id))
+}
+
+async function fetchMatchViaBarcodeLookupRpc(
+  supabase: any,
+  distributorId: string,
+  barcode: string
+): Promise<CatalogProductMatch[] | null> {
+  const result = await supabase.rpc('lookup_product_by_barcode', {
+    distributor_id: distributorId,
+    barcode,
+  })
+
+  if (result.error) {
+    if (result.error.code === 'PGRST202') return null
+    const msg = String(result.error.message || '').toLowerCase()
+    if (
+      msg.includes('lookup_product_by_barcode')
+      || msg.includes('function public.lookup_product_by_barcode')
+    ) {
+      return null
+    }
+    throw new Error(result.error.message || 'Failed to lookup barcode')
+  }
+
+  return mapRpcRows(result.data ?? []).slice(0, 10)
 }
 
 async function fetchMatchesViaRpc(
@@ -237,6 +262,17 @@ async function resolveDistributorMatches(params: {
   barcode: string
 }): Promise<CatalogProductMatch[]> {
   const { supabase, vendorId, distributorId, barcode } = params
+
+  try {
+    const rpcLookupMatches = await fetchMatchViaBarcodeLookupRpc(supabase, distributorId, barcode)
+    if (rpcLookupMatches) {
+      return rpcLookupMatches
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[vendor/catalog/barcode] lookup_product_by_barcode RPC failed, falling back', error)
+    }
+  }
 
   const resolved = await resolveProductByBarcode({
     supabase,
