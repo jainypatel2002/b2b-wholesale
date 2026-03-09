@@ -40,6 +40,10 @@ function createMockSupabase(handler: (state: QueryState, action: 'select' | 'may
           state.filters[column] = value
           return query
         },
+        ilike(column: string, value: any) {
+          state.filters[column] = value
+          return query
+        },
         is(column: string, value: any) {
           state.isFilters[column] = value
           return query
@@ -104,11 +108,16 @@ describe('resolveProductByBarcode', () => {
     assert.equal(resolved?.product?.id, 'aaaaaaaa-1111-4111-8111-111111111111')
   })
 
-  test('falls back to legacy products.barcode and backfills for distributor', async () => {
+  test('falls back to legacy products.barcode for normalized scan and backfills canonical alias', async () => {
     let inserted = false
+    let insertedBarcode = ''
 
     const supabase = createMockSupabase((state, action) => {
       if (state.table === 'product_barcodes' && action === 'maybeSingle' && !state.insertPayload) {
+        return { data: null }
+      }
+
+      if (state.table === 'products' && action === 'maybeSingle' && state.filters.barcode === '1234567') {
         return { data: null }
       }
 
@@ -131,12 +140,13 @@ describe('resolveProductByBarcode', () => {
 
       if (state.table === 'product_barcodes' && action === 'maybeSingle' && state.insertPayload) {
         inserted = true
+        insertedBarcode = String(state.insertPayload.barcode || '')
         return {
           data: {
             id: 'map-2',
             product_id: 'bbbbbbbb-2222-4222-8222-222222222222',
             distributor_id: '22222222-2222-4222-8222-222222222222',
-            barcode: '01234567',
+            barcode: insertedBarcode,
             is_primary: true,
             created_at: '2026-02-26T00:00:00Z'
           }
@@ -149,15 +159,61 @@ describe('resolveProductByBarcode', () => {
     const resolved = await resolveProductByBarcode({
       supabase,
       distributorId: '22222222-2222-4222-8222-222222222222',
-      barcode: ' 0123-4567 ',
+      barcode: '1234567',
       viewerRole: 'distributor'
     })
 
     assert.ok(resolved)
     assert.equal(resolved?.source, 'products.barcode')
-    assert.equal(resolved?.normalizedBarcode, '01234567')
+    assert.equal(resolved?.normalizedBarcode, '1234567')
     assert.equal(inserted, true)
+    assert.equal(insertedBarcode, '1234567')
+    assert.equal(resolved?.matchedBarcode?.barcode, '1234567')
     assert.equal(resolved?.matchedBarcode?.is_primary, true)
+  })
+
+  test('resolves legacy-form scan by trying normalized and raw-compatible candidates', async () => {
+    const supabase = createMockSupabase((state, action) => {
+      if (state.table === 'distributor_vendors' && action === 'maybeSingle') {
+        return { data: { vendor_id: '99999999-9999-4999-8999-999999999999' } }
+      }
+
+      if (state.table === 'product_barcodes' && action === 'maybeSingle') {
+        return { data: null }
+      }
+
+      if (state.table === 'products' && action === 'maybeSingle' && state.filters.barcode === '1234567') {
+        return { data: null }
+      }
+
+      if (state.table === 'products' && action === 'maybeSingle' && state.filters.barcode === '01234567') {
+        return {
+          data: {
+            id: 'cccccccc-3333-4333-8333-333333333333',
+            distributor_id: '22222222-2222-4222-8222-222222222222',
+            barcode: '01234567',
+            active: true,
+            is_active: true,
+            deleted_at: null
+          }
+        }
+      }
+
+      throw new Error(`Unexpected query: ${state.table}`)
+    })
+
+    const resolved = await resolveProductByBarcode({
+      supabase,
+      distributorId: '22222222-2222-4222-8222-222222222222',
+      barcode: '01234567',
+      viewerRole: 'vendor',
+      vendorId: '99999999-9999-4999-8999-999999999999'
+    })
+
+    assert.ok(resolved)
+    assert.equal(resolved?.source, 'products.barcode')
+    assert.equal(resolved?.normalizedBarcode, '1234567')
+    assert.equal(resolved?.product?.id, 'cccccccc-3333-4333-8333-333333333333')
   })
 
   test('returns null for vendor not linked to distributor', async () => {

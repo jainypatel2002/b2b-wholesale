@@ -1,5 +1,5 @@
 import { isUuid } from '@/lib/vendor/favorites'
-import { normalizeBarcode } from '@/lib/utils/barcode'
+import { getBarcodeLookupCandidates, normalizeBarcode } from '@/lib/utils/barcode'
 
 export type BarcodeViewerRole = 'distributor' | 'vendor'
 
@@ -17,6 +17,11 @@ export type ResolvedProductByBarcode = {
   matchedBarcode: BarcodeMappingRow | null
   normalizedBarcode: string
   source: 'product_barcodes' | 'products.barcode'
+}
+
+type LegacyProductLookupResult = {
+  product: any
+  matchedBarcode: string
 }
 
 function isMissingProductBarcodeTableError(error: any): boolean {
@@ -85,57 +90,68 @@ async function findActiveProductById(
 async function findActiveLegacyProductByBarcode(
   supabase: any,
   distributorId: string,
-  barcode: string
-): Promise<any | null> {
+  lookupBarcodes: string[]
+): Promise<LegacyProductLookupResult | null> {
+  const candidates = Array.from(new Set(lookupBarcodes.filter(Boolean)))
+  if (candidates.length === 0) return null
+
   const selectColumns = 'id,distributor_id,barcode,active,is_active,deleted_at'
   const legacySelectColumns = 'id,distributor_id,barcode,active'
 
-  let result = await supabase
-    .from('products')
-    .select(selectColumns)
-    .eq('distributor_id', distributorId)
-    .eq('barcode', barcode)
-    .is('deleted_at', null)
-    .limit(1)
-    .maybeSingle()
-
-  if (result.error && isMissingDeletedAtOrIsActiveColumns(result.error)) {
-    result = await supabase
-      .from('products')
-      .select(legacySelectColumns)
-      .eq('distributor_id', distributorId)
-      .eq('barcode', barcode)
-      .limit(1)
-      .maybeSingle()
-  }
-
-  if (!result.error && !result.data) {
-    let ilikeResult = await supabase
+  for (const barcode of candidates) {
+    let result = await supabase
       .from('products')
       .select(selectColumns)
       .eq('distributor_id', distributorId)
-      .ilike('barcode', barcode)
+      .eq('barcode', barcode)
       .is('deleted_at', null)
       .limit(1)
       .maybeSingle()
 
-    if (ilikeResult.error && isMissingDeletedAtOrIsActiveColumns(ilikeResult.error)) {
-      ilikeResult = await supabase
+    if (result.error && isMissingDeletedAtOrIsActiveColumns(result.error)) {
+      result = await supabase
         .from('products')
         .select(legacySelectColumns)
         .eq('distributor_id', distributorId)
-        .ilike('barcode', barcode)
+        .eq('barcode', barcode)
         .limit(1)
         .maybeSingle()
     }
 
-    if (!ilikeResult.error && ilikeResult.data) {
-      result = ilikeResult
+    if (!result.error && result.data && isProductActive(result.data)) {
+      return { product: result.data, matchedBarcode: barcode }
+    }
+
+    if (!result.error && !result.data) {
+      let ilikeResult = await supabase
+        .from('products')
+        .select(selectColumns)
+        .eq('distributor_id', distributorId)
+        .ilike('barcode', barcode)
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle()
+
+      if (ilikeResult.error && isMissingDeletedAtOrIsActiveColumns(ilikeResult.error)) {
+        ilikeResult = await supabase
+          .from('products')
+          .select(legacySelectColumns)
+          .eq('distributor_id', distributorId)
+          .ilike('barcode', barcode)
+          .limit(1)
+          .maybeSingle()
+      }
+
+      if (!ilikeResult.error && ilikeResult.data && isProductActive(ilikeResult.data)) {
+        return {
+          product: ilikeResult.data,
+          matchedBarcode: String((ilikeResult.data as any).barcode || barcode)
+        }
+      }
     }
   }
 
-  if (result.error || !result.data) return null
-  return isProductActive(result.data) ? result.data : null
+  return null
 }
 
 async function getProductBarcodeCount(supabase: any, productId: string): Promise<number | null> {
@@ -195,31 +211,38 @@ async function insertLegacyBarcodeMappingIfNeeded(params: {
 async function findMappingRow(
   supabase: any,
   distributorId: string,
-  barcode: string
+  lookupBarcodes: string[]
 ): Promise<BarcodeMappingRow | null> {
-  const { data, error } = await supabase
-    .from('product_barcodes')
-    .select('id,product_id,distributor_id,barcode,is_primary,created_at')
-    .eq('distributor_id', distributorId)
-    .eq('barcode', barcode)
-    .limit(1)
-    .maybeSingle()
+  const candidates = Array.from(new Set(lookupBarcodes.filter(Boolean)))
+  if (candidates.length === 0) return null
 
-  if (error) {
-    if (isMissingProductBarcodeTableError(error)) return null
-    throw new Error(error.message || 'Failed to resolve barcode mapping')
+  for (const barcode of candidates) {
+    const { data, error } = await supabase
+      .from('product_barcodes')
+      .select('id,product_id,distributor_id,barcode,is_primary,created_at')
+      .eq('distributor_id', distributorId)
+      .eq('barcode', barcode)
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      if (isMissingProductBarcodeTableError(error)) return null
+      throw new Error(error.message || 'Failed to resolve barcode mapping')
+    }
+
+    if (!data) continue
+
+    return {
+      id: String(data.id),
+      product_id: String(data.product_id),
+      distributor_id: String(data.distributor_id),
+      barcode: String(data.barcode),
+      is_primary: data.is_primary !== false,
+      created_at: data.created_at ? String(data.created_at) : undefined
+    }
   }
 
-  if (!data) return null
-
-  return {
-    id: String(data.id),
-    product_id: String(data.product_id),
-    distributor_id: String(data.distributor_id),
-    barcode: String(data.barcode),
-    is_primary: data.is_primary !== false,
-    created_at: data.created_at ? String(data.created_at) : undefined
-  }
+  return null
 }
 
 export async function resolveProductByBarcode(params: {
@@ -234,7 +257,8 @@ export async function resolveProductByBarcode(params: {
   if (!isUuid(distributorId)) return null
 
   const normalizedBarcode = normalizeBarcode(barcode)
-  if (!normalizedBarcode || normalizedBarcode.length < 6) return null
+  const lookupBarcodes = getBarcodeLookupCandidates(barcode).filter((candidate) => candidate.length >= 6)
+  if (lookupBarcodes.length === 0) return null
 
   if (viewerRole === 'vendor') {
     if (!vendorId || !isUuid(vendorId)) return null
@@ -244,7 +268,7 @@ export async function resolveProductByBarcode(params: {
     }
   }
 
-  const mapping = await findMappingRow(supabase, distributorId, normalizedBarcode)
+  const mapping = await findMappingRow(supabase, distributorId, lookupBarcodes)
   if (mapping) {
     const mappedProduct = await findActiveProductById(supabase, distributorId, mapping.product_id)
     if (mappedProduct) {
@@ -257,20 +281,25 @@ export async function resolveProductByBarcode(params: {
     }
   }
 
-  const legacyProduct = await findActiveLegacyProductByBarcode(supabase, distributorId, normalizedBarcode)
-  if (!legacyProduct) return null
+  const legacyMatch = await findActiveLegacyProductByBarcode(supabase, distributorId, lookupBarcodes)
+  if (!legacyMatch) return null
+
+  const barcodeForBackfill = normalizedBarcode.length >= 6
+    ? normalizedBarcode
+    : legacyMatch.matchedBarcode
 
   const backfilled = viewerRole === 'distributor'
+    && barcodeForBackfill.length >= 6
     ? await insertLegacyBarcodeMappingIfNeeded({
       supabase,
-      productId: String(legacyProduct.id),
+      productId: String(legacyMatch.product.id),
       distributorId,
-      barcode: normalizedBarcode
+      barcode: barcodeForBackfill
     })
     : null
 
   return {
-    product: legacyProduct,
+    product: legacyMatch.product,
     matchedBarcode: backfilled,
     normalizedBarcode,
     source: 'products.barcode'

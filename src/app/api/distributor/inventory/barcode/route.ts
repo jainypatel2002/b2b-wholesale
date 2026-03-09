@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase/route'
 import { resolveProductByBarcode } from '@/lib/barcodes/resolver'
-import { normalizeBarcode } from '@/lib/utils/barcode'
+import { isLookupBarcodeValid, normalizeBarcode } from '@/lib/utils/barcode'
 
 type DistributorInventoryProduct = {
   id: string
@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
   const rawBarcode = String(request.nextUrl.searchParams.get('barcode') || '')
   const barcode = normalizeBarcode(rawBarcode)
 
-  if (!barcode || barcode.length < 6) {
+  if (!isLookupBarcodeValid(rawBarcode, 6)) {
     return NextResponse.json({ error: 'Invalid barcode' }, { status: 400 })
   }
 
@@ -166,7 +166,7 @@ export async function GET(request: NextRequest) {
     const resolved = await resolveProductByBarcode({
       supabase,
       distributorId: distributor.distributorId,
-      barcode,
+      barcode: rawBarcode,
       viewerRole: 'distributor'
     })
 

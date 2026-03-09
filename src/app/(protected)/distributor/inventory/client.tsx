@@ -18,7 +18,7 @@ import { createClient } from '@/lib/supabase/client'
 import { addBarcodeToProduct, deleteProduct, createProductAction, updateProductAction } from './actions'
 import { formatMoney, resolveCaseUnitPrices, safeUnitsPerCase, toCaseFromUnit, toUnitFromCase } from '@/lib/pricing/display'
 import { filterCategoryNodesForCategory, isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
-import { normalizeBarcode } from '@/lib/utils/barcode'
+import { getBarcodeLookupCandidates, normalizeBarcode } from '@/lib/utils/barcode'
 
 interface Category {
     id: string
@@ -226,11 +226,24 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
 
         if (searchTerm.trim()) {
             const lowerTerm = searchTerm.toLowerCase()
+            const normalizedTerm = normalizeBarcode(searchTerm)
             res = res.filter(p =>
                 p.name.toLowerCase().includes(lowerTerm) ||
                 (p.sku && p.sku.toLowerCase().includes(lowerTerm)) ||
-                (p.barcode && p.barcode.toLowerCase().includes(lowerTerm)) ||
-                (p.barcodes && p.barcodes.some((entry) => entry.barcode.toLowerCase().includes(lowerTerm))) ||
+                (
+                    p.barcode
+                    && (
+                        p.barcode.toLowerCase().includes(lowerTerm)
+                        || (normalizedTerm.length > 0 && normalizeBarcode(p.barcode).includes(normalizedTerm))
+                    )
+                ) ||
+                (
+                    p.barcodes
+                    && p.barcodes.some((entry) =>
+                        entry.barcode.toLowerCase().includes(lowerTerm)
+                        || (normalizedTerm.length > 0 && normalizeBarcode(entry.barcode).includes(normalizedTerm))
+                    )
+                ) ||
                 (p.categories?.name && p.categories.name.toLowerCase().includes(lowerTerm)) ||
                 (p.category_nodes?.name && p.category_nodes.name.toLowerCase().includes(lowerTerm))
             )
@@ -294,6 +307,9 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
     // ── Barcode Scan Handler ──
     const handleBarcodeScan = useCallback(async (barcode: string) => {
         const normalizedBarcode = normalizeBarcode(barcode)
+        const lookupCandidates = new Set(
+            getBarcodeLookupCandidates(barcode).map((candidate) => candidate.toLowerCase())
+        )
         if (!normalizedBarcode || normalizedBarcode.length < 6) {
             setScanStatus('error')
             setScanStatusMessage('Invalid barcode scan')
@@ -309,9 +325,18 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
         try {
             // First check in-memory (already loaded products)
             const localMatch = products.find(
-                p =>
-                    p.barcode?.toLowerCase() === normalizedBarcode.toLowerCase()
-                    || p.barcodes?.some((entry) => entry.barcode.toLowerCase() === normalizedBarcode.toLowerCase())
+                (p) => {
+                    const productBarcodes = [
+                        p.barcode ?? null,
+                        ...(p.barcodes?.map((entry) => entry.barcode) ?? [])
+                    ].filter(Boolean) as string[]
+
+                    return productBarcodes.some((value) => {
+                        const rawValue = String(value || '').toLowerCase()
+                        if (lookupCandidates.has(rawValue)) return true
+                        return normalizeBarcode(value).toLowerCase() === normalizedBarcode.toLowerCase()
+                    })
+                }
             )
 
             if (localMatch) {

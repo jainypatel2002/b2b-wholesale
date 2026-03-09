@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteClient } from '@/lib/supabase/route'
 import { resolveProductByBarcode } from '@/lib/barcodes/resolver'
-import { normalizeBarcode } from '@/lib/utils/barcode'
+import { getBarcodeLookupCandidates, isLookupBarcodeValid, normalizeBarcode } from '@/lib/utils/barcode'
 import { isUuid } from '@/lib/vendor/favorites'
 
 type CatalogProductMatch = {
@@ -118,24 +118,36 @@ async function fetchMatchViaBarcodeLookupRpc(
   distributorId: string,
   barcode: string
 ): Promise<CatalogProductMatch[] | null> {
-  const result = await supabase.rpc('lookup_product_by_barcode', {
-    distributor_id: distributorId,
-    barcode,
-  })
-
-  if (result.error) {
-    if (result.error.code === 'PGRST202') return null
-    const msg = String(result.error.message || '').toLowerCase()
-    if (
-      msg.includes('lookup_product_by_barcode')
-      || msg.includes('function public.lookup_product_by_barcode')
-    ) {
-      return null
-    }
-    throw new Error(result.error.message || 'Failed to lookup barcode')
+  const lookupCandidates = getBarcodeLookupCandidates(barcode).filter((candidate) => candidate.length >= 6)
+  if (lookupCandidates.length === 0) {
+    return []
   }
 
-  return mapRpcRows(result.data ?? []).slice(0, 10)
+  for (const candidate of lookupCandidates) {
+    const result = await supabase.rpc('lookup_product_by_barcode', {
+      distributor_id: distributorId,
+      barcode: candidate,
+    })
+
+    if (result.error) {
+      if (result.error.code === 'PGRST202') return null
+      const msg = String(result.error.message || '').toLowerCase()
+      if (
+        msg.includes('lookup_product_by_barcode')
+        || msg.includes('function public.lookup_product_by_barcode')
+      ) {
+        return null
+      }
+      throw new Error(result.error.message || 'Failed to lookup barcode')
+    }
+
+    const matches = mapRpcRows(result.data ?? []).slice(0, 10)
+    if (matches.length > 0) {
+      return matches
+    }
+  }
+
+  return []
 }
 
 async function fetchMatchesViaRpc(
@@ -309,7 +321,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid distributor id' }, { status: 400 })
   }
 
-  if (!barcode || barcode.length < 6) {
+  if (!isLookupBarcodeValid(barcodeRaw, 6)) {
     return NextResponse.json({ error: 'Invalid barcode' }, { status: 400 })
   }
 
@@ -318,7 +330,7 @@ export async function GET(request: NextRequest) {
       supabase,
       vendorId: vendor.userId,
       distributorId,
-      barcode
+      barcode: barcodeRaw
     })
 
     if (matches.length > 0 || !searchLinked) {
@@ -340,7 +352,7 @@ export async function GET(request: NextRequest) {
         supabase,
         vendorId: vendor.userId,
         distributorId: linked.id,
-        barcode
+        barcode: barcodeRaw
       })
 
       if (linkedMatches.length > 0) {

@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getDistributorContext } from '@/lib/data'
 import { revalidatePath } from 'next/cache'
 import { isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
-import { normalizeBarcode } from '@/lib/utils/barcode'
+import { getBarcodeLookupCandidates, normalizeBarcode } from '@/lib/utils/barcode'
 import { safeUnitsPerCase, toCaseFromUnit, toUnitFromCase } from '@/lib/pricing/display'
 
 export type InventoryActionState = {
@@ -177,6 +177,14 @@ function parseBarcodesFromForm(formData: FormData): {
     }
 }
 
+function buildBarcodeQueryCandidates(barcodes: string[]): string[] {
+    return Array.from(new Set(
+        barcodes
+            .flatMap((barcode) => getBarcodeLookupCandidates(barcode))
+            .filter(Boolean)
+    ))
+}
+
 async function findBarcodeCollision(params: {
     supabase: InventorySupabaseClient
     distributorId: string
@@ -186,6 +194,9 @@ async function findBarcodeCollision(params: {
     const { supabase, distributorId, barcodes, excludeProductId } = params
     if (barcodes.length === 0) return null
 
+    const lookupBarcodes = buildBarcodeQueryCandidates(barcodes)
+    if (lookupBarcodes.length === 0) return null
+
     const productNameById = new Map<string, string>()
 
     let aliasRows: Array<{ barcode: string; product_id: string }> = []
@@ -193,7 +204,7 @@ async function findBarcodeCollision(params: {
         .from('product_barcodes')
         .select('barcode,product_id')
         .eq('distributor_id', distributorId)
-        .in('barcode', barcodes)
+        .in('barcode', lookupBarcodes)
 
     if (!aliasResult.error) {
         aliasRows = (aliasResult.data ?? [])
@@ -224,7 +235,7 @@ async function findBarcodeCollision(params: {
         .from('products')
         .select('id,name,barcode')
         .eq('distributor_id', distributorId)
-        .in('barcode', barcodes)
+        .in('barcode', lookupBarcodes)
         .is('deleted_at', null)
 
     if (legacyResult.error && legacyResult.error.code === '42703') {
@@ -232,7 +243,7 @@ async function findBarcodeCollision(params: {
             .from('products')
             .select('id,name,barcode')
             .eq('distributor_id', distributorId)
-            .in('barcode', barcodes)
+            .in('barcode', lookupBarcodes)
     }
 
     if (legacyResult.error) {
@@ -249,7 +260,8 @@ async function findBarcodeCollision(params: {
         aliasRows.push({ barcode, product_id: id })
     }
 
-    const firstCollision = aliasRows.find((row) => barcodes.includes(row.barcode))
+    const lookupSet = new Set(lookupBarcodes)
+    const firstCollision = aliasRows.find((row) => lookupSet.has(row.barcode))
     if (!firstCollision) return null
 
     return {
@@ -303,16 +315,17 @@ export async function addBarcodeToProduct(params: {
         }
 
         const legacyBarcode = normalizeBarcode(String((productResult.data as any).barcode || ''))
+        const normalizedCandidates = buildBarcodeQueryCandidates([normalizedBarcode])
+        const normalizedCandidateSet = new Set(normalizedCandidates)
 
         const sameProductAliasResult = await supabase
             .from('product_barcodes')
-            .select('id')
+            .select('id,barcode')
             .eq('product_id', productId)
-            .eq('barcode', normalizedBarcode)
-            .limit(1)
-            .maybeSingle()
+            .in('barcode', normalizedCandidates)
+            .limit(Math.max(1, normalizedCandidates.length))
 
-        if (!sameProductAliasResult.error && sameProductAliasResult.data) {
+        if (!sameProductAliasResult.error && (sameProductAliasResult.data ?? []).length > 0) {
             return {
                 success: true,
                 barcode: normalizedBarcode,
@@ -396,13 +409,17 @@ export async function addBarcodeToProduct(params: {
 
                 const existingSameProduct = await supabase
                     .from('product_barcodes')
-                    .select('id')
+                    .select('id,barcode')
                     .eq('product_id', productId)
-                    .eq('barcode', normalizedBarcode)
-                    .limit(1)
-                    .maybeSingle()
+                    .in('barcode', normalizedCandidates)
+                    .limit(Math.max(1, normalizedCandidates.length))
 
-                if (!existingSameProduct.error && existingSameProduct.data) {
+                if (
+                    !existingSameProduct.error
+                    && (existingSameProduct.data ?? []).some((row: any) =>
+                        normalizedCandidateSet.has(String(row.barcode || ''))
+                    )
+                ) {
                     return { success: true, barcode: normalizedBarcode, alreadyAdded: true }
                 }
 
