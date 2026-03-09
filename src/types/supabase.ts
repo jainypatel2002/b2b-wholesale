@@ -1115,6 +1115,62 @@ export type Database = {
           },
         ]
       }
+      product_vendor_visibility: {
+        Row: {
+          created_at: string
+          distributor_id: string
+          id: string
+          product_id: string
+          updated_at: string
+          vendor_id: string
+        }
+        Insert: {
+          created_at?: string
+          distributor_id: string
+          id?: string
+          product_id: string
+          updated_at?: string
+          vendor_id: string
+        }
+        Update: {
+          created_at?: string
+          distributor_id?: string
+          id?: string
+          product_id?: string
+          updated_at?: string
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_vendor_visibility_distributor_id_fkey"
+            columns: ["distributor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_vendor_visibility_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "low_stock_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_vendor_visibility_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_vendor_visibility_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_barcodes: {
         Row: {
           barcode: string
@@ -1184,6 +1240,7 @@ export type Database = {
           distributor_id: string
           id: string
           is_active: boolean
+          is_visible_to_vendors: boolean
           locked_stock_qty: number | null
           low_stock_threshold: number
           name: string
@@ -1199,6 +1256,7 @@ export type Database = {
           stock_qty: number
           subcategory_id: string | null
           units_per_case: number | null
+          vendor_visibility_scope: string
         }
         Insert: {
           active?: boolean
@@ -1219,6 +1277,7 @@ export type Database = {
           distributor_id: string
           id?: string
           is_active?: boolean
+          is_visible_to_vendors?: boolean
           locked_stock_qty?: number | null
           low_stock_threshold?: number
           name: string
@@ -1234,6 +1293,7 @@ export type Database = {
           stock_qty?: number
           subcategory_id?: string | null
           units_per_case?: number | null
+          vendor_visibility_scope?: string
         }
         Update: {
           active?: boolean
@@ -1254,6 +1314,7 @@ export type Database = {
           distributor_id?: string
           id?: string
           is_active?: boolean
+          is_visible_to_vendors?: boolean
           locked_stock_qty?: number | null
           low_stock_threshold?: number
           name?: string
@@ -1269,6 +1330,7 @@ export type Database = {
           stock_qty?: number
           subcategory_id?: string | null
           units_per_case?: number | null
+          vendor_visibility_scope?: string
         }
         Relationships: [
           {
@@ -1980,6 +2042,32 @@ export type Database = {
       }
       generate_invoice: { Args: { p_order_id: string }; Returns: string }
       get_my_active_distributor_id: { Args: never; Returns: string }
+      lookup_product_by_barcode: {
+        Args: { barcode: string; distributor_id: string }
+        Returns: {
+          allow_case: boolean
+          allow_piece: boolean
+          id: string
+          matched_barcode: string
+          name: string
+          override_case_price: number
+          override_unit_price: number
+          sell_per_case: number
+          sell_per_unit: number
+          sku: string
+          units_per_case: number
+        }[]
+      }
+      product_is_visible_to_vendor: {
+        Args: {
+          p_distributor_id: string
+          p_is_visible_to_vendors: boolean
+          p_product_id: string
+          p_vendor_id: string
+          p_vendor_visibility_scope: string
+        }
+        Returns: boolean
+      }
       get_vendor_catalog_prices: {
         Args: { p_distributor_id: string }
         Returns: {

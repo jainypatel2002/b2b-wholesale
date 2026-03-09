@@ -324,3 +324,29 @@ test('override rows from a different distributor are ignored', async () => {
   assert.equal(supabase.state.order_items.length, 1)
   assert.equal(Number(supabase.state.order_items[0].unit_price), 66)
 })
+
+test('allowCatalogRecovery flags items filtered out of the accessible catalog', async () => {
+  const supabase = new MockSupabase(createBaseState([]))
+
+  const result = await createOrder({
+    supabase,
+    distributorId: 'dist-a',
+    vendorId: 'vendor-1',
+    items: [
+      { product_id: 'product-1', qty: 1, order_unit: 'case' },
+      { product_id: 'missing-product', qty: 1, order_unit: 'piece' }
+    ],
+    createdByUserId: 'vendor-1',
+    createdByRole: 'vendor',
+    createdSource: 'test-suite',
+    allowCatalogRecovery: true
+  })
+
+  assert.deepEqual(result, {
+    ok: false,
+    status: 400,
+    error: 'Some items are no longer available and were removed from your cart.',
+    invalidItems: ['missing-product'],
+    shouldRetry: true
+  })
+})

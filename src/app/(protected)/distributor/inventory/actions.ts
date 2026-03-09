@@ -6,6 +6,11 @@ import { revalidatePath } from 'next/cache'
 import { isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
 import { getBarcodeLookupCandidates, normalizeBarcode } from '@/lib/utils/barcode'
 import { safeUnitsPerCase, toCaseFromUnit, toUnitFromCase } from '@/lib/pricing/display'
+import {
+    normalizeVendorVisibilityScope,
+    normalizeVisibleVendorIds,
+    type VendorVisibilityScope,
+} from '@/lib/products/visibility'
 
 export type InventoryActionState = {
     success?: boolean
@@ -38,6 +43,9 @@ export type InventoryActionState = {
         stock_mode: 'pieces' | 'cases'
         stock_locked: boolean
         locked_stock_qty: number | null
+        is_visible_to_vendors: boolean
+        vendor_visibility_scope: VendorVisibilityScope
+        visible_vendor_ids: string[]
         categories?: { name: string } | null
         category_nodes?: { name: string } | null
         barcodes: Array<{
@@ -61,6 +69,13 @@ type InventorySupabaseClient = Awaited<ReturnType<typeof createClient>>
 type SubmittedBarcodeEntry = {
     barcode: string
     isPrimary: boolean
+}
+
+type SubmittedProductVisibility = {
+    isVisibleToVendors: boolean
+    vendorVisibilityScope: VendorVisibilityScope
+    visibleVendorIds: string[]
+    error?: string
 }
 
 function resolveUnitCasePair(input: {
@@ -103,6 +118,19 @@ function isBarcodeConstraintError(error: any): boolean {
     const code = String(error?.code || '')
     const message = String(error?.message || '').toLowerCase()
     return code === '23505' && message.includes('barcode')
+}
+
+function isMissingProductVisibilitySchemaError(error: any): boolean {
+    const code = String(error?.code || '')
+    const message = String(error?.message || '').toLowerCase()
+    return (
+        code === '42703'
+        || code === '42p01'
+        || code === 'pgrst205'
+        || message.includes('is_visible_to_vendors')
+        || message.includes('vendor_visibility_scope')
+        || message.includes('product_vendor_visibility')
+    )
 }
 
 function parseBarcodesFromForm(formData: FormData): {
@@ -174,6 +202,41 @@ function parseBarcodesFromForm(formData: FormData): {
             isPrimary: entry.barcode === primaryBarcode
         })),
         primaryBarcode
+    }
+}
+
+function parseProductVisibilityFromForm(formData: FormData): SubmittedProductVisibility {
+    const isVisibleToVendors =
+        formData.get('is_visible_to_vendors') === 'true'
+        || formData.get('is_visible_to_vendors') === 'on'
+
+    const vendorVisibilityScope = normalizeVendorVisibilityScope(
+        String(formData.get('vendor_visibility_scope') || 'all')
+    )
+
+    const rawJson = String(formData.get('visible_vendor_ids_json') || '').trim()
+    if (!rawJson) {
+        return {
+            isVisibleToVendors,
+            vendorVisibilityScope,
+            visibleVendorIds: []
+        }
+    }
+
+    try {
+        const parsed = JSON.parse(rawJson)
+        return {
+            isVisibleToVendors,
+            vendorVisibilityScope,
+            visibleVendorIds: normalizeVisibleVendorIds(parsed)
+        }
+    } catch {
+        return {
+            isVisibleToVendors,
+            vendorVisibilityScope,
+            visibleVendorIds: [],
+            error: 'Invalid vendor visibility payload. Please retry.'
+        }
     }
 }
 
@@ -576,6 +639,110 @@ async function syncProductBarcodeMappings(params: {
     }
 }
 
+async function validateVisibleVendorIds(params: {
+    supabase: InventorySupabaseClient
+    distributorId: string
+    vendorIds: string[]
+}): Promise<InventoryActionState | null> {
+    const { supabase, distributorId, vendorIds } = params
+
+    if (vendorIds.length === 0) {
+        return null
+    }
+
+    const { data, error } = await supabase
+        .from('distributor_vendors')
+        .select('vendor_id')
+        .eq('distributor_id', distributorId)
+        .in('vendor_id', vendorIds)
+
+    if (error) {
+        return {
+            error: error.message || 'Unable to validate vendor visibility selections.'
+        }
+    }
+
+    const linkedVendorIds = new Set(
+        (data ?? []).map((row: any) => String(row.vendor_id || '')).filter(Boolean)
+    )
+
+    const invalidVendorId = vendorIds.find((vendorId) => !linkedVendorIds.has(vendorId))
+    if (invalidVendorId) {
+        return {
+            error: 'Only vendors linked to this distributor can be selected for product visibility.'
+        }
+    }
+
+    return null
+}
+
+async function syncProductVendorVisibility(params: {
+    supabase: InventorySupabaseClient
+    distributorId: string
+    productId: string
+    vendorIds: string[]
+}) {
+    const { supabase, distributorId, productId, vendorIds } = params
+
+    const deleteResult = await supabase
+        .from('product_vendor_visibility')
+        .delete()
+        .eq('distributor_id', distributorId)
+        .eq('product_id', productId)
+
+    if (deleteResult.error) {
+        if (isMissingProductVisibilitySchemaError(deleteResult.error)) {
+            throw new Error('Apply migration 20260323000002_product_visibility_control.sql before editing product visibility.')
+        }
+        throw new Error(deleteResult.error.message || 'Failed to clear vendor visibility selections.')
+    }
+
+    if (vendorIds.length === 0) {
+        return
+    }
+
+    const upsertResult = await supabase
+        .from('product_vendor_visibility')
+        .upsert(
+            vendorIds.map((vendorId) => ({
+                distributor_id: distributorId,
+                vendor_id: vendorId,
+                product_id: productId,
+            })),
+            { onConflict: 'distributor_id,vendor_id,product_id' }
+        )
+
+    if (upsertResult.error) {
+        if (isMissingProductVisibilitySchemaError(upsertResult.error)) {
+            throw new Error('Apply migration 20260323000002_product_visibility_control.sql before editing product visibility.')
+        }
+        throw new Error(upsertResult.error.message || 'Failed to save vendor visibility selections.')
+    }
+}
+
+async function fetchVisibleVendorIdsForProduct(params: {
+    supabase: InventorySupabaseClient
+    distributorId: string
+    productId: string
+}): Promise<string[]> {
+    const { supabase, distributorId, productId } = params
+
+    const { data, error } = await supabase
+        .from('product_vendor_visibility')
+        .select('vendor_id')
+        .eq('distributor_id', distributorId)
+        .eq('product_id', productId)
+
+    if (error) {
+        if (isMissingProductVisibilitySchemaError(error)) {
+            return []
+        }
+        throw new Error(error.message || 'Failed to load vendor visibility selections.')
+    }
+
+    return normalizeVisibleVendorIds((data ?? []).map((row: any) => row.vendor_id))
+}
+
 async function validateCategoryNodeSelection({
     supabase,
     distributorId,
@@ -646,6 +813,28 @@ async function fetchInventoryProductForClient(params: {
         }
 
         const row: any = result.data
+        let isVisibleToVendors = true
+        let vendorVisibilityScope: VendorVisibilityScope = 'all'
+
+        const visibilityResult = await supabase
+            .from('products')
+            .select('is_visible_to_vendors,vendor_visibility_scope')
+            .eq('id', productId)
+            .eq('distributor_id', distributorId)
+            .limit(1)
+            .maybeSingle()
+
+        if (!visibilityResult.error && visibilityResult.data) {
+            isVisibleToVendors = visibilityResult.data.is_visible_to_vendors !== false
+            vendorVisibilityScope = normalizeVendorVisibilityScope(visibilityResult.data.vendor_visibility_scope)
+        }
+
+        const visibleVendorIds = await fetchVisibleVendorIdsForProduct({
+            supabase,
+            distributorId,
+            productId,
+        })
+
         const mappedBarcodes = (
             Array.isArray(row.product_barcodes) && row.product_barcodes.length > 0
                 ? row.product_barcodes
@@ -691,6 +880,9 @@ async function fetchInventoryProductForClient(params: {
             stock_mode: row.stock_mode === 'cases' ? 'cases' : 'pieces',
             stock_locked: row.stock_locked === true,
             locked_stock_qty: row.locked_stock_qty == null ? null : Number(row.locked_stock_qty),
+            is_visible_to_vendors: isVisibleToVendors,
+            vendor_visibility_scope: vendorVisibilityScope,
+            visible_vendor_ids: visibleVendorIds,
             categories: Array.isArray(row.categories) ? (row.categories[0] ?? null) : (row.categories ?? null),
             category_nodes: Array.isArray(row.category_nodes) ? (row.category_nodes[0] ?? null) : (row.category_nodes ?? null),
             barcodes: mappedBarcodes
@@ -704,6 +896,16 @@ export async function deleteProduct(productId: string) {
     const { distributorId } = await getDistributorContext()
     const supabase = await createClient()
 
+    const visibilityDelete = await supabase
+        .from('product_vendor_visibility')
+        .delete()
+        .eq('product_id', productId)
+        .eq('distributor_id', distributorId)
+
+    if (visibilityDelete.error && !isMissingProductVisibilitySchemaError(visibilityDelete.error)) {
+        throw visibilityDelete.error
+    }
+
     // Soft delete
     const { error } = await supabase
         .from('products')
@@ -713,6 +915,8 @@ export async function deleteProduct(productId: string) {
 
     if (error) throw error
     revalidatePath('/distributor/inventory')
+    revalidatePath('/vendor/catalog', 'layout')
+    revalidatePath('/vendor/cart', 'layout')
 }
 
 export async function createProductAction(
@@ -737,6 +941,7 @@ export async function createProductAction(
         const sku = String(formData.get('sku') || '').trim() || null
         const category_id = String(formData.get('category_id') || '').trim() || null
         const category_node_id = String(formData.get('category_node_id') || '').trim() || null
+        const visibilityInput = parseProductVisibilityFromForm(formData)
 
         const cost_price = parseRequiredNumber('cost_price')
         const sell_price = parseRequiredNumber('sell_price')
@@ -805,6 +1010,7 @@ export async function createProductAction(
 
         const parsedBarcodes = parseBarcodesFromForm(formData)
         if (parsedBarcodes.error) return { error: parsedBarcodes.error }
+        if (visibilityInput.error) return { error: visibilityInput.error }
 
         const supabase = await createClient()
         const categoryNodeValidation = await validateCategoryNodeSelection({
@@ -823,6 +1029,16 @@ export async function createProductAction(
 
         if (collision) {
             return { error: `Barcode already assigned to ${collision.productName}.` }
+        }
+
+        const visibleVendorValidation = await validateVisibleVendorIds({
+            supabase,
+            distributorId,
+            vendorIds: visibilityInput.visibleVendorIds
+        })
+
+        if (visibleVendorValidation) {
+            return visibleVendorValidation
         }
 
         const { data: inserted, error } = await supabase
@@ -849,6 +1065,8 @@ export async function createProductAction(
                 allow_piece,
                 units_per_case: allow_case ? units_per_case : null,
                 low_stock_threshold,
+                is_visible_to_vendors: visibilityInput.isVisibleToVendors,
+                vendor_visibility_scope: visibilityInput.vendorVisibilityScope,
 
                 // Canonical Field Sync
                 cost_per_unit: resolvedCostPair.unitPrice,
@@ -863,6 +1081,9 @@ export async function createProductAction(
             console.error('createProductAction Supabase Error:', error)
             if (isBarcodeConstraintError(error) || error.message?.includes('products_distributor_barcode_uniq')) {
                 return { error: 'This barcode is already assigned to another product in your inventory.' }
+            }
+            if (isMissingProductVisibilitySchemaError(error)) {
+                return { error: 'Database schema is updating. Apply migration 20260323000002_product_visibility_control.sql and reload the schema cache before editing product visibility.' }
             }
             if (error.message?.includes('schema cache') || error.message?.includes('Could not find')) {
                 return { error: 'Database schema is updating. Please apply the latest migration in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }
@@ -885,6 +1106,17 @@ export async function createProductAction(
             return { error: syncError?.message || 'Failed to save barcode aliases.' }
         }
 
+        try {
+            await syncProductVendorVisibility({
+                supabase,
+                distributorId,
+                productId: String(inserted.id),
+                vendorIds: visibilityInput.visibleVendorIds
+            })
+        } catch (visibilityError: any) {
+            return { error: visibilityError?.message || 'Failed to save product visibility.' }
+        }
+
         const product = await fetchInventoryProductForClient({
             supabase,
             distributorId,
@@ -892,6 +1124,8 @@ export async function createProductAction(
         })
 
         revalidatePath('/distributor/inventory')
+        revalidatePath('/vendor/catalog', 'layout')
+        revalidatePath('/vendor/cart', 'layout')
         return { success: true, error: null, product }
     } catch (e: any) {
         console.error('createProductAction Exception:', e)
@@ -915,6 +1149,8 @@ export async function updateProductAction(
 
         const parsedBarcodes = parseBarcodesFromForm(formData)
         if (parsedBarcodes.error) return { error: parsedBarcodes.error }
+        const visibilityInput = parseProductVisibilityFromForm(formData)
+        if (visibilityInput.error) return { error: visibilityInput.error }
 
         // Safe number parser: returns undefined for empty/missing values
         // This prevents overwriting existing DB values with 0
@@ -1011,6 +1247,13 @@ export async function updateProductAction(
         })
         if (categoryNodeValidation) return categoryNodeValidation
 
+        const visibleVendorValidation = await validateVisibleVendorIds({
+            supabase,
+            distributorId,
+            vendorIds: visibilityInput.visibleVendorIds
+        })
+        if (visibleVendorValidation) return visibleVendorValidation
+
         // Build update payload — only include cost/price fields when they have values
         // This prevents bulk pricing (which only updates sell_price) from zeroing cost
         const updatePayload: Record<string, any> = {
@@ -1031,6 +1274,8 @@ export async function updateProductAction(
             allow_piece,
             units_per_case: allow_case ? units_per_case : null,
             low_stock_threshold,
+            is_visible_to_vendors: visibilityInput.isVisibleToVendors,
+            vendor_visibility_scope: visibilityInput.vendorVisibilityScope,
 
             // Canonical Field Sync
             sell_per_unit: resolvedSellPair.unitPrice
@@ -1061,6 +1306,9 @@ export async function updateProductAction(
             if (isBarcodeConstraintError(error) || error.message?.includes('products_distributor_barcode_uniq')) {
                 return { error: 'This barcode is already assigned to another product in your inventory.' }
             }
+            if (isMissingProductVisibilitySchemaError(error)) {
+                return { error: 'Database schema is updating. Apply migration 20260323000002_product_visibility_control.sql and reload the schema cache before editing product visibility.' }
+            }
             if (error.message?.includes('schema cache') || error.message?.includes('Could not find')) {
                 return { error: 'Database schema is updating. Please apply the latest migration in Supabase SQL Editor and reload the schema cache (Settings → API → Reload), then try again.' }
             }
@@ -1082,6 +1330,17 @@ export async function updateProductAction(
             return { error: syncError?.message || 'Failed to save barcode aliases.' }
         }
 
+        try {
+            await syncProductVendorVisibility({
+                supabase,
+                distributorId,
+                productId: id,
+                vendorIds: visibilityInput.visibleVendorIds
+            })
+        } catch (visibilityError: any) {
+            return { error: visibilityError?.message || 'Failed to save product visibility.' }
+        }
+
         const product = await fetchInventoryProductForClient({
             supabase,
             distributorId,
@@ -1089,6 +1348,8 @@ export async function updateProductAction(
         })
 
         revalidatePath('/distributor/inventory')
+        revalidatePath('/vendor/catalog', 'layout')
+        revalidatePath('/vendor/cart', 'layout')
         return { success: true, error: null, product }
     } catch (e: any) {
         console.error('updateProductAction Exception:', e)

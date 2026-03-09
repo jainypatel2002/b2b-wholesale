@@ -15,6 +15,9 @@ export interface Product {
     barcode?: string | null
     barcodes?: ProductBarcode[]
     barcode_symbology?: string | null
+    is_visible_to_vendors?: boolean
+    vendor_visibility_scope?: 'all' | 'selected'
+    visible_vendor_ids?: string[]
     active: boolean
     created_at: string
     categories?: { name: string } | null

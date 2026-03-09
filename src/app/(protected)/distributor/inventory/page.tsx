@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { getDistributorContext } from '@/lib/data'
+import { getDistributorContext, getLinkedVendors } from '@/lib/data'
 import { InventoryClient } from './client'
+import { normalizeVendorVisibilityScope, normalizeVisibleVendorIds } from '@/lib/products/visibility'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,9 +12,10 @@ export default async function InventoryPage() {
 
   let schemaPending = false
 
-  const [{ data: categories }, { data: categoryNodes }] = await Promise.all([
+  const [{ data: categories }, { data: categoryNodes }, linkedVendors] = await Promise.all([
     supabase.from('categories').select('id,name').eq('distributor_id', distributorId).order('name', { ascending: true }),
     supabase.from('category_nodes').select('id,name,category_id').eq('distributor_id', distributorId).order('name', { ascending: true }),
+    getLinkedVendors(distributorId),
   ])
 
   // Try richer selects first; progressively fall back if schema cache is stale.
@@ -46,9 +48,50 @@ export default async function InventoryPage() {
     }
   }
 
+  const productIds = (products ?? []).map((row: any) => String(row.id || '')).filter(Boolean)
+  const visibilityByProductId = new Map<string, string[]>()
+  const visibilityStateByProductId = new Map<string, { isVisibleToVendors: boolean; vendorVisibilityScope: 'all' | 'selected' }>()
+  const linkedVendorIdSet = new Set(linkedVendors.map((vendor) => vendor.id))
+
+  if (productIds.length > 0) {
+    const [{ data: productVisibilityStates, error: productVisibilityError }, { data: productVendorVisibilityRows, error: productVendorVisibilityError }] = await Promise.all([
+      supabase
+        .from('products')
+        .select('id,is_visible_to_vendors,vendor_visibility_scope')
+        .eq('distributor_id', distributorId)
+        .in('id', productIds),
+      supabase
+        .from('product_vendor_visibility')
+        .select('product_id,vendor_id')
+        .eq('distributor_id', distributorId)
+        .in('product_id', productIds)
+    ])
+
+    if (!productVisibilityError) {
+      for (const row of productVisibilityStates ?? []) {
+        visibilityStateByProductId.set(String((row as any).id || ''), {
+          isVisibleToVendors: (row as any).is_visible_to_vendors !== false,
+          vendorVisibilityScope: normalizeVendorVisibilityScope((row as any).vendor_visibility_scope),
+        })
+      }
+    }
+
+    if (!productVendorVisibilityError) {
+      for (const row of productVendorVisibilityRows ?? []) {
+        const productId = String((row as any).product_id || '')
+        const vendorIds = visibilityByProductId.get(productId) ?? []
+        vendorIds.push(String((row as any).vendor_id || ''))
+        visibilityByProductId.set(productId, vendorIds)
+      }
+    }
+  }
+
   // Transform products to match InventoryClient interface
   const formattedProducts = (products ?? []).map((p: any) => ({
     ...p,
+    is_visible_to_vendors: visibilityStateByProductId.get(String(p.id))?.isVisibleToVendors ?? true,
+    vendor_visibility_scope: visibilityStateByProductId.get(String(p.id))?.vendorVisibilityScope ?? 'all',
+    visible_vendor_ids: normalizeVisibleVendorIds(visibilityByProductId.get(String(p.id)) ?? []).filter((vendorId) => linkedVendorIdSet.has(vendorId)),
     barcodes: (
       Array.isArray(p.product_barcodes) && p.product_barcodes.length > 0
         ? p.product_barcodes
@@ -89,6 +132,7 @@ export default async function InventoryPage() {
         categories={categories || []}
         categoryNodes={categoryNodes || []}
         distributorId={distributorId}
+        linkedVendors={linkedVendors}
       />
     </div>
   )

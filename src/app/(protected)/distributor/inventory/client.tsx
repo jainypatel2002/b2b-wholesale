@@ -19,6 +19,12 @@ import { addBarcodeToProduct, deleteProduct, createProductAction, updateProductA
 import { formatMoney, resolveCaseUnitPrices, safeUnitsPerCase, toCaseFromUnit, toUnitFromCase } from '@/lib/pricing/display'
 import { filterCategoryNodesForCategory, isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
 import { getBarcodeLookupCandidates, normalizeBarcode } from '@/lib/utils/barcode'
+import {
+    getProductVisibilitySummary,
+    normalizeVendorVisibilityScope,
+    normalizeVisibleVendorIds,
+    type VendorVisibilityScope,
+} from '@/lib/products/visibility'
 
 interface Category {
     id: string
@@ -29,6 +35,11 @@ interface CategoryNode {
     id: string
     name: string
     category_id: string
+}
+
+interface LinkedVendor {
+    id: string
+    name: string
 }
 
 interface Product {
@@ -64,6 +75,9 @@ interface Product {
     locked_stock_qty?: number | null
     barcode?: string | null
     barcodes?: ProductBarcode[]
+    is_visible_to_vendors?: boolean
+    vendor_visibility_scope?: VendorVisibilityScope
+    visible_vendor_ids?: string[]
 }
 
 interface ProductBarcode {
@@ -155,6 +169,9 @@ const INITIAL_FORM = Object.freeze({
     sellInput: '',
     stockMode: 'pieces' as 'pieces' | 'cases',
     stockInput: '0',
+    isVisibleToVendors: true,
+    vendorVisibilityScope: 'all' as VendorVisibilityScope,
+    visibleVendorIds: [] as string[],
 })
 
 interface InventoryClientProps {
@@ -162,9 +179,10 @@ interface InventoryClientProps {
     categories: Category[]
     categoryNodes: CategoryNode[]
     distributorId: string
+    linkedVendors: LinkedVendor[]
 }
 
-export function InventoryClient({ initialProducts, categories, categoryNodes, distributorId }: InventoryClientProps) {
+export function InventoryClient({ initialProducts, categories, categoryNodes, distributorId, linkedVendors }: InventoryClientProps) {
     const [products, setProducts] = useState<Product[]>(initialProducts)
     const [searchTerm, setSearchTerm] = useState('')
     const [showLowStock, setShowLowStock] = useState(false)
@@ -595,6 +613,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                     products={products}
                     onEdit={handleEdit}
                     onDelete={handleDeleteClick}
+                    linkedVendorCount={linkedVendors.length}
                 />
             ))}
 
@@ -604,6 +623,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                     products={groupedData.uncat}
                     onEdit={handleEdit}
                     onDelete={handleDeleteClick}
+                    linkedVendorCount={linkedVendors.length}
                 />
             )}
 
@@ -616,7 +636,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             {/* Edit Modal */}
             <dialog ref={modalRef} className="modal bg-transparent">
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="w-full max-w-lg overflow-y-auto rounded-2xl border border-white/70 bg-white/90 shadow-2xl backdrop-blur-xl max-h-[90vh]">
+                    <div className="w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/70 bg-white/90 shadow-2xl backdrop-blur-xl max-h-[90vh]">
                         <div className="flex items-center justify-between border-b border-slate-200/70 p-4">
                             <h3 className="font-semibold text-lg">Edit Product</h3>
                             <button onClick={() => modalRef.current?.close()} className="focus-ring-brand rounded-md p-1 text-slate-500 hover:text-slate-700">✕</button>
@@ -628,6 +648,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                                 categories={categories}
                                 categoryNodes={categoryNodes}
                                 distributorId={distributorId}
+                                linkedVendors={linkedVendors}
                                 type="edit"
                                 onCancel={() => {
                                     modalRef.current?.close()
@@ -646,7 +667,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             {/* Add Product Modal */}
             <dialog ref={addModalRef} className="modal bg-transparent">
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="w-full max-w-lg overflow-y-auto rounded-2xl border border-white/70 bg-white/90 shadow-2xl backdrop-blur-xl max-h-[90vh]">
+                    <div className="w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/70 bg-white/90 shadow-2xl backdrop-blur-xl max-h-[90vh]">
                         <div className="flex items-center justify-between border-b border-slate-200/70 p-4">
                             <h3 className="font-semibold text-lg">Add New Product</h3>
                             <button onClick={() => addModalRef.current?.close()} className="focus-ring-brand rounded-md p-1 text-slate-500 hover:text-slate-700">✕</button>
@@ -656,6 +677,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                             categories={categories}
                             categoryNodes={categoryNodes}
                             distributorId={distributorId}
+                            linkedVendors={linkedVendors}
                             type="add"
                             onCancel={() => { addModalRef.current?.close(); setPendingScannedBarcode(null) }}
                             pendingScannedBarcode={pendingScannedBarcode}
@@ -722,7 +744,19 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
     )
 }
 
-function ProductGroup({ title, products, onEdit, onDelete }: { title: string, products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
+function ProductGroup({
+    title,
+    products,
+    onEdit,
+    onDelete,
+    linkedVendorCount,
+}: {
+    title: string
+    products: Product[]
+    onEdit: (p: Product) => void
+    onDelete: (p: Product) => void
+    linkedVendorCount: number
+}) {
     const [isOpen, setIsOpen] = useState(true)
 
     return (
@@ -741,11 +775,11 @@ function ProductGroup({ title, products, onEdit, onDelete }: { title: string, pr
                 <CardContent className="p-0">
                     {/* Desktop Table */}
                     <div className="hidden md:block">
-                        <ProductList products={products} onEdit={onEdit} onDelete={onDelete} />
+                        <ProductList products={products} onEdit={onEdit} onDelete={onDelete} linkedVendorCount={linkedVendorCount} />
                     </div>
                     {/* Mobile Cards */}
                     <div className="md:hidden">
-                        <ProductMobileList products={products} onEdit={onEdit} onDelete={onDelete} />
+                        <ProductMobileList products={products} onEdit={onEdit} onDelete={onDelete} linkedVendorCount={linkedVendorCount} />
                     </div>
                 </CardContent>
             )}
@@ -774,7 +808,29 @@ function getPriceDisplay(product: Product, kind: 'cost' | 'sell') {
     }
 }
 
-function ProductList({ products, onEdit, onDelete }: { products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
+function getVisibilityBadgeClasses(tone: 'default' | 'warning' | 'danger') {
+    if (tone === 'danger') {
+        return 'bg-red-50 text-red-700 border-red-200'
+    }
+
+    if (tone === 'warning') {
+        return 'bg-amber-50 text-amber-700 border-amber-200'
+    }
+
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+}
+
+function ProductList({
+    products,
+    onEdit,
+    onDelete,
+    linkedVendorCount
+}: {
+    products: Product[]
+    onEdit: (p: Product) => void
+    onDelete: (p: Product) => void
+    linkedVendorCount: number
+}) {
     if (!products.length) return <p className="py-4 text-center text-sm italic text-slate-500">No products in this category.</p>
 
     return (
@@ -796,6 +852,13 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
                     const costDisplay = getPriceDisplay(p, 'cost')
                     const sellDisplay = getPriceDisplay(p, 'sell')
                     const primaryBarcode = p.barcodes?.find((entry) => entry.is_primary)?.barcode || p.barcode
+                    const visibleVendorIds = normalizeVisibleVendorIds(p.visible_vendor_ids ?? [])
+                    const visibilitySummary = getProductVisibilitySummary({
+                        isVisibleToVendors: p.is_visible_to_vendors !== false,
+                        vendorVisibilityScope: normalizeVendorVisibilityScope(p.vendor_visibility_scope),
+                        selectedVendorCount: visibleVendorIds.length,
+                        linkedVendorCount
+                    })
                     return (
                         <TableRow key={p.id}>
                             <TableCell className="font-medium">
@@ -806,6 +869,9 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
                                     {(p.barcodes?.length ?? 0) > 1 && (
                                         <span className="text-[10px] text-slate-400">{p.barcodes?.length} aliases</span>
                                     )}
+                                    <Badge variant="outline" className={`mt-1 w-fit text-[10px] ${getVisibilityBadgeClasses(visibilitySummary.tone)}`}>
+                                        {visibilitySummary.label}
+                                    </Badge>
                                     {isLow && <Badge variant="destructive" className="w-fit mt-1 text-[10px] h-5 px-1">Low Stock</Badge>}
                                 </div>
                             </TableCell>
@@ -882,7 +948,17 @@ function ProductList({ products, onEdit, onDelete }: { products: Product[], onEd
     )
 }
 
-function ProductMobileList({ products, onEdit, onDelete }: { products: Product[], onEdit: (p: Product) => void, onDelete: (p: Product) => void }) {
+function ProductMobileList({
+    products,
+    onEdit,
+    onDelete,
+    linkedVendorCount
+}: {
+    products: Product[]
+    onEdit: (p: Product) => void
+    onDelete: (p: Product) => void
+    linkedVendorCount: number
+}) {
     if (!products.length) return <p className="py-4 text-center text-sm italic text-slate-500">No products in this category.</p>
 
     return (
@@ -892,6 +968,13 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
                 const costDisplay = getPriceDisplay(p, 'cost')
                 const sellDisplay = getPriceDisplay(p, 'sell')
                 const primaryBarcode = p.barcodes?.find((entry) => entry.is_primary)?.barcode || p.barcode
+                const visibleVendorIds = normalizeVisibleVendorIds(p.visible_vendor_ids ?? [])
+                const visibilitySummary = getProductVisibilitySummary({
+                    isVisibleToVendors: p.is_visible_to_vendors !== false,
+                    vendorVisibilityScope: normalizeVendorVisibilityScope(p.vendor_visibility_scope),
+                    selectedVendorCount: visibleVendorIds.length,
+                    linkedVendorCount
+                })
                 return (
                     <div key={p.id} className="flex flex-col gap-2 p-4">
                         <div className="flex justify-between items-start">
@@ -899,6 +982,11 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
                                 <h4 className="font-medium text-slate-900">{p.name}</h4>
                                 {p.category_nodes && <span className="text-xs text-slate-500 mr-2">{p.category_nodes.name}</span>}
                                 {isLow && <Badge variant="destructive" className="text-[10px] h-5 px-1">Low Stock</Badge>}
+                                <div className="mt-1">
+                                    <Badge variant="outline" className={`text-[10px] ${getVisibilityBadgeClasses(visibilitySummary.tone)}`}>
+                                        {visibilitySummary.label}
+                                    </Badge>
+                                </div>
                             </div>
                             <div className="flex rounded-lg bg-slate-100/70">
                                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => onEdit(p)}>
@@ -958,11 +1046,12 @@ function ProductMobileList({ products, onEdit, onDelete }: { products: Product[]
 }
 
 // ProductForm Component using useActionState
-function ProductForm({ defaultValues, categories, categoryNodes, distributorId, type, onCancel, pendingScannedBarcode, onSuccess }: {
+function ProductForm({ defaultValues, categories, categoryNodes, distributorId, linkedVendors, type, onCancel, pendingScannedBarcode, onSuccess }: {
     defaultValues?: Product,
     categories: Category[],
     categoryNodes: CategoryNode[],
     distributorId: string,
+    linkedVendors: LinkedVendor[],
     type: 'add' | 'edit',
     onCancel: () => void,
     pendingScannedBarcode?: string | null,
@@ -985,6 +1074,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
     // Use fully controlled inputs with string state to prevent jumping/incorrect resets
     const router = useRouter()
     const nameInputRef = useRef<HTMLInputElement>(null)
+    const linkedVendorIdSet = useMemo(() => new Set(linkedVendors.map((vendor) => vendor.id)), [linkedVendors])
     const [name, setName] = useState(defaultValues?.name ?? INITIAL_FORM.name)
     const [sku, setSku] = useState(defaultValues?.sku ?? INITIAL_FORM.sku)
     const [barcodeDrafts, setBarcodeDrafts] = useState<BarcodeDraft[]>(
@@ -1020,6 +1110,16 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
 
     const [allowCase, setAllowCase] = useState(defaultValues?.allow_case ?? INITIAL_FORM.allowCase)
     const [allowPiece, setAllowPiece] = useState(defaultValues?.allow_piece ?? INITIAL_FORM.allowPiece)
+    const [isVisibleToVendors, setIsVisibleToVendors] = useState(
+        defaultValues?.is_visible_to_vendors ?? INITIAL_FORM.isVisibleToVendors
+    )
+    const [vendorVisibilityScope, setVendorVisibilityScope] = useState<VendorVisibilityScope>(
+        normalizeVendorVisibilityScope(defaultValues?.vendor_visibility_scope ?? INITIAL_FORM.vendorVisibilityScope)
+    )
+    const [selectedVisibleVendorIds, setSelectedVisibleVendorIds] = useState<string[]>(
+        normalizeVisibleVendorIds(defaultValues?.visible_vendor_ids ?? INITIAL_FORM.visibleVendorIds)
+            .filter((vendorId) => linkedVendorIdSet.has(vendorId))
+    )
 
     // Lock Stock Fields
     const [stockLocked, setStockLocked] = useState(defaultValues?.stock_locked ?? INITIAL_FORM.stockLocked)
@@ -1124,6 +1224,10 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
             lowStockThreshold: defaultValues?.low_stock_threshold != null ? String(defaultValues.low_stock_threshold) : INITIAL_FORM.lowStockThreshold,
             allowCase: defaultValues?.allow_case ?? INITIAL_FORM.allowCase,
             allowPiece: defaultValues?.allow_piece ?? INITIAL_FORM.allowPiece,
+            isVisibleToVendors: defaultValues?.is_visible_to_vendors ?? INITIAL_FORM.isVisibleToVendors,
+            vendorVisibilityScope: normalizeVendorVisibilityScope(defaultValues?.vendor_visibility_scope ?? INITIAL_FORM.vendorVisibilityScope),
+            visibleVendorIds: normalizeVisibleVendorIds(defaultValues?.visible_vendor_ids ?? INITIAL_FORM.visibleVendorIds)
+                .filter((vendorId) => linkedVendorIdSet.has(vendorId)),
             stockLocked: defaultValues?.stock_locked ?? INITIAL_FORM.stockLocked,
             lockedStockQty: defaultValues?.locked_stock_qty != null ? String(defaultValues.locked_stock_qty) : INITIAL_FORM.lockedStockQty,
             unitsPerCaseInput: defaultValues?.units_per_case != null ? String(defaultValues.units_per_case) : INITIAL_FORM.unitsPerCaseInput,
@@ -1152,6 +1256,7 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
         initialPriceMode,
         initialSellVal,
         initialStockInput,
+        linkedVendorIdSet,
     ])
 
     const addBarcodeDraft = useCallback((rawBarcode: string, makePrimary = false) => {
@@ -1647,6 +1752,23 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
         setSubcategoryWarning(null)
     }
 
+    const toggleVisibleVendor = (vendorId: string) => {
+        setSelectedVisibleVendorIds((prev) => {
+            if (prev.includes(vendorId)) {
+                return prev.filter((id) => id !== vendorId)
+            }
+
+            return [...prev, vendorId]
+        })
+    }
+
+    const visibilitySummary = getProductVisibilitySummary({
+        isVisibleToVendors,
+        vendorVisibilityScope,
+        selectedVendorCount: selectedVisibleVendorIds.length,
+        linkedVendorCount: linkedVendors.length
+    })
+
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         setClientFormError(null)
 
@@ -1711,6 +1833,9 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
         setLowStockThreshold(initialFormState.lowStockThreshold)
         setAllowCase(initialFormState.allowCase)
         setAllowPiece(initialFormState.allowPiece)
+        setIsVisibleToVendors(initialFormState.isVisibleToVendors)
+        setVendorVisibilityScope(initialFormState.vendorVisibilityScope)
+        setSelectedVisibleVendorIds(initialFormState.visibleVendorIds)
         setStockLocked(initialFormState.stockLocked)
         setLockedStockQty(initialFormState.lockedStockQty)
         setUnitsPerCaseInput(initialFormState.unitsPerCaseInput)
@@ -1777,6 +1902,9 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
             <input type="hidden" name="price_case" value={sellPerCase ?? ''} />
             <input type="hidden" name="barcode" value={primaryBarcode ?? ''} />
             <input type="hidden" name="barcodes_json" value={JSON.stringify(normalizedBarcodeEntries)} />
+            <input type="hidden" name="is_visible_to_vendors" value={isVisibleToVendors ? 'true' : 'false'} />
+            <input type="hidden" name="vendor_visibility_scope" value={vendorVisibilityScope} />
+            <input type="hidden" name="visible_vendor_ids_json" value={JSON.stringify(selectedVisibleVendorIds)} />
 
 
             <div className="grid gap-2">
@@ -1937,6 +2065,95 @@ function ProductForm({ defaultValues, categories, categoryNodes, distributorId, 
                 )}
                 {subcategoryLoadError && (
                     <p className="text-xs text-red-600">{subcategoryLoadError}</p>
+                )}
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <p className="text-sm font-medium text-slate-700">Vendor Catalog Visibility</p>
+                        <p className="text-xs text-slate-500">
+                            Hide this product from every vendor, publish it to all linked vendors, or limit it to selected vendors only.
+                        </p>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                        <input
+                            type="checkbox"
+                            checked={isVisibleToVendors}
+                            onChange={(e) => setIsVisibleToVendors(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                        />
+                        Visible to vendors
+                    </label>
+                </div>
+
+                <div className="rounded-lg border border-white/80 bg-white/80 px-3 py-2">
+                    <Badge variant="outline" className={getVisibilityBadgeClasses(visibilitySummary.tone)}>
+                        {visibilitySummary.label}
+                    </Badge>
+                </div>
+
+                <div className="grid gap-2">
+                    <label className="text-sm font-medium text-slate-700">Visibility Scope</label>
+                    <select
+                        value={vendorVisibilityScope}
+                        onChange={(e) => setVendorVisibilityScope(normalizeVendorVisibilityScope(e.target.value))}
+                        disabled={!isVisibleToVendors}
+                        className="form-select disabled:bg-slate-100/80"
+                    >
+                        <option value="all">All linked vendors</option>
+                        <option value="selected">Selected vendors only</option>
+                    </select>
+                    {!isVisibleToVendors && (
+                        <p className="text-xs text-slate-500">Global visibility is off, so vendors cannot see this product.</p>
+                    )}
+                </div>
+
+                {vendorVisibilityScope === 'selected' && (
+                    <div className="grid gap-2">
+                        <div className="flex items-center justify-between gap-2">
+                            <label className="text-sm font-medium text-slate-700">Allowed Vendors</label>
+                            <span className="text-xs text-slate-500">
+                                {selectedVisibleVendorIds.length} selected
+                            </span>
+                        </div>
+
+                        {linkedVendors.length === 0 ? (
+                            <p className="rounded-lg border border-dashed border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-500">
+                                No vendors are linked to this distributor yet.
+                            </p>
+                        ) : (
+                            <div className="max-h-44 space-y-2 overflow-y-auto rounded-lg border border-slate-200 bg-white/80 p-3">
+                                {linkedVendors.map((vendor) => {
+                                    const checked = selectedVisibleVendorIds.includes(vendor.id)
+                                    return (
+                                        <label
+                                            key={vendor.id}
+                                            className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                                                checked
+                                                    ? 'border-primary/30 bg-primary/5'
+                                                    : 'border-slate-200 bg-white'
+                                            }`}
+                                        >
+                                            <span className="min-w-0 truncate text-slate-700">{vendor.name}</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleVisibleVendor(vendor.id)}
+                                                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                            />
+                                        </label>
+                                    )
+                                })}
+                            </div>
+                        )}
+
+                        {isVisibleToVendors && selectedVisibleVendorIds.length === 0 && (
+                            <p className="text-xs text-amber-700">
+                                Selected scope stays hidden until at least one linked vendor is chosen.
+                            </p>
+                        )}
+                    </div>
                 )}
             </div>
 
