@@ -2,7 +2,6 @@
 
 import { motion } from 'framer-motion'
 
-import { ThreeDTitle } from '@/components/auth/ThreeDTitle'
 import { usePrefersReducedMotion } from '@/components/auth/usePrefersReducedMotion'
 import { cn } from '@/lib/utils'
 
@@ -39,26 +38,6 @@ export function AuthBackground() {
         )}
       />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-slate-950/25 to-transparent" />
-
-      <div className="relative z-10 mx-auto flex h-full w-full max-w-6xl items-start px-5 pb-28 pt-8 sm:px-8 sm:pt-10 lg:items-center lg:px-10 lg:pb-10 lg:pt-10">
-        <div className="max-w-[28rem]">
-          <p className="inline-flex rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100/95">
-            Your Platform
-          </p>
-          <ThreeDTitle className="mt-4 max-w-[14ch] text-[clamp(1.95rem,8vw,4.2rem)]" />
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-slate-200/90 sm:text-base">
-            Connect distributors and vendors through one reliable workflow for orders, inventory, and fulfillment.
-          </p>
-          <div className="mt-5 grid gap-2.5 text-sm text-slate-200/90">
-            <p className="w-fit rounded-xl border border-white/15 bg-white/5 px-3 py-2">
-              Unified ordering visibility from quote to delivery.
-            </p>
-            <p className="w-fit rounded-xl border border-white/15 bg-white/5 px-3 py-2">
-              Role-aware onboarding for distributor and vendor teams.
-            </p>
-          </div>
-        </div>
-      </div>
     </motion.section>
   )
 }
