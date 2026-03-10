@@ -3,6 +3,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
 import { MobileBottomNav } from '@/components/layout/mobile-bottom-nav'
 import { MobileDashboardButton } from '@/components/layout/mobile-dashboard-button'
+import { LoginGuideGate } from '@/components/layout/login-guide-gate'
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireProfile()
@@ -32,6 +33,8 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         <MobileBottomNav role={role} />
         <MobileDashboardButton role={role} />
       </div>
+
+      <LoginGuideGate role={role} distributorCode={profile.distributor_code} />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { AuthCard } from '@/components/auth/AuthCard'
 import { AuthShell } from '@/components/auth/AuthShell'
+import { LOGIN_GUIDE_PENDING_STORAGE_KEY } from '@/lib/login-guide'
 
 export default function LoginPage() {
   const supabase = createClient()
@@ -22,6 +23,11 @@ export default function LoginPage() {
     if (error) {
       toast.error(error.message)
       return
+    }
+    try {
+      window.sessionStorage.setItem(LOGIN_GUIDE_PENDING_STORAGE_KEY, '1')
+    } catch {
+      // Ignore storage failures so sign-in can continue.
     }
     window.location.href = '/'
   }
