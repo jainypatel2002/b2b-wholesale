@@ -2017,6 +2017,15 @@ export type Database = {
         }
         Returns: Json
       }
+      bulk_update_product_visibility: {
+        Args: {
+          p_distributor_id: string
+          p_operation: string
+          p_product_ids: string[]
+          p_vendor_ids?: string[]
+        }
+        Returns: Json
+      }
       deduct_vendor_credit: {
         Args: {
           p_amount: number

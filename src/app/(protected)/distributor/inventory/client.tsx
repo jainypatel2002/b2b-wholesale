@@ -2,8 +2,9 @@
 
 import React, { useState, useMemo, useRef, useCallback, useEffect, useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Edit, Loader2, Package, Plus, Search, Trash2 } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Edit, Loader2, Minus, Package, Plus, Search, Trash2, Users, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -15,14 +16,23 @@ import { BarcodeScanModal } from '@/components/scanner/BarcodeScanModal'
 import { CameraBarcodeScannerModal } from '@/components/scanner/CameraBarcodeScannerModal'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { createClient } from '@/lib/supabase/client'
-import { addBarcodeToProduct, deleteProduct, createProductAction, updateProductAction } from './actions'
+import {
+    addBarcodeToProduct,
+    bulkUpdateProductVisibilityAction,
+    deleteProduct,
+    createProductAction,
+    updateProductAction
+} from './actions'
 import { formatMoney, resolveCaseUnitPrices, safeUnitsPerCase, toCaseFromUnit, toUnitFromCase } from '@/lib/pricing/display'
 import { filterCategoryNodesForCategory, isCategoryNodeInCategory } from '@/lib/inventory/category-node-utils'
 import { getBarcodeLookupCandidates, normalizeBarcode } from '@/lib/utils/barcode'
+import { cn } from '@/lib/utils'
 import {
+    getBulkProductVisibilitySuccessMessage,
     getProductVisibilitySummary,
     normalizeVendorVisibilityScope,
     normalizeVisibleVendorIds,
+    type BulkProductVisibilityOperation,
     type VendorVisibilityScope,
 } from '@/lib/products/visibility'
 
@@ -183,6 +193,7 @@ interface InventoryClientProps {
 }
 
 export function InventoryClient({ initialProducts, categories, categoryNodes, distributorId, linkedVendors }: InventoryClientProps) {
+    const router = useRouter()
     const [products, setProducts] = useState<Product[]>(initialProducts)
     const [searchTerm, setSearchTerm] = useState('')
     const [showLowStock, setShowLowStock] = useState(false)
@@ -194,6 +205,11 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
     const modalRef = useRef<HTMLDialogElement>(null)
     const addModalRef = useRef<HTMLDialogElement>(null)
     const deleteModalRef = useRef<HTMLDialogElement>(null)
+    const bulkVendorModalRef = useRef<HTMLDialogElement>(null)
+    const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
+    const [bulkSelectedVendorIds, setBulkSelectedVendorIds] = useState<string[]>([])
+    const [bulkVendorSearchTerm, setBulkVendorSearchTerm] = useState('')
+    const [bulkPendingOperation, setBulkPendingOperation] = useState<BulkProductVisibilityOperation | null>(null)
 
     // ── Barcode Scanner State ──
     const [scanMode, setScanMode] = useState(false)
@@ -215,6 +231,11 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
         setProducts(initialProducts)
     }, [initialProducts])
 
+    useEffect(() => {
+        const currentProductIds = new Set(products.map((product) => product.id))
+        setSelectedProductIds((prev) => prev.filter((productId) => currentProductIds.has(productId)))
+    }, [products])
+
     const upsertProduct = useCallback((nextProduct?: Product | null) => {
         if (!nextProduct?.id) return
         setProducts((prev) => {
@@ -227,6 +248,8 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             return next
         })
     }, [])
+
+    const selectedProductIdSet = useMemo(() => new Set(selectedProductIds), [selectedProductIds])
 
     // Filter products based on search term
     const filteredProducts = useMemo(() => {
@@ -269,6 +292,48 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
         return res
     }, [products, searchTerm, showLowStock, filterCategory])
 
+    const filteredProductIds = useMemo(() => filteredProducts.map((product) => product.id), [filteredProducts])
+    const filteredProductIdSet = useMemo(() => new Set(filteredProductIds), [filteredProductIds])
+    const selectedVisibleCount = useMemo(
+        () => filteredProductIds.filter((productId) => selectedProductIdSet.has(productId)).length,
+        [filteredProductIds, selectedProductIdSet]
+    )
+    const hiddenSelectedCount = selectedProductIds.length - selectedVisibleCount
+    const allFilteredSelected = filteredProductIds.length > 0 && selectedVisibleCount === filteredProductIds.length
+    const someFilteredSelected = selectedVisibleCount > 0 && !allFilteredSelected
+    const filteredLinkedVendors = useMemo(() => {
+        if (!bulkVendorSearchTerm.trim()) return linkedVendors
+        const search = bulkVendorSearchTerm.toLowerCase()
+        return linkedVendors.filter((vendor) => vendor.name.toLowerCase().includes(search))
+    }, [bulkVendorSearchTerm, linkedVendors])
+    const selectedBulkVendorIdSet = useMemo(() => new Set(bulkSelectedVendorIds), [bulkSelectedVendorIds])
+    const selectedBulkVendors = useMemo(
+        () => linkedVendors
+            .filter((vendor) => selectedBulkVendorIdSet.has(vendor.id)),
+        [linkedVendors, selectedBulkVendorIdSet]
+    )
+    const filteredVendorIds = useMemo(
+        () => filteredLinkedVendors.map((vendor) => vendor.id),
+        [filteredLinkedVendors]
+    )
+    const filteredVendorIdSet = useMemo(() => new Set(filteredVendorIds), [filteredVendorIds])
+    const selectedFilteredVendorCount = useMemo(
+        () => filteredVendorIds.filter((vendorId) => selectedBulkVendorIdSet.has(vendorId)).length,
+        [filteredVendorIds, selectedBulkVendorIdSet]
+    )
+    const allFilteredVendorsSelected = filteredVendorIds.length > 0 && selectedFilteredVendorCount === filteredVendorIds.length
+    const someFilteredVendorsSelected = selectedFilteredVendorCount > 0 && !allFilteredVendorsSelected
+    const selectionCountLabel = `${selectedProductIds.length} product${selectedProductIds.length === 1 ? '' : 's'} selected`
+    const currentViewSelectionLabel = filteredProducts.length > 0
+        ? `${selectedVisibleCount} of ${filteredProducts.length} in current view`
+        : 'No products in current view'
+    const isBulkActionPending = bulkPendingOperation !== null
+    const bulkPendingMessage = getBulkVisibilityPendingMessage(
+        bulkPendingOperation,
+        selectedProductIds.length,
+        bulkSelectedVendorIds.length
+    )
+
     // Group filtered products
     const groupedData = useMemo(() => {
         const groups = new Map<string, Product[]>()
@@ -290,6 +355,191 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
 
     // Helper to get category name
     const getCategoryName = (id: string) => categories.find(c => c.id === id)?.name || 'Unknown Category'
+
+    const toggleProductSelection = useCallback((productId: string) => {
+        setSelectedProductIds((prev) => (
+            prev.includes(productId)
+                ? prev.filter((id) => id !== productId)
+                : [...prev, productId]
+        ))
+    }, [])
+
+    const selectAllFilteredProducts = useCallback(() => {
+        if (filteredProductIds.length === 0) return
+
+        setSelectedProductIds((prev) => Array.from(new Set([...prev, ...filteredProductIds])))
+    }, [filteredProductIds])
+
+    const clearFilteredSelection = useCallback(() => {
+        setSelectedProductIds((prev) => prev.filter((productId) => !filteredProductIdSet.has(productId)))
+    }, [filteredProductIdSet])
+
+    const toggleAllFilteredProducts = useCallback(() => {
+        if (allFilteredSelected) {
+            clearFilteredSelection()
+            return
+        }
+
+        selectAllFilteredProducts()
+    }, [allFilteredSelected, clearFilteredSelection, selectAllFilteredProducts])
+
+    const toggleGroupSelection = useCallback((groupProductIds: string[]) => {
+        const groupSelectionSet = new Set(groupProductIds)
+        const allGroupSelected = groupProductIds.length > 0 && groupProductIds.every((productId) => selectedProductIdSet.has(productId))
+
+        setSelectedProductIds((prev) => {
+            if (allGroupSelected) {
+                return prev.filter((productId) => !groupSelectionSet.has(productId))
+            }
+
+            return Array.from(new Set([...prev, ...groupProductIds]))
+        })
+    }, [selectedProductIdSet])
+
+    const clearSelectedProducts = useCallback(() => {
+        setSelectedProductIds([])
+    }, [])
+
+    const closeBulkVendorModal = useCallback(() => {
+        if (bulkPendingOperation !== null) return
+        bulkVendorModalRef.current?.close()
+        setBulkVendorSearchTerm('')
+    }, [bulkPendingOperation])
+
+    const handleBulkVendorDialogCancel = useCallback((event: React.SyntheticEvent<HTMLDialogElement, Event>) => {
+        if (bulkPendingOperation !== null) {
+            event.preventDefault()
+            return
+        }
+        setBulkVendorSearchTerm('')
+    }, [bulkPendingOperation])
+
+    const handleBulkVendorDialogClose = useCallback(() => {
+        setBulkVendorSearchTerm('')
+    }, [])
+
+    const toggleBulkVendorSelection = useCallback((vendorId: string) => {
+        setBulkSelectedVendorIds((prev) => (
+            prev.includes(vendorId)
+                ? prev.filter((id) => id !== vendorId)
+                : [...prev, vendorId]
+        ))
+    }, [])
+
+    const selectAllFilteredVendors = useCallback(() => {
+        if (filteredVendorIds.length === 0) return
+
+        setBulkSelectedVendorIds((prev) => Array.from(new Set([...prev, ...filteredVendorIds])))
+    }, [filteredVendorIds])
+
+    const clearFilteredVendorSelection = useCallback(() => {
+        setBulkSelectedVendorIds((prev) => prev.filter((vendorId) => !filteredVendorIdSet.has(vendorId)))
+    }, [filteredVendorIdSet])
+
+    const toggleAllFilteredVendors = useCallback(() => {
+        if (allFilteredVendorsSelected) {
+            clearFilteredVendorSelection()
+            return
+        }
+
+        selectAllFilteredVendors()
+    }, [allFilteredVendorsSelected, clearFilteredVendorSelection, selectAllFilteredVendors])
+
+    const applyBulkVisibilityLocally = useCallback((operation: BulkProductVisibilityOperation, vendorIds: string[] = []) => {
+        const selectedSet = new Set(selectedProductIds)
+
+        setProducts((prev) => prev.map((product) => {
+            if (!selectedSet.has(product.id)) return product
+
+            if (operation === 'set_hidden') {
+                return {
+                    ...product,
+                    is_visible_to_vendors: false,
+                }
+            }
+
+            if (operation === 'set_visible') {
+                return {
+                    ...product,
+                    is_visible_to_vendors: true,
+                }
+            }
+
+            if (operation === 'set_scope_all') {
+                return {
+                    ...product,
+                    is_visible_to_vendors: true,
+                    vendor_visibility_scope: 'all',
+                }
+            }
+
+            return {
+                ...product,
+                is_visible_to_vendors: true,
+                vendor_visibility_scope: 'selected',
+                visible_vendor_ids: vendorIds,
+            }
+        }))
+    }, [selectedProductIds])
+
+    const executeBulkVisibility = useCallback(async (
+        operation: BulkProductVisibilityOperation,
+        vendorIds: string[] = []
+    ) => {
+        if (selectedProductIds.length === 0) {
+            toast.error('Select at least one product.')
+            return
+        }
+
+        setBulkPendingOperation(operation)
+
+        try {
+            const result = await bulkUpdateProductVisibilityAction({
+                productIds: selectedProductIds,
+                operation,
+                vendorIds,
+            })
+
+            if (!result.success) {
+                toast.error(result.error || 'Failed to update product visibility.')
+                return
+            }
+
+            applyBulkVisibilityLocally(operation, vendorIds)
+            toast.success(getBulkProductVisibilitySuccessMessage(operation, result.summary))
+            clearSelectedProducts()
+            closeBulkVendorModal()
+            setBulkSelectedVendorIds([])
+            router.refresh()
+        } catch (error) {
+            console.error('Bulk visibility update failed:', error)
+            toast.error('Failed to update product visibility.')
+        } finally {
+            setBulkPendingOperation(null)
+        }
+    }, [
+        applyBulkVisibilityLocally,
+        clearSelectedProducts,
+        closeBulkVendorModal,
+        router,
+        selectedProductIds,
+    ])
+
+    const openBulkVendorModal = useCallback(() => {
+        if (selectedProductIds.length === 0) {
+            toast.error('Select at least one product.')
+            return
+        }
+
+        if (linkedVendors.length === 0) {
+            toast.error('Link at least one vendor before using selected-vendor visibility.')
+            return
+        }
+
+        if (!bulkVendorModalRef.current?.open) {
+            bulkVendorModalRef.current?.showModal()
+        }
+    }, [linkedVendors.length, selectedProductIds.length])
 
     const handleEdit = (p: Product) => {
         setEditingProduct(p)
@@ -318,7 +568,7 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
             setDeletingProduct(null)
         } catch (error) {
             console.error(error)
-            alert('Failed to delete product')
+            toast.error('Failed to delete product')
         }
     }
 
@@ -605,6 +855,165 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                 </div>
             </div>
 
+            {filteredProducts.length > 0 && (
+                <div className="rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex items-start gap-3">
+                            <SelectionCheckbox
+                                checked={allFilteredSelected}
+                                indeterminate={someFilteredSelected}
+                                onChange={toggleAllFilteredProducts}
+                                ariaLabel="Select all products in the current view"
+                                className="-ml-1 mt-0.5"
+                                disabled={isBulkActionPending}
+                            />
+                            <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-semibold text-slate-900">Select all in current view</p>
+                                    <Badge variant="secondary">{filteredProducts.length} matching</Badge>
+                                    {selectedProductIds.length > 0 && (
+                                        <Badge variant="outline">{selectionCountLabel}</Badge>
+                                    )}
+                                </div>
+                                <p className="text-xs text-slate-500" role="status" aria-live="polite">
+                                    {allFilteredSelected
+                                        ? `All ${filteredProducts.length} products in the current view are selected.`
+                                        : `${currentViewSelectionLabel} selected.`}
+                                </p>
+                                {hiddenSelectedCount > 0 && (
+                                    <p className="text-xs text-sky-700">
+                                        {hiddenSelectedCount} selected product{hiddenSelectedCount === 1 ? '' : 's'} outside the current search or filters remain selected until you clear them.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="border-sky-200 bg-sky-50/70 text-sky-900">
+                                {currentViewSelectionLabel}
+                            </Badge>
+                            {selectedVisibleCount > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={clearFilteredSelection}
+                                    disabled={isBulkActionPending}
+                                    className="text-sm font-medium text-slate-700 underline-offset-4 hover:text-slate-900 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
+                                >
+                                    Clear current view
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {selectedProductIds.length > 0 && (
+                <div className="sticky top-3 z-20 rounded-2xl border border-sky-200 bg-sky-50/95 p-4 shadow-sm backdrop-blur">
+                    <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                            <div className="space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant="outline" className="border-sky-600 bg-sky-600 text-white">
+                                        {selectionCountLabel}
+                                    </Badge>
+                                    <Badge variant="outline" className="border-sky-200 bg-white/80 text-sky-950">
+                                        {currentViewSelectionLabel}
+                                    </Badge>
+                                    {hiddenSelectedCount > 0 && (
+                                        <Badge variant="warning">
+                                            +{hiddenSelectedCount} outside current view
+                                        </Badge>
+                                    )}
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-sm font-semibold text-sky-950">
+                                        Bulk actions affect every selected product, not just the current view.
+                                    </p>
+                                    <p className="text-xs text-sky-900/80">
+                                        {hiddenSelectedCount > 0
+                                            ? `${hiddenSelectedCount} selected product${hiddenSelectedCount === 1 ? '' : 's'} outside the current search or filters will still be updated.`
+                                            : 'Only the selected rows will be updated.'}
+                                    </p>
+                                </div>
+                                {bulkPendingMessage && (
+                                    <p
+                                        className="inline-flex w-fit items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-xs font-medium text-sky-900"
+                                        role="status"
+                                        aria-live="polite"
+                                    >
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        {bulkPendingMessage}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                                {selectedVisibleCount > 0 && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={clearFilteredSelection}
+                                        disabled={bulkPendingOperation !== null}
+                                    >
+                                        Clear current view
+                                    </Button>
+                                )}
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={clearSelectedProducts}
+                                    disabled={bulkPendingOperation !== null}
+                                >
+                                    Clear all
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap">
+                            <Button
+                                size="sm"
+                                onClick={() => void executeBulkVisibility('set_visible')}
+                                disabled={bulkPendingOperation !== null}
+                                className="justify-center sm:justify-between xl:justify-center"
+                            >
+                                {bulkPendingOperation === 'set_visible' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Make visible
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void executeBulkVisibility('set_hidden')}
+                                disabled={bulkPendingOperation !== null}
+                                className="justify-center border-red-200 text-red-700 hover:border-red-300 hover:bg-red-50 hover:text-red-800 sm:justify-between xl:justify-center"
+                            >
+                                {bulkPendingOperation === 'set_hidden' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Hide from vendors
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void executeBulkVisibility('set_scope_all')}
+                                disabled={bulkPendingOperation !== null}
+                                className="justify-center sm:justify-between xl:justify-center"
+                            >
+                                {bulkPendingOperation === 'set_scope_all' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                All linked vendors
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={openBulkVendorModal}
+                                disabled={bulkPendingOperation !== null || linkedVendors.length === 0}
+                                className="justify-center sm:justify-between xl:justify-center"
+                            >
+                                <Users className="mr-2 h-4 w-4" />
+                                Selected vendors
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Product Lists by Category */}
             {Array.from(groupedData.groups.entries()).map(([catId, products]) => (
                 <ProductGroup
@@ -614,6 +1023,10 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                     onEdit={handleEdit}
                     onDelete={handleDeleteClick}
                     linkedVendorCount={linkedVendors.length}
+                    selectedProductIdSet={selectedProductIdSet}
+                    selectionDisabled={isBulkActionPending}
+                    onToggleProductSelection={toggleProductSelection}
+                    onToggleGroupSelection={toggleGroupSelection}
                 />
             ))}
 
@@ -624,6 +1037,10 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                     onEdit={handleEdit}
                     onDelete={handleDeleteClick}
                     linkedVendorCount={linkedVendors.length}
+                    selectedProductIdSet={selectedProductIdSet}
+                    selectionDisabled={isBulkActionPending}
+                    onToggleProductSelection={toggleProductSelection}
+                    onToggleGroupSelection={toggleGroupSelection}
                 />
             )}
 
@@ -711,6 +1128,229 @@ export function InventoryClient({ initialProducts, categories, categoryNodes, di
                 </div>
             </dialog>
 
+            <dialog
+                ref={bulkVendorModalRef}
+                className="modal bg-transparent"
+                onCancel={handleBulkVendorDialogCancel}
+                onClose={handleBulkVendorDialogClose}
+            >
+                <div
+                    className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+                    onClick={closeBulkVendorModal}
+                >
+                    <div
+                        className="absolute inset-x-0 bottom-0 flex max-h-[90vh] flex-col overflow-hidden rounded-t-[28px] border border-white/70 bg-white/95 shadow-2xl backdrop-blur-xl sm:left-1/2 sm:top-1/2 sm:max-h-[85vh] sm:w-full sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-slate-300 sm:hidden" />
+
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200/80 px-4 pb-4 pt-3 sm:p-5">
+                            <div className="space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-lg font-semibold text-slate-900">Selected vendors</h3>
+                                    <Badge variant="outline">{selectionCountLabel}</Badge>
+                                </div>
+                                <p className="text-sm text-slate-600">
+                                    Apply the same vendor list to every selected product.
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    <Badge variant="secondary">{linkedVendors.length} linked vendor{linkedVendors.length === 1 ? '' : 's'}</Badge>
+                                    <Badge variant="outline">
+                                        {bulkSelectedVendorIds.length} vendor{bulkSelectedVendorIds.length === 1 ? '' : 's'} selected
+                                    </Badge>
+                                    <Badge variant="outline">
+                                        {filteredLinkedVendors.length} shown
+                                    </Badge>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeBulkVendorModal}
+                                disabled={isBulkActionPending}
+                                className="focus-ring-brand rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                aria-label="Close vendor selection"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+                            {linkedVendors.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-4 text-sm text-slate-500">
+                                    Link at least one vendor before applying selected-vendor visibility.
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-700">Search linked vendors</label>
+                                        <div className="relative">
+                                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                            <Input
+                                                value={bulkVendorSearchTerm}
+                                                onChange={(event) => setBulkVendorSearchTerm(event.target.value)}
+                                                placeholder="Search linked vendors..."
+                                                className="pl-9"
+                                                disabled={isBulkActionPending}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                            <div className="flex items-start gap-3">
+                                                <SelectionCheckbox
+                                                    checked={allFilteredVendorsSelected}
+                                                    indeterminate={someFilteredVendorsSelected}
+                                                    onChange={toggleAllFilteredVendors}
+                                                    ariaLabel="Select all shown vendors"
+                                                    className="-ml-1 mt-0.5"
+                                                    disabled={isBulkActionPending}
+                                                />
+                                                <div className="space-y-1">
+                                                    <p className="text-sm font-semibold text-slate-900">Select all shown vendors</p>
+                                                    <p className="text-xs text-slate-500">
+                                                        {selectedFilteredVendorCount} of {filteredLinkedVendors.length} shown vendor{filteredLinkedVendors.length === 1 ? '' : 's'} selected.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                                                {selectedFilteredVendorCount > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={clearFilteredVendorSelection}
+                                                        disabled={isBulkActionPending}
+                                                        className="font-medium text-slate-700 underline-offset-4 hover:text-slate-900 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
+                                                    >
+                                                        Clear shown
+                                                    </button>
+                                                )}
+                                                {bulkSelectedVendorIds.length > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setBulkSelectedVendorIds([])}
+                                                        disabled={isBulkActionPending}
+                                                        className="font-medium text-slate-700 underline-offset-4 hover:text-slate-900 hover:underline disabled:cursor-not-allowed disabled:no-underline disabled:opacity-50"
+                                                    >
+                                                        Clear all vendors
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {selectedBulkVendors.length > 0 && (
+                                        <div className="space-y-2">
+                                            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected vendors</p>
+                                            <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
+                                                {selectedBulkVendors.map((vendor) => (
+                                                    <button
+                                                        key={vendor.id}
+                                                        type="button"
+                                                        onClick={() => toggleBulkVendorSelection(vendor.id)}
+                                                        disabled={isBulkActionPending}
+                                                        className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium text-sky-800 transition-colors hover:border-sky-300 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        <span>{vendor.name}</span>
+                                                        <X className="h-3 w-3" />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
+                                        <div className="max-h-[22rem] overflow-y-auto p-2">
+                                            {filteredLinkedVendors.length === 0 ? (
+                                                <div className="px-3 py-8 text-center text-sm text-slate-500">
+                                                    No linked vendors match your search.
+                                                    {bulkSelectedVendorIds.length > 0 && ' Selected vendors remain applied until you clear them.'}
+                                                </div>
+                                            ) : (
+                                                filteredLinkedVendors.map((vendor) => {
+                                                    const checked = selectedBulkVendorIdSet.has(vendor.id)
+                                                    return (
+                                                        <div
+                                                            key={vendor.id}
+                                                            role="button"
+                                                            tabIndex={isBulkActionPending ? -1 : 0}
+                                                            onClick={() => {
+                                                                if (isBulkActionPending) return
+                                                                toggleBulkVendorSelection(vendor.id)
+                                                            }}
+                                                            onKeyDown={(event) => {
+                                                                if (isBulkActionPending) return
+                                                                if (event.key === 'Enter' || event.key === ' ') {
+                                                                    event.preventDefault()
+                                                                    toggleBulkVendorSelection(vendor.id)
+                                                                }
+                                                            }}
+                                                            aria-disabled={isBulkActionPending}
+                                                            className={cn(
+                                                                "flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left transition-all duration-200",
+                                                                checked
+                                                                    ? "border-sky-200 bg-white shadow-sm ring-1 ring-sky-100"
+                                                                    : "border-transparent bg-transparent hover:border-slate-200 hover:bg-white",
+                                                                "focus-ring-brand cursor-pointer",
+                                                                isBulkActionPending && "cursor-not-allowed opacity-60"
+                                                            )}
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <p className="truncate text-sm font-medium text-slate-900">{vendor.name}</p>
+                                                                <p className="text-xs text-slate-500">
+                                                                    {checked ? 'Included in this vendor list' : 'Tap to include this vendor'}
+                                                                </p>
+                                                            </div>
+                                                            <SelectionCheckbox
+                                                                checked={checked}
+                                                                onChange={() => toggleBulkVendorSelection(vendor.id)}
+                                                                ariaLabel={`Select ${vendor.name}`}
+                                                                disabled={isBulkActionPending}
+                                                            />
+                                                        </div>
+                                                    )
+                                                })
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {bulkSelectedVendorIds.length === 0 && (
+                                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                                            Choose at least one linked vendor before applying selected-vendor visibility.
+                                        </p>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        <div className="flex flex-col gap-3 border-t border-slate-200/80 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                            <p className="text-xs text-slate-500">
+                                {bulkSelectedVendorIds.length > 0
+                                    ? `This updates ${selectionCountLabel} with the vendor list above.`
+                                    : `Select vendors to update ${selectionCountLabel}.`}
+                            </p>
+                            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={closeBulkVendorModal}
+                                    disabled={isBulkActionPending}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={() => void executeBulkVisibility('set_selected_vendors', bulkSelectedVendorIds)}
+                                    disabled={linkedVendors.length === 0 || bulkSelectedVendorIds.length === 0 || isBulkActionPending}
+                                >
+                                    {bulkPendingOperation === 'set_selected_vendors' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Apply to {selectedProductIds.length} product{selectedProductIds.length === 1 ? '' : 's'}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </dialog>
+
             {/* Auto-fallback prompt (tap to open camera — preserves iOS gesture) */}
             {showAutoFallbackPrompt && !cameraOpen && (
                 <button
@@ -750,14 +1390,23 @@ function ProductGroup({
     onEdit,
     onDelete,
     linkedVendorCount,
+    selectedProductIdSet,
+    selectionDisabled = false,
+    onToggleProductSelection,
+    onToggleGroupSelection,
 }: {
     title: string
     products: Product[]
     onEdit: (p: Product) => void
     onDelete: (p: Product) => void
     linkedVendorCount: number
+    selectedProductIdSet: Set<string>
+    selectionDisabled?: boolean
+    onToggleProductSelection: (productId: string) => void
+    onToggleGroupSelection: (productIds: string[]) => void
 }) {
     const [isOpen, setIsOpen] = useState(true)
+    const selectedCount = products.filter((product) => selectedProductIdSet.has(product.id)).length
 
     return (
         <Card className="border-white/75 bg-white/80">
@@ -767,6 +1416,11 @@ function ProductGroup({
                         <Package className="h-5 w-5 text-slate-500" />
                         <span>{title}</span>
                         <Badge variant="secondary" className="ml-1">{products.length}</Badge>
+                        {selectedCount > 0 && (
+                            <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-800">
+                                {selectedCount} selected
+                            </Badge>
+                        )}
                     </CardTitle>
                     {isOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
                 </div>
@@ -775,11 +1429,29 @@ function ProductGroup({
                 <CardContent className="p-0">
                     {/* Desktop Table */}
                     <div className="hidden md:block">
-                        <ProductList products={products} onEdit={onEdit} onDelete={onDelete} linkedVendorCount={linkedVendorCount} />
+                        <ProductList
+                            groupTitle={title}
+                            products={products}
+                            onEdit={onEdit}
+                            onDelete={onDelete}
+                            linkedVendorCount={linkedVendorCount}
+                            selectedProductIdSet={selectedProductIdSet}
+                            selectionDisabled={selectionDisabled}
+                            onToggleProductSelection={onToggleProductSelection}
+                            onToggleGroupSelection={onToggleGroupSelection}
+                        />
                     </div>
                     {/* Mobile Cards */}
                     <div className="md:hidden">
-                        <ProductMobileList products={products} onEdit={onEdit} onDelete={onDelete} linkedVendorCount={linkedVendorCount} />
+                        <ProductMobileList
+                            products={products}
+                            onEdit={onEdit}
+                            onDelete={onDelete}
+                            linkedVendorCount={linkedVendorCount}
+                            selectedProductIdSet={selectedProductIdSet}
+                            selectionDisabled={selectionDisabled}
+                            onToggleProductSelection={onToggleProductSelection}
+                        />
                     </div>
                 </CardContent>
             )}
@@ -820,24 +1492,121 @@ function getVisibilityBadgeClasses(tone: 'default' | 'warning' | 'danger') {
     return 'bg-emerald-50 text-emerald-700 border-emerald-200'
 }
 
+function getBulkVisibilityPendingMessage(
+    operation: BulkProductVisibilityOperation | null,
+    selectedCount: number,
+    selectedVendorCount = 0
+) {
+    if (!operation || selectedCount < 1) return null
+
+    const selectionLabel = `${selectedCount} selected product${selectedCount === 1 ? '' : 's'}`
+
+    switch (operation) {
+        case 'set_visible':
+            return `Making ${selectionLabel} visible to vendors.`
+        case 'set_hidden':
+            return `Hiding ${selectionLabel} from vendors.`
+        case 'set_scope_all':
+            return `Applying all-vendor visibility to ${selectionLabel}.`
+        case 'set_selected_vendors':
+            return `Applying ${selectedVendorCount} vendor${selectedVendorCount === 1 ? '' : 's'} to ${selectionLabel}.`
+        default:
+            return null
+    }
+}
+
+function SelectionCheckbox({
+    checked,
+    indeterminate = false,
+    onChange,
+    ariaLabel,
+    disabled = false,
+    className,
+}: {
+    checked: boolean
+    indeterminate?: boolean
+    onChange: () => void
+    ariaLabel: string
+    disabled?: boolean
+    className?: string
+}) {
+    const isMixed = indeterminate && !checked
+
+    return (
+        <button
+            type="button"
+            role="checkbox"
+            aria-label={ariaLabel}
+            aria-checked={isMixed ? 'mixed' : checked}
+            disabled={disabled}
+            onClick={(event) => {
+                event.stopPropagation()
+                onChange()
+            }}
+            className={cn(
+                "focus-ring-brand group inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-transparent bg-transparent transition-all duration-200",
+                checked || isMixed ? "bg-sky-100/80 text-sky-700" : "text-slate-400 hover:bg-slate-100/80",
+                disabled && "cursor-not-allowed opacity-50",
+                className
+            )}
+        >
+            <span
+                className={cn(
+                    "flex h-5 w-5 items-center justify-center rounded-md border text-[11px] transition-all duration-200",
+                    checked || isMixed
+                        ? "border-sky-600 bg-sky-600 text-white shadow-sm"
+                        : "border-slate-300 bg-white text-transparent group-hover:border-slate-400"
+                )}
+            >
+                {isMixed ? <Minus className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+            </span>
+        </button>
+    )
+}
+
 function ProductList({
+    groupTitle,
     products,
     onEdit,
     onDelete,
-    linkedVendorCount
+    linkedVendorCount,
+    selectedProductIdSet,
+    selectionDisabled = false,
+    onToggleProductSelection,
+    onToggleGroupSelection,
 }: {
+    groupTitle: string
     products: Product[]
     onEdit: (p: Product) => void
     onDelete: (p: Product) => void
     linkedVendorCount: number
+    selectedProductIdSet: Set<string>
+    selectionDisabled?: boolean
+    onToggleProductSelection: (productId: string) => void
+    onToggleGroupSelection: (productIds: string[]) => void
 }) {
     if (!products.length) return <p className="py-4 text-center text-sm italic text-slate-500">No products in this category.</p>
+
+    const groupProductIds = products.map((product) => product.id)
+    const selectedCount = groupProductIds.filter((productId) => selectedProductIdSet.has(productId)).length
+    const allSelected = selectedCount === groupProductIds.length
+    const someSelected = selectedCount > 0 && !allSelected
 
     return (
         <Table>
             <TableHeader>
                 <TableRow>
-                    <TableHead className="w-[30%]">Name</TableHead>
+                    <TableHead className="w-14 pl-3">
+                        <SelectionCheckbox
+                            checked={allSelected}
+                            indeterminate={someSelected}
+                            onChange={() => onToggleGroupSelection(groupProductIds)}
+                            ariaLabel={`Select all ${groupTitle} products`}
+                            className="-ml-1"
+                            disabled={selectionDisabled}
+                        />
+                    </TableHead>
+                    <TableHead className="w-[30%] min-w-[220px]">Name</TableHead>
                     <TableHead>SKU</TableHead>
                     <TableHead>Cost</TableHead>
                     <TableHead>Price</TableHead>
@@ -859,8 +1628,25 @@ function ProductList({
                         selectedVendorCount: visibleVendorIds.length,
                         linkedVendorCount
                     })
+                    const isSelected = selectedProductIdSet.has(p.id)
                     return (
-                        <TableRow key={p.id}>
+                        <TableRow
+                            key={p.id}
+                            data-state={isSelected ? 'selected' : undefined}
+                            className={cn(
+                                "transition-[background-color,box-shadow] duration-200",
+                                isSelected && "bg-sky-50/90 hover:bg-sky-50 [box-shadow:inset_3px_0_0_0_rgba(14,165,233,0.95)]"
+                            )}
+                        >
+                            <TableCell className="align-top pl-3">
+                                <SelectionCheckbox
+                                    checked={isSelected}
+                                    onChange={() => onToggleProductSelection(p.id)}
+                                    ariaLabel={`Select ${p.name}`}
+                                    className="-ml-1"
+                                    disabled={selectionDisabled}
+                                />
+                            </TableCell>
                             <TableCell className="font-medium">
                                 <div className="flex flex-col">
                                     <span>{p.name}</span>
@@ -952,12 +1738,18 @@ function ProductMobileList({
     products,
     onEdit,
     onDelete,
-    linkedVendorCount
+    linkedVendorCount,
+    selectedProductIdSet,
+    selectionDisabled = false,
+    onToggleProductSelection,
 }: {
     products: Product[]
     onEdit: (p: Product) => void
     onDelete: (p: Product) => void
     linkedVendorCount: number
+    selectedProductIdSet: Set<string>
+    selectionDisabled?: boolean
+    onToggleProductSelection: (productId: string) => void
 }) {
     if (!products.length) return <p className="py-4 text-center text-sm italic text-slate-500">No products in this category.</p>
 
@@ -975,17 +1767,42 @@ function ProductMobileList({
                     selectedVendorCount: visibleVendorIds.length,
                     linkedVendorCount
                 })
+                const isSelected = selectedProductIdSet.has(p.id)
                 return (
-                    <div key={p.id} className="flex flex-col gap-2 p-4">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <h4 className="font-medium text-slate-900">{p.name}</h4>
-                                {p.category_nodes && <span className="text-xs text-slate-500 mr-2">{p.category_nodes.name}</span>}
-                                {isLow && <Badge variant="destructive" className="text-[10px] h-5 px-1">Low Stock</Badge>}
-                                <div className="mt-1">
-                                    <Badge variant="outline" className={`text-[10px] ${getVisibilityBadgeClasses(visibilitySummary.tone)}`}>
-                                        {visibilitySummary.label}
-                                    </Badge>
+                    <div
+                        key={p.id}
+                        className={cn(
+                            "flex flex-col gap-3 p-4 transition-all duration-200",
+                            isSelected
+                                ? "bg-sky-50/80 ring-1 ring-inset ring-sky-200 shadow-[inset_3px_0_0_0_rgba(14,165,233,0.95)]"
+                                : "bg-white/50 hover:bg-slate-50/70"
+                        )}
+                    >
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3">
+                                <SelectionCheckbox
+                                    checked={isSelected}
+                                    onChange={() => onToggleProductSelection(p.id)}
+                                    ariaLabel={`Select ${p.name}`}
+                                    className="-ml-2 -mt-1"
+                                    disabled={selectionDisabled}
+                                />
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <h4 className="font-medium text-slate-900">{p.name}</h4>
+                                        {isSelected && (
+                                            <Badge variant="outline" className="border-sky-200 bg-white/80 text-sky-700">
+                                                Selected
+                                            </Badge>
+                                        )}
+                                        {isLow && <Badge variant="destructive" className="text-[10px] h-5 px-1">Low Stock</Badge>}
+                                    </div>
+                                    {p.category_nodes && <span className="text-xs text-slate-500 mr-2">{p.category_nodes.name}</span>}
+                                    <div className="mt-1">
+                                        <Badge variant="outline" className={`text-[10px] ${getVisibilityBadgeClasses(visibilitySummary.tone)}`}>
+                                            {visibilitySummary.label}
+                                        </Badge>
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex rounded-lg bg-slate-100/70">

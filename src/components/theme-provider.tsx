@@ -55,7 +55,6 @@ export function ThemeProvider({
             }
         }
         fetchProfileTheme()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     const syncThemeToDb = async (newTheme: Theme) => {
