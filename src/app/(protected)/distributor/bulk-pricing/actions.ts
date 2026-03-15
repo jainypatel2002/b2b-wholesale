@@ -170,8 +170,7 @@ async function persistResolvedProducts(params: {
     const { supabase, distributorId, rows, currentProducts } = params
     const nextRows = rows.map((row) => ({
         ...currentProducts.get(row.productId),
-        ...buildProductUpdatePayload(row),
-        updated_at: new Date().toISOString()
+        ...buildProductUpdatePayload(row)
     }))
 
     const { error: upsertError } = await supabase
@@ -190,10 +189,7 @@ async function persistResolvedProducts(params: {
 
         const { error } = await supabase
             .from('products')
-            .update({
-                ...payload,
-                updated_at: new Date().toISOString()
-            } as any)
+            .update(payload as any)
             .eq('id', row.productId)
             .eq('distributor_id', distributorId)
 
