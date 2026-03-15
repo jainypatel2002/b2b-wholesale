@@ -69,7 +69,7 @@ export default async function BulkPricingPage() {
             <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Bulk Price Adjustment</h1>
-                    <p className="text-sm text-slate-500">Adjust prices across categories and vendors in bulk.</p>
+                    <p className="text-sm text-slate-500">Adjust prices across categories in bulk, then fine-tune individual rows before saving.</p>
                 </div>
                 <Link href="/distributor">
                     <Button variant="outline" size="sm">
